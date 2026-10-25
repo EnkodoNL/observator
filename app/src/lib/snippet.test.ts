@@ -14,7 +14,7 @@ describe("dockerSnippet", () => {
   });
 
   it("follows the name of the final stage", () => {
-    const snippet = dockerSnippet("alpine", "https://obs.example.com", "runner");
+    const snippet = dockerSnippet("alpine", "https://obs.example.com", { stage: "runner" });
     expect(snippet).toContain("FROM runner AS observator");
     expect(snippet.trimEnd().split("\n").at(-2)).toBe("FROM runner");
   });
@@ -31,9 +31,9 @@ describe("dockerSnippet", () => {
   });
 
   it("copies package.json and the lockfile from another stage when asked", () => {
-    const lines = dockerSnippet("alpine", "https://obs.example.com", "runner", {
-      stage: "deps",
-      dir: "/app",
+    const lines = dockerSnippet("alpine", "https://obs.example.com", {
+      stage: "runner",
+      lockfileFrom: { stage: "deps", dir: "/app" },
     }).split("\n");
     expect(lines.slice(1, 4)).toEqual([
       "FROM runner AS observator",
@@ -57,6 +57,15 @@ describe("dockerSnippet", () => {
     expect(copyLockfileLines({ stage: "deps", dir: "/" })[1]).toContain(
       " /package.json /package-lock.json* ",
     );
+  });
+
+  it.each(SNIPPET_VARIANTS.map((v) => v.id))("%s without a key check reports either way", (variant) => {
+    const guarded = dockerSnippet(variant, "https://obs.example.com");
+    const keyless = dockerSnippet(variant, "https://obs.example.com", { keyless: true });
+    expect(guarded).toContain(`[ -z "$key" ] || { \\`);
+    expect(keyless).not.toContain("[ -z");
+    // Nothing else differs: same key handling when one is set.
+    expect(keyless).toBe(guarded.replace('[ -z "$key" ] || ', ""));
   });
 
   it("fills in the URL", () => {

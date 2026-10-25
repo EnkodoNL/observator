@@ -9,10 +9,12 @@ export function SnippetTabs({
   url,
   stage,
   lockfileFrom,
+  keyless,
 }: {
   url: string;
   stage?: string;
   lockfileFrom?: LockfileSource;
+  keyless?: boolean;
 }) {
   return (
     <Tabs defaultValue="alpine">
@@ -27,7 +29,7 @@ export function SnippetTabs({
         <TabsContent key={v.id} value={v.id} className="space-y-2">
           <p className="text-sm text-muted-foreground">{v.hint}</p>
           <CodeBlock
-            code={dockerSnippet(v.id, url, stage, lockfileFrom)}
+            code={dockerSnippet(v.id, url, { stage, lockfileFrom, keyless })}
             label="Dockerfile, at the very bottom"
           />
         </TabsContent>

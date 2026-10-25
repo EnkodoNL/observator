@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { randomToken, sha256 } from "@/lib/crypto";
-import { findIngestKey } from "@/lib/data/ingest-keys";
+import { findIngestKey, findIngestKeyForIp } from "@/lib/data/ingest-keys";
 import { getProjectByKey, slugify, uniqueSlug } from "@/lib/data/projects";
 import { adminPb, isUniqueViolation } from "@/lib/pb/admin";
 import type { IngestKeyRecord, ProjectRecord } from "@/lib/pb/types";
@@ -16,6 +16,13 @@ export async function matchKey(bearer: string): Promise<KeyMatch | null> {
   const project = await getProjectByKey(bearer);
   if (project) return { kind: "project", project };
   const key = await findIngestKey(bearer);
+  return key ? { kind: "shared", key } : null;
+}
+
+/** A report without a key: the shared key whose IP allowlist has this address, if any. */
+export async function matchAddress(ip: string): Promise<KeyMatch | null> {
+  if (ip === "unknown") return null;
+  const key = await findIngestKeyForIp(ip);
   return key ? { kind: "shared", key } : null;
 }
 

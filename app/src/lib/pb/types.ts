@@ -65,6 +65,8 @@ export interface IngestKeyRecord extends BaseRecord {
   createdBy: string;
   lastUsedAt: string;
   lastUsedIp: string;
+  /** Addresses that may report without a key, as this key. */
+  allowedIps: { cidr: string; note: string }[] | null;
 }
 
 export interface BuildChanges {

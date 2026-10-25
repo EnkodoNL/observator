@@ -145,14 +145,34 @@ The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `n
   replicas that each build their own image, a replica that is still on an old Node then shows up on
   its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
   IP changes with every build; use names like `server-1/api` if you want to tell servers apart there.
-  Behind Coolify's Traefik the IP comes from `X-Forwarded-For`.
+  How Observator gets the IP is described under [Client addresses](#client-addresses).
 - **Revoking** a shared key stops it. Its projects stay with their history and can get their own key
   through *Rotate API key*.
 
+### Without a key: IP allowlist
+
+Builds on your own servers can also report without any key. Give a shared key an *IP allowlist*
+(**Settings → Projects → Shared keys**): reports without a key from those addresses count as that
+key, with the same projects and limits. Nothing has to be configured per app; only the snippet goes
+into each Dockerfile, in the variant without the key check that the allowlist dialog shows. That
+variant reports without `OBSERVATOR_KEY` and still uses a key when one is set, so the same
+Dockerfile works in CI.
+
+- **Which address.** Observator uses the address described under
+  [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
+  on the same server as Observator may arrive from the Docker gateway (such as `172.17.0.1`) instead.
+  Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log, with
+  the address, and appear in the allowlist dialog with an *Add* button.
+- **Ranges.** Single addresses or CIDR ranges, at most /8 for IPv4 and /32 for IPv6, each with an
+  optional note. An address belongs to one shared key only.
+- **Trade-off.** Any process on an allowed server can report. Since reports only ever write, that is
+  about as safe as a shared key in a private repository; the key-checked snippet remains the
+  default.
+
 ### How the snippet behaves
 
-- **It never breaks your build.** No key, a wrong key or an unreachable server prints
-  `report failed, continuing` and the build goes on. The only exception is the gate below, and only
+- **It never breaks your build.** No key skips the report; a wrong key or an unreachable server
+  prints `report failed, continuing` and the build goes on. The only exception is the gate below, and only
   if you turn it on.
 - **The key stays out of the image.** The report runs in a separate stage; the final image only gets
   an empty marker file from it (the `COPY` makes BuildKit run that stage). The key is read through
