@@ -7,6 +7,7 @@ import { SnippetTabs } from "@/components/snippet-tabs";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
+import { lastRedeploy, maskUrl } from "@/lib/deploy";
 import { evaluateNode } from "@/lib/node/evaluate";
 import { getNodeData } from "@/lib/node/releases";
 import { env } from "@/lib/env";
@@ -17,6 +18,8 @@ import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
 import { BuildsList } from "./builds-list";
 import { NodePanel } from "./node-panel";
+import { ProjectSettings } from "./project-settings";
+import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
 import { VulnList } from "./vuln-list";
 
@@ -37,6 +40,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { project, latest, summary, builds, components, issues } = view;
   const appUrl = env().APP_URL;
   const evaluation = latest && nodeData ? evaluateNode(latest.nodeVersion, nodeData) : null;
+  const redeploy = project.deployWebhookUrl ? await lastRedeploy(project.id) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
@@ -85,9 +89,21 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <p className="mt-1 text-sm text-muted-foreground">
               {view.lastBuildAt ? `Last build ${timeAgo(view.lastBuildAt)}` : "No builds yet"} ·{" "}
               <span className="font-mono">{project.slug}</span>
+              {redeploy && (
+                <>
+                  {" · "}
+                  <span className={redeploy.ok ? undefined : "text-danger"} title={redeploy.message}>
+                    last redeploy {timeAgo(new Date(redeploy.at))}
+                    {!redeploy.ok && " failed"}
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {project.deployWebhookUrl && (
+              <RedeployButton projectId={project.id} name={project.name} target={maskUrl(project.deployWebhookUrl)} />
+            )}
             <ProjectActions id={project.id} name={project.name} appUrl={appUrl} />
           </div>
         </div>
@@ -157,6 +173,18 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               starts with <code className="font-mono text-foreground">{project.apiKeyPrefix}</code>. Lost it?
               Rotate it from the menu at the top right.
             </p>
+          </section>
+          <section className="space-y-3">
+            <h2 className="font-medium">Project</h2>
+            <ProjectSettings
+              projectId={project.id}
+              name={project.name}
+              webhook={{
+                masked: maskUrl(project.deployWebhookUrl),
+                method: project.deployWebhookMethod || "POST",
+                hasToken: Boolean(project.deployWebhookToken),
+              }}
+            />
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">Build gate (optional)</h2>
