@@ -9,7 +9,15 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { redeployAction } from "./actions";
 
-export function RedeployButton({ projectId, name, target }: { projectId: string; name: string; target: string }) {
+export function RedeployButton({
+  projectId,
+  name,
+  target,
+}: {
+  projectId: string;
+  name: string;
+  target: string;
+}) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();

@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { ExternalLinkIcon } from "lucide-react";
+import { CodeBlock } from "@/components/code-block";
 import { SeverityBadge } from "@/components/status";
+import { packageAdvice } from "@/lib/advice";
 import type { VulnIssueData } from "@/lib/issues/types";
-import type { IssueRecord } from "@/lib/pb/types";
+import type { IssueRecord, LockfileType } from "@/lib/pb/types";
 
-export function VulnList({ issues, empty }: { issues: IssueRecord[]; empty: React.ReactNode }) {
+export function VulnList({
+  issues,
+  empty,
+  lockfile,
+  actions,
+}: {
+  issues: IssueRecord[];
+  empty: React.ReactNode;
+  lockfile: LockfileType;
+  actions?: (issue: IssueRecord) => React.ReactNode;
+}) {
   if (issues.length === 0)
     return <div className="rounded-xl border p-6 text-sm text-muted-foreground">{empty}</div>;
   return (
@@ -12,6 +24,7 @@ export function VulnList({ issues, empty }: { issues: IssueRecord[]; empty: Reac
       {issues.map((issue) => {
         const d = issue.data as unknown as VulnIssueData;
         const cves = d.aliases.filter((a) => a.startsWith("CVE-"));
+        const advice = packageAdvice(d, lockfile);
         return (
           <li key={issue.id} className="space-y-2 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -40,7 +53,19 @@ export function VulnList({ issues, empty }: { issues: IssueRecord[]; empty: Reac
               </a>
               {cves.length > 0 && <span className="font-mono">{cves.join(", ")}</span>}
               <span>{d.fixedIn ? `Fixed in ${d.fixedIn}` : "No fixed version yet"}</span>
+              {actions && <span className="ml-auto">{actions(issue)}</span>}
             </div>
+            <details className="group">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground select-none hover:text-foreground">
+                How to fix
+              </summary>
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-muted-foreground">{advice.text}</p>
+                {advice.snippets.map((snippet) => (
+                  <CodeBlock key={snippet.label} code={snippet.code} label={snippet.label} />
+                ))}
+              </div>
+            </details>
           </li>
         );
       })}

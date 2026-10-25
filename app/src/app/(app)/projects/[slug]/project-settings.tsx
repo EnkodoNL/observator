@@ -28,7 +28,8 @@ export function ProjectSettings({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
-  const set = <K extends keyof typeof value>(k: K, v: (typeof value)[K]) => setValue((s) => ({ ...s, [k]: v }));
+  const set = <K extends keyof typeof value>(k: K, v: (typeof value)[K]) =>
+    setValue((s) => ({ ...s, [k]: v }));
 
   return (
     <form
@@ -57,13 +58,18 @@ export function ProjectSettings({
             id="p-webhook"
             type="url"
             autoComplete="off"
-            placeholder={webhook.masked ? `${webhook.masked} (stored; leave empty to keep)` : "https://coolify.example.com/api/v1/deploy?uuid=…"}
+            placeholder={
+              webhook.masked
+                ? `${webhook.masked} (stored; leave empty to keep)`
+                : "https://coolify.example.com/api/v1/deploy?uuid=…"
+            }
             value={value.deployWebhookUrl}
             onChange={(e) => set("deployWebhookUrl", e.target.value)}
           />
           <FieldDescription>
-            Adds a Redeploy button here and in notifications. Coolify: the deploy webhook URL from the resource, with an
-            API token below and method GET. Dokploy and Portainer: the webhook URL, method POST, no token.
+            Adds a Redeploy button here and in notifications. Coolify: the deploy webhook URL from the
+            resource, with an API token below and method GET. Dokploy and Portainer: the webhook URL, method
+            POST, no token.
           </FieldDescription>
           {errors.deployWebhookUrl && <FieldError>{errors.deployWebhookUrl}</FieldError>}
         </Field>

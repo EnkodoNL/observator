@@ -102,7 +102,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
           <div className="flex items-center gap-2">
             {project.deployWebhookUrl && (
-              <RedeployButton projectId={project.id} name={project.name} target={maskUrl(project.deployWebhookUrl)} />
+              <RedeployButton
+                projectId={project.id}
+                name={project.name}
+                target={maskUrl(project.deployWebhookUrl)}
+              />
             )}
             <ProjectActions id={project.id} name={project.name} appUrl={appUrl} />
           </div>
@@ -132,6 +136,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             </h2>
             <VulnList
               issues={vulns}
+              lockfile={latest?.lockfileType ?? "npm"}
               empty={
                 !latest
                   ? "Packages are checked after the first build reports."
