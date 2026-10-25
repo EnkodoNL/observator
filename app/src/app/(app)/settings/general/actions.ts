@@ -24,7 +24,11 @@ export async function saveSettingsAction(
 
 export async function runChecksAction(): Promise<{ ok: boolean; error?: string }> {
   await requireUser();
-  const results = [await runJob("node-index", { force: true }), await runJob("osv-recheck", { force: true })];
+  const results = [
+    await runJob("node-index", { force: true }),
+    await runJob("osv-recheck", { force: true }),
+    await runJob("npm-latest", { force: true }),
+  ];
   revalidatePath("/", "layout");
   const failed = results.find((r) => r && !r.ok);
   if (results.some((r) => r === null))

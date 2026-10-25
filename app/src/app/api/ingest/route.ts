@@ -5,6 +5,7 @@ import { getProjectByKey } from "@/lib/data/projects";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { recordBuild } from "@/lib/ingest/ingest";
 import { publish } from "@/lib/notify/publish";
+import { refreshLatest } from "@/lib/npm-latest";
 import { renderReport } from "@/lib/ingest/report";
 import { extractFiles, IngestError, parseMeta, readBody } from "@/lib/ingest/request";
 import { RateLimiter } from "@/lib/rate-limit";
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
     after(async () => {
       try {
         await publish(await analyzeInBackground(project.id, analysis));
+        if (outcome.lockfileChanged) await refreshLatest(outcome.directNames);
       } catch (err) {
         console.error("[ingest] background analysis failed", err);
       }

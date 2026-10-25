@@ -6,6 +6,7 @@ import { publish } from "@/lib/notify/publish";
 import { sendDigestIfDue } from "@/lib/notify/digest";
 import { processQueue } from "@/lib/notify/queue";
 import { sendReminders } from "@/lib/notify/reminders";
+import { refreshLatest } from "@/lib/npm-latest";
 import { checkAllProjects } from "@/lib/osv/check";
 import { cleanup } from "./cleanup";
 
@@ -62,6 +63,15 @@ export const JOBS = {
     lockTtlMs: 10 * MINUTE,
     run: async () => {
       await sendReminders();
+    },
+  },
+  /** Newest published versions of direct dependencies, for the "outdated" labels. Display only. */
+  "npm-latest": {
+    label: "Latest versions of direct dependencies",
+    intervalMs: DAY,
+    lockTtlMs: 30 * MINUTE,
+    run: async () => {
+      await refreshLatest();
     },
   },
   cleanup: {

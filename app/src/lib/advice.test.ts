@@ -37,3 +37,15 @@ describe("packageAdvice", () => {
     expect(packageAdvice({ ...base, fixedIn: "" }, "npm").snippets).toEqual([]);
   });
 });
+
+describe("outdatedLevel", () => {
+  it("labels how far behind a direct dependency is", async () => {
+    const { outdatedLevel } = await import("./npm-latest");
+    expect(outdatedLevel("4.17.1", "5.1.0")).toBe("major");
+    expect(outdatedLevel("4.17.1", "4.21.2")).toBe("minor");
+    expect(outdatedLevel("4.17.20", "4.17.21")).toBe("patch");
+    expect(outdatedLevel("4.18.1", "4.18.1")).toBeNull();
+    expect(outdatedLevel("5.0.0-beta.1", "4.21.2")).toBeNull();
+    expect(outdatedLevel("1.0.0", undefined)).toBeNull();
+  });
+});

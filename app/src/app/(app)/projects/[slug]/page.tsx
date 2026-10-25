@@ -8,10 +8,11 @@ import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
 import { lastRedeploy, maskUrl } from "@/lib/deploy";
+import { latestVersions, outdatedLevel } from "@/lib/npm-latest";
 import { evaluateNode } from "@/lib/node/evaluate";
 import { getNodeData } from "@/lib/node/releases";
 import { env } from "@/lib/env";
-import type { VulnIssueData } from "@/lib/issues/types";
+import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import type { Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
 import { timeAgo } from "@/lib/time";
@@ -39,7 +40,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";
-  const [view, nodeData] = await Promise.all([getProjectView(slug), getNodeData()]);
+  const [view, nodeData, latestByName] = await Promise.all([
+    getProjectView(slug),
+    getNodeData(),
+    latestVersions(),
+  ]);
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
@@ -58,12 +63,15 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const vulnByPackage = new Map<string, { severity: Severity; count: number }>();
   for (const v of openVulns) {
     const d = v.data as unknown as VulnIssueData;
-    const key = `${d.package}@${d.version}`;
-    const prev = vulnByPackage.get(key);
-    vulnByPackage.set(key, {
-      severity: !prev || severityRank(v.severity) > severityRank(prev.severity) ? v.severity : prev.severity,
-      count: (prev?.count ?? 0) + 1,
-    });
+    for (const version of vulnVersions(d)) {
+      const key = `${d.package}@${version}`;
+      const prev = vulnByPackage.get(key);
+      vulnByPackage.set(key, {
+        severity:
+          !prev || severityRank(v.severity) > severityRank(prev.severity) ? v.severity : prev.severity,
+        count: (prev?.count ?? 0) + 1,
+      });
+    }
   }
   const rows: PackageRow[] = components.map((c) => {
     const v = vulnByPackage.get(`${c.name}@${c.version}`);
@@ -75,6 +83,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
       via: c.via ?? [],
       severity: v?.severity ?? null,
       vulnCount: v?.count ?? 0,
+      ...(c.direct
+        ? { latest: latestByName[c.name], outdated: outdatedLevel(c.version, latestByName[c.name]) }
+        : {}),
     };
   });
 

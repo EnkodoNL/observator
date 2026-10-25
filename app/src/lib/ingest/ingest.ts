@@ -20,6 +20,8 @@ export interface IngestOutcome {
   lockfileName: LockfileName | null;
   lockfileChanged: boolean;
   packageCount: number;
+  /** Direct dependencies of a newly parsed lockfile (for the npm latest-version cache). */
+  directNames?: string[];
   parseError?: string;
 }
 
@@ -87,6 +89,7 @@ export async function recordBuild(
   let lockfileChanged = previous?.lockfileHash !== lockfileHash;
   let packageCount = previous?.packageCount ?? 0;
   let parseError: string | undefined;
+  let directNames: string[] | undefined;
 
   if (lockfileChanged) {
     try {
@@ -95,6 +98,7 @@ export async function recordBuild(
       Object.assign(changes, diffComponents(await currentComponents(project.id), components));
       await replaceComponents(project.id, components);
       packageCount = components.length;
+      directNames = components.filter((c) => c.direct).map((c) => c.name);
     } catch (err) {
       if (!(err instanceof LockfileError)) throw err;
       parseError = err.message;
@@ -118,5 +122,5 @@ export async function recordBuild(
   });
   await pb.collection("projects").update(project.id, { lastBuildAt: toPbDate(new Date()) });
 
-  return { build, previous, lockfileName, lockfileChanged, packageCount, parseError };
+  return { build, previous, lockfileName, lockfileChanged, packageCount, directNames, parseError };
 }

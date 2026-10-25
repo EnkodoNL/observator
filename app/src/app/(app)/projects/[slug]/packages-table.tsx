@@ -112,9 +112,12 @@ export function PackagesTable({ rows }: { rows: PackageRow[] }) {
                         "ml-2 text-xs",
                         r.outdated === "major" ? "text-warn" : "text-muted-foreground",
                       )}
-                      title={`Latest: ${r.latest}`}
+                      title={`Latest published version: ${r.latest}`}
                     >
                       → {r.latest}
+                      <span className="ml-1 rounded bg-muted px-1 py-0.5 font-sans text-[10px] tracking-wide uppercase">
+                        {r.outdated}
+                      </span>
                     </span>
                   )}
                 </TableCell>
