@@ -31,13 +31,13 @@ function visibleLines(lines: DockerfileLine[], all: boolean): (DockerfileLine | 
 }
 
 /** Paste a Dockerfile, get it back with the snippet in place. Nothing leaves the browser. */
-export function DockerfileCheck({ url }: { url: string }) {
+export function DockerfileCheck({ url, keyless = false }: { url: string; keyless?: boolean }) {
   const [text, setText] = useState("");
   const [all, setAll] = useState(false);
   const deferred = useDeferredValue(text);
   const analysis = useMemo(
-    () => (deferred.trim() ? analyzeDockerfile(deferred, url) : null),
-    [deferred, url],
+    () => (deferred.trim() ? analyzeDockerfile(deferred, url, { keyless }) : null),
+    [deferred, url, keyless],
   );
   const result = analysis?.ok ? analysis.lines.map((l) => l.text).join("\n") + "\n" : "";
 

@@ -39,7 +39,7 @@ function Stage({ name }: { name: string }) {
 }
 
 /** Two ways in: the guided steps, or a pasted Dockerfile that comes back with the snippet in it. */
-export function DockerfileSetup({ url }: { url: string }) {
+export function DockerfileSetup({ url, keyless = false }: { url: string; keyless?: boolean }) {
   return (
     <Tabs defaultValue="steps" className="gap-4">
       <TabsList>
@@ -52,10 +52,10 @@ export function DockerfileSetup({ url }: { url: string }) {
         </TabsTrigger>
       </TabsList>
       <TabsContent value="steps">
-        <StepByStep url={url} />
+        <StepByStep url={url} keyless={keyless} />
       </TabsContent>
       <TabsContent value="paste">
-        <DockerfileCheck url={url} />
+        <DockerfileCheck url={url} keyless={keyless} />
       </TabsContent>
     </Tabs>
   );
@@ -66,7 +66,7 @@ export function DockerfileSetup({ url }: { url: string }) {
  * followed by the snippet itself. The snippet follows the name of the user's last stage, and
  * can fetch package.json and the lockfile from an earlier stage when the last one lacks them.
  */
-function StepByStep({ url }: { url: string }) {
+function StepByStep({ url, keyless }: { url: string; keyless: boolean }) {
   const id = useId();
   const [raw, setRaw] = useState("app");
   const stage = stageName(raw);
@@ -194,7 +194,7 @@ function StepByStep({ url }: { url: string }) {
         )}
       </div>
 
-      <SnippetTabs url={url} stage={stage} lockfileFrom={lockfileFrom} />
+      <SnippetTabs url={url} stage={stage} lockfileFrom={lockfileFrom} keyless={keyless} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { listIngestKeys } from "@/lib/data/ingest-keys";
+import { listIngestKeys, listRefused } from "@/lib/data/ingest-keys";
 import { listProjects } from "@/lib/data/projects";
 import { env } from "@/lib/env";
 import { pbDate } from "@/lib/pb/admin";
@@ -16,6 +16,7 @@ export const metadata: Metadata = { title: "Projects" };
 
 export default async function ProjectsSettingsPage() {
   const [projects, keys] = await Promise.all([listProjects(), listIngestKeys()]);
+  const refused = await listRefused(keys);
   const appUrl = env().APP_URL;
   const keyName = new Map(keys.map((k) => [k.id, k.name]));
 
@@ -84,6 +85,13 @@ export default async function ProjectsSettingsPage() {
           <p className="text-sm text-muted-foreground">No shared keys yet.</p>
         ) : (
           <SharedKeyList
+            appUrl={appUrl}
+            refused={refused.map((r) => ({
+              ip: r.ip,
+              project: r.project,
+              count: r.count,
+              when: timeAgo(pbDate(r.lastAt)),
+            }))}
             keys={keys.map((k) => ({
               id: k.id,
               name: k.name,
@@ -92,6 +100,7 @@ export default async function ProjectsSettingsPage() {
               projects: k.projects,
               lastUsed: k.lastUsedAt ? timeAgo(pbDate(k.lastUsedAt)) : "",
               lastUsedIp: k.lastUsedIp,
+              allowedIps: k.allowedIps ?? [],
             }))}
           />
         )}

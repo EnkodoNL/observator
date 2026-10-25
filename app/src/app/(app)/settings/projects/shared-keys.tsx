@@ -2,9 +2,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { KeyRoundIcon, Loader2Icon, PlusIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, Loader2Icon, NetworkIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { KeyReveal } from "@/components/key-reveal";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +20,9 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { createSharedKeyAction, revokeSharedKeyAction } from "./actions";
+import { Textarea } from "@/components/ui/textarea";
+import { type AllowEntry, formatAllowlist, matchEntry, parseAllowlist } from "@/lib/ingest/allowlist";
+import { createSharedKeyAction, revokeSharedKeyAction, updateAllowlistAction } from "./actions";
 
 export interface SharedKeyItem {
   id: string;
@@ -29,6 +32,15 @@ export interface SharedKeyItem {
   projects: number;
   lastUsed: string;
   lastUsedIp: string;
+  allowedIps: AllowEntry[];
+}
+
+/** A report without a key from an address on no allowlist. */
+export interface RefusedItem {
+  ip: string;
+  project: string;
+  count: number;
+  when: string;
 }
 
 export function NewSharedKeyDialog({ appUrl }: { appUrl: string }) {
@@ -121,8 +133,17 @@ export function NewSharedKeyDialog({ appUrl }: { appUrl: string }) {
   );
 }
 
-export function SharedKeyList({ keys }: { keys: SharedKeyItem[] }) {
+export function SharedKeyList({
+  keys,
+  refused,
+  appUrl,
+}: {
+  keys: SharedKeyItem[];
+  refused: RefusedItem[];
+  appUrl: string;
+}) {
   const [revoking, setRevoking] = useState<SharedKeyItem | null>(null);
+  const [allowing, setAllowing] = useState<SharedKeyItem | null>(null);
   if (keys.length === 0) return null;
   return (
     <>
@@ -139,8 +160,13 @@ export function SharedKeyList({ keys }: { keys: SharedKeyItem[] }) {
                 {k.projects} project{k.projects === 1 ? "" : "s"} ·{" "}
                 {k.splitByIp ? "one per server" : "one per name"} ·{" "}
                 {k.lastUsed ? `last used ${k.lastUsed} from ${k.lastUsedIp}` : "never used"}
+                {k.allowedIps.length > 0 &&
+                  ` · ${k.allowedIps.length} allowed address${k.allowedIps.length === 1 ? "" : "es"}`}
               </p>
             </div>
+            <Button variant="outline" size="sm" onClick={() => setAllowing(k)}>
+              <NetworkIcon /> IP allowlist
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -152,6 +178,27 @@ export function SharedKeyList({ keys }: { keys: SharedKeyItem[] }) {
           </li>
         ))}
       </ul>
+      {refused.length > 0 && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {refused.length === 1 ? "A build" : `${refused.length} builds`} reported without a key from{" "}
+          {refused
+            .slice(0, 3)
+            .map((r) => (r.project ? `${r.ip} (${r.project})` : r.ip))
+            .join(", ")}
+          {refused.length > 3 ? " and more" : ""}, which is on no allowlist. Open a key&rsquo;s IP allowlist
+          to add
+          {refused.length === 1 ? " it" : " them"}.
+        </p>
+      )}
+      {allowing && (
+        <AllowlistDialog
+          key={allowing.id}
+          item={allowing}
+          refused={refused}
+          appUrl={appUrl}
+          onClose={() => setAllowing(null)}
+        />
+      )}
       <ConfirmDialog
         open={revoking !== null}
         onOpenChange={(o) => !o && setRevoking(null)}
@@ -165,5 +212,133 @@ export function SharedKeyList({ keys }: { keys: SharedKeyItem[] }) {
         }}
       />
     </>
+  );
+}
+
+/**
+ * Addresses that may report without a key, as this key. Suggests the address this key last
+ * reported from and recent refusals, since the address a build really uses (the Docker
+ * gateway, IPv4 or IPv6) is hard to guess.
+ */
+function AllowlistDialog({
+  item,
+  refused,
+  appUrl,
+  onClose,
+}: {
+  item: SharedKeyItem;
+  refused: RefusedItem[];
+  appUrl: string;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(formatAllowlist(item.allowedIps));
+  const [saved, setSaved] = useState(item.allowedIps);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const current = parseAllowlist(text).entries.map((e) => e.cidr);
+  const suggestions = [
+    ...(item.lastUsedIp && item.lastUsedIp !== "unknown"
+      ? [
+          {
+            ip: item.lastUsedIp,
+            note: "last report with this key",
+            detail: `last report with this key, ${item.lastUsed}`,
+          },
+        ]
+      : []),
+    ...refused.map((r) => ({
+      ip: r.ip,
+      note: r.project,
+      detail: `${r.project ? `${r.project}, ` : ""}refused ${r.count}× without a key, last ${r.when}`,
+    })),
+  ].filter((s, i, all) => !matchEntry(s.ip, current) && all.findIndex((o) => o.ip === s.ip) === i);
+  const add = (ip: string, note: string) =>
+    setText((t) => `${t.trim() ? `${t.trimEnd()}\n` : ""}${ip}${note ? `  # ${note}` : ""}`);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] grid-cols-1 overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>IP allowlist for {item.name}</DialogTitle>
+          <DialogDescription>
+            Builds from these addresses may report without a key. They count as this key: the same projects,
+            created the same way{item.splitByIp ? ", one per server" : ""}.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            start(async () => {
+              const res = await updateAllowlistAction(item.id, text);
+              if (res.error) setError(res.error);
+              else {
+                setSaved(res.entries ?? []);
+                setText(formatAllowlist(res.entries ?? []));
+                toast.success("Allowlist saved");
+              }
+            });
+          }}
+        >
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            placeholder={"198.51.100.4  # coolify-1\n2a01:4f8:c0c::/48  # coolify-2, IPv6"}
+            className="font-mono text-[12.5px]"
+            spellCheck={false}
+            aria-label="Allowed addresses"
+          />
+          <p className="text-xs text-muted-foreground">
+            One address or range per line; # starts a note. Observator sees the address as described under
+            &ldquo;Client addresses&rdquo; in the README, so behind Cloudflare it is your server&rsquo;s own
+            address. A build on the same server as Observator may arrive from the Docker gateway instead.
+          </p>
+          {error && (
+            <p role="alert" className="text-sm whitespace-pre-line text-destructive">
+              {error}
+            </p>
+          )}
+          {suggestions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Seen by Observator</p>
+              <ul className="divide-y rounded-lg border">
+                {suggestions.map((s) => (
+                  <li key={s.ip} className="flex items-center gap-3 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[13px]">{s.ip}</p>
+                      <p className="truncate text-xs text-muted-foreground">{s.detail}</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => add(s.ip, s.note)}>
+                      <PlusIcon /> Add
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Not a DialogFooter: the snippet follows below, so this is not the end of the dialog. */}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={pending}>
+              {pending && <Loader2Icon className="animate-spin" />}
+              Save allowlist
+            </Button>
+          </div>
+        </form>
+        {saved.length > 0 && (
+          <div className="space-y-2 border-t pt-4">
+            <p className="text-sm font-medium">Dockerfile for these servers</p>
+            <p className="text-sm text-muted-foreground">
+              The snippet without the key check: it reports without{" "}
+              <code className="font-mono">OBSERVATOR_KEY</code>, and still uses a key when one is set (CI,
+              other servers). Builds elsewhere send their report too and get &ldquo;not recorded&rdquo;.
+            </p>
+            <DockerfileSetup url={appUrl} keyless />
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

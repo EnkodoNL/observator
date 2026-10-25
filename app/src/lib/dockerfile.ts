@@ -285,7 +285,11 @@ const describe = (o: Origin) =>
       ? `the Next.js standalone output on line ${o.line}`
       : `line ${o.line}`;
 
-export function analyzeDockerfile(text: string, url: string): DockerfileAnalysis {
+export function analyzeDockerfile(
+  text: string,
+  url: string,
+  { keyless = false }: { keyless?: boolean } = {},
+): DockerfileAnalysis {
   const all = instructions(text);
   const stages: Stage[] = [];
   const standaloneLines = new Map<Stage, string>();
@@ -418,7 +422,7 @@ export function analyzeDockerfile(text: string, url: string): DockerfileAnalysis
     }
   }
 
-  const snippet = dockerSnippet(variant, url, stage, lockfileFrom).split("\n");
+  const snippet = dockerSnippet(variant, url, { stage, lockfileFrom, keyless }).split("\n");
   const result: DockerfileLine[] = lines.map((l, i) => ({ text: l, added: added.has(i) }));
   result.push({ text: "", added: true }, ...snippet.map((text) => ({ text, added: true })));
   return { ok: true, stage, variant, lockfileFrom, notes, lines: result };

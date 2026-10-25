@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { after } from "next/server";
 import { env } from "@/lib/env";
-import { touchIngestKey } from "@/lib/data/ingest-keys";
+import { recordRefused, touchIngestKey } from "@/lib/data/ingest-keys";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { recordBuild } from "@/lib/ingest/ingest";
-import { matchKey, resolveSharedProject } from "@/lib/ingest/resolve";
+import { matchAddress, matchKey, resolveSharedProject } from "@/lib/ingest/resolve";
 import { clientIpFrom } from "@/lib/client-ip";
 import { reportedName } from "@/lib/ingest/source";
 import { parsePackageJson } from "@/lib/lockfile";
@@ -41,14 +41,25 @@ const text = (status: number, body: string) =>
  */
 export async function POST(request: Request) {
   try {
+    // The snippet without a key check sends "Bearer " with nothing after it: that is no key.
     const key = /^Bearer\s+(\S+)$/i.exec(request.headers.get("authorization") ?? "")?.[1];
-    if (!key) return text(401, "Observator: missing Authorization: Bearer <key>");
 
     const limits = getLimits();
     const ip = clientIpFrom(request.headers, env().TRUSTED_PROXIES);
     if (!limits.badKey.take(`probe:${ip}`)) return text(429, "Observator: too many requests");
-    const match = await matchKey(key);
-    if (!match) return text(401, "Observator: unknown key");
+    const match = key ? await matchKey(key) : await matchAddress(ip);
+    if (!match && key) return text(401, "Observator: unknown key");
+    if (!match) {
+      const project = request.headers.get("x-project")?.trim() ?? "";
+      if (ip !== "unknown") await recordRefused(ip, /^[\x20-\x7e]{1,100}$/.test(project) ? project : "");
+      // 200 on purpose: BusyBox wget and curl -f drop the body of an error response, and this
+      // line is only useful in the build log. Nothing was recorded.
+      return text(
+        200,
+        `Observator: not recorded: no key, and ${ip} is not on an IP allowlist. ` +
+          "Add it under Settings → Projects → Shared keys, or set OBSERVATOR_KEY.",
+      );
+    }
     limits.badKey.reset(`probe:${ip}`);
 
     const limited = text(

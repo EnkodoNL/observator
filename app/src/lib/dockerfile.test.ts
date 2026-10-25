@@ -51,7 +51,11 @@ describe("analyzeDockerfile", () => {
     expect(a.lockfileFrom).toEqual({ stage: "deps", dir: "/app" });
     expect(a.notes.map((n) => n.text).join("\n")).toContain("Next.js standalone output (line 21)");
     expect(a.out.startsWith(NEXT_STANDALONE)).toBe(true);
-    expect(a.out.endsWith(dockerSnippet("alpine", URL, "runner", { stage: "deps", dir: "/app" }))).toBe(true);
+    expect(
+      a.out.endsWith(
+        dockerSnippet("alpine", URL, { stage: "runner", lockfileFrom: { stage: "deps", dir: "/app" } }),
+      ),
+    ).toBe(true);
   });
 
   it("names an unnamed last stage and leaves the rest alone", () => {

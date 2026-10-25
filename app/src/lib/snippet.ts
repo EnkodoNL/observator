@@ -90,11 +90,22 @@ export function copyLockfileLines({ stage, dir }: LockfileSource): string[] {
  * is passed as a build argument and never written into the Dockerfile, and it is read via
  * node so BuildKit's log output does not show it either.
  */
+export interface SnippetOptions {
+  /** The name of the user's last stage. */
+  stage?: string;
+  /** Where package.json and the lockfile are, when the last stage lacks them. */
+  lockfileFrom?: LockfileSource;
+  /**
+   * Report also without OBSERVATOR_KEY, for servers on a shared key's IP allowlist. The
+   * default snippet sends nothing without a key, so a build on a laptop stays local.
+   */
+  keyless?: boolean;
+}
+
 export function dockerSnippet(
   variant: SnippetVariant,
   url: string,
-  stage = "app",
-  lockfileFrom?: LockfileSource,
+  { stage = "app", lockfileFrom, keyless = false }: SnippetOptions = {},
 ): string {
   return [
     "# --- Observator: reports Node version + lockfile; does not end up in the final image ---",
@@ -106,7 +117,7 @@ export function dockerSnippet(
     `ARG OBSERVATOR_PROJECT=""`,
     // Read through node instead of $OBSERVATOR_KEY: BuildKit prints RUN commands with build
     // args substituted, which would put the key in the build log. (printenv is not in BusyBox.)
-    `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \\`,
+    `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; ${keyless ? "" : '[ -z "$key" ] || '}{ \\`,
     `      tar czf /tmp/obs.tgz package.json ${LOCKFILES} \\`,
     ...POST[variant],
     `      && cat /tmp/obs.txt \\`,
