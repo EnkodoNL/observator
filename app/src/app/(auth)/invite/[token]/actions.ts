@@ -3,7 +3,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { clientIp, passwordLogin, setSessionCookie } from "@/lib/auth/session";
+import { clientIp, passwordLogin } from "@/lib/auth/session";
+import { startPending } from "@/lib/auth/two-factor";
 import { findInvite, markInviteUsed } from "@/lib/data/users";
 import { type FormState, formObject, publicValues, zodState } from "@/lib/forms";
 import { adminPb, isUniqueViolation } from "@/lib/pb/admin";
@@ -43,6 +44,7 @@ export async function acceptInviteAction(_prev: FormState, data: FormData): Prom
     return { error: "Could not create the account.", values: publicValues(values) };
   }
   await markInviteUsed(invite.id);
-  await setSessionCookie(await passwordLogin(email, password));
-  redirect("/");
+  const login = await passwordLogin(email, password);
+  await startPending(login.user, login.token, "/");
+  redirect("/login/verify");
 }

@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth/session";
 import { INVITE_TTL_DAYS, listInvites, listUsers } from "@/lib/data/users";
 import { pbDate } from "@/lib/pb/admin";
 import { formatDate, timeAgo } from "@/lib/time";
-import { InviteButton, RemoveUserButton, RevokeInviteButton } from "./users-client";
+import { InviteButton, RemoveUserButton, ResetTwoFactorButton, RevokeInviteButton } from "./users-client";
 
 export const metadata: Metadata = { title: "Users" };
 
@@ -40,8 +40,15 @@ export default async function UsersPage() {
                       <KeyRoundIcon className="size-3" /> {u.passkeys} passkey{u.passkeys === 1 ? "" : "s"}
                     </>
                   )}
+                  {" · "}
+                  {u.totp
+                    ? "authenticator app"
+                    : u.passkeys > 0
+                      ? "no authenticator app"
+                      : "2FA not set up yet"}
                 </p>
               </div>
+              {u.id !== me.id && u.totp && <ResetTwoFactorButton id={u.id} email={u.email} />}
               {u.id !== me.id && users.length > 1 && <RemoveUserButton id={u.id} email={u.email} />}
             </li>
           ))}
