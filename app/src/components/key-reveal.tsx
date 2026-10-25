@@ -19,7 +19,7 @@ export function KeyReveal({ apiKey, appUrl, shared }: { apiKey: string; appUrl: 
       <div className="space-y-2">
         <p className="text-sm font-medium">1. Add Observator to your Dockerfile</p>
         <p className="text-sm text-muted-foreground">
-          Two changes, marked below. The snippet contains no secrets, so it is safe to commit.
+          The snippet contains no secrets, so it is safe to commit.
         </p>
         <DockerfileSetup url={appUrl} />
       </div>

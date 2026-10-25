@@ -65,6 +65,11 @@ Two changes to your Dockerfile:
 2. **Paste the snippet at the very bottom**, after everything else, `CMD` included. It ends with
    `FROM app` again, so the image you build and deploy is still your app.
 
+Or let Observator do it: paste your Dockerfile under *Setup → From your Dockerfile* (beta). It comes
+back with the snippet in place and a note per decision: the stage name, the variant for your base
+image, and whether the lockfile has to come from an earlier stage. The Dockerfile is read in the
+browser and not sent anywhere.
+
 ```dockerfile
 FROM node:22-alpine AS deps
 # ... your earlier stages, unchanged ...
@@ -195,15 +200,19 @@ The project's *Setup* tab shows all three variants with your URL filled in.
 ### Multi-stage builds
 
 The report stage needs `package.json` and the lockfile in its working directory, and the `node`
-binary that actually runs in production. If your final stage only contains build output, copy the two
-files in:
+binary that actually runs in production. A final stage that only holds build output, such as a
+Next.js standalone image, has `package.json` but no lockfile; then only the Node version is checked.
+Copy both from the stage that installed the dependencies, right below the first `FROM`:
 
 ```dockerfile
-FROM app AS observator
+FROM runner AS observator
 WORKDIR /tmp/observator-report
-COPY --from=deps /app/package.json /app/package-lock.json ./
-# ... the RUN from the snippet ...
+COPY --from=deps /app/package.json /app/package-lock.json* /app/pnpm-lock.yaml* /app/yarn.lock* ./
+# ... the ARG and RUN lines from the snippet, unchanged ...
 ```
+
+The `*` makes each lockfile optional, so the same line works for npm, pnpm and yarn. In the
+*Setup* tab, tick *The last stage has no lockfile* and the snippet includes these lines.
 
 ### Build gate (optional)
 
