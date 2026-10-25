@@ -70,7 +70,9 @@ export function startScheduler(): void {
   g.__scheduler = { timer, running };
   // A new deploy must report its own Node version right away, not up to a day later.
   setTimeout(async () => {
-    await runJob("self-report", { force: true }).catch((err) => console.error("[jobs] self-report failed", err));
+    await runJob("self-report", { force: true }).catch((err) =>
+      console.error("[jobs] self-report failed", err),
+    );
     await tick();
   }, 5_000).unref();
   console.info("[jobs] scheduler started");
