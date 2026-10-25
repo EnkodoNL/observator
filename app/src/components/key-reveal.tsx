@@ -2,7 +2,7 @@
 "use client";
 
 import { CodeBlock } from "@/components/code-block";
-import { SnippetTabs } from "@/components/snippet-tabs";
+import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { buildCommand } from "@/lib/snippet";
 
 /** Shows a freshly created or rotated API key, once, with what to do with it. */
@@ -17,13 +17,11 @@ export function KeyReveal({ apiKey, appUrl, shared }: { apiKey: string; appUrl: 
         <CodeBlock code={apiKey} />
       </div>
       <div className="space-y-2">
-        <p className="text-sm font-medium">1. Add this to the end of your Dockerfile</p>
+        <p className="text-sm font-medium">1. Add Observator to your Dockerfile</p>
         <p className="text-sm text-muted-foreground">
-          Name your final stage <code className="font-mono text-foreground">app</code> (
-          <code className="font-mono text-foreground">FROM node:22-alpine AS app</code>). The snippet contains
-          no secrets, so it is safe to commit.
+          Two changes, marked below. The snippet contains no secrets, so it is safe to commit.
         </p>
-        <SnippetTabs url={appUrl} />
+        <DockerfileSetup url={appUrl} />
       </div>
       {shared ? (
         <div className="space-y-2">

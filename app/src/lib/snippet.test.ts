@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { dockerSnippet, SNIPPET_VARIANTS } from "./snippet";
+import { dockerSnippet, SNIPPET_VARIANTS, stageName } from "./snippet";
 import { EXAMPLE_DOCKERFILES, exampleDockerfile } from "./snippet-examples";
 
 describe("dockerSnippet", () => {
@@ -11,6 +11,23 @@ describe("dockerSnippet", () => {
     // BuildKit substitutes build args when it prints RUN commands; $OBSERVATOR_KEY would leak.
     expect(run).not.toMatch(/\$\{?OBSERVATOR_KEY/);
     expect(run).toContain("process.env.OBSERVATOR_KEY");
+  });
+
+  it("follows the name of the final stage", () => {
+    const snippet = dockerSnippet("alpine", "https://obs.example.com", "runner");
+    expect(snippet).toContain("FROM runner AS observator");
+    expect(snippet.trimEnd().split("\n").at(-2)).toBe("FROM runner");
+  });
+
+  it.each([
+    ["Runner", "runner"],
+    [" build-2 ", "build-2"],
+    ["", "app"],
+    ["2fast", "app"],
+    ["has space", "app"],
+    ["observator", "app"],
+  ])("stage name %j becomes %j", (input, expected) => {
+    expect(stageName(input)).toBe(expected);
   });
 
   it("fills in the URL", () => {

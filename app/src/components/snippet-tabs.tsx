@@ -5,7 +5,7 @@ import { CodeBlock } from "@/components/code-block";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dockerSnippet, SNIPPET_VARIANTS } from "@/lib/snippet";
 
-export function SnippetTabs({ url }: { url: string }) {
+export function SnippetTabs({ url, stage }: { url: string; stage?: string }) {
   return (
     <Tabs defaultValue="alpine">
       <TabsList>
@@ -18,7 +18,7 @@ export function SnippetTabs({ url }: { url: string }) {
       {SNIPPET_VARIANTS.map((v) => (
         <TabsContent key={v.id} value={v.id} className="space-y-2">
           <p className="text-sm text-muted-foreground">{v.hint}</p>
-          <CodeBlock code={dockerSnippet(v.id, url)} label="Dockerfile" />
+          <CodeBlock code={dockerSnippet(v.id, url, stage)} label="Dockerfile, at the very bottom" />
         </TabsContent>
       ))}
     </Tabs>
