@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeftIcon } from "lucide-react";
+import { CodeBlock } from "@/components/code-block";
 import { SnippetTabs } from "@/components/snippet-tabs";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
@@ -227,6 +228,17 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               starts with <code className="font-mono text-foreground">{project.apiKeyPrefix}</code>. Lost it?
               Rotate it from the menu at the top right.
             </p>
+          </section>
+          <section className="space-y-2">
+            <h2 className="font-medium">Status badge</h2>
+            <p className="text-sm text-muted-foreground">
+              For a README. The token only grants this badge; it shows <code className="font-mono">unknown</code> without it.
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/badge/${project.slug}.svg?token=${project.badgeToken}`} alt="Observator status" height={20} />
+            <CodeBlock
+              code={`[![Observator](${appUrl}/badge/${project.slug}.svg?token=${project.badgeToken})](${appUrl}/projects/${project.slug})`}
+            />
           </section>
           <section className="space-y-3">
             <h2 className="font-medium">Project</h2>
