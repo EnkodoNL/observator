@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Development override: publishes PocketBase on localhost for `npm run dev` and its admin UI.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d pocketbase
+services:
+  pocketbase:
+    ports:
+      - "127.0.0.1:8090:8090"

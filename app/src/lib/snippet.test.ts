@@ -28,3 +28,29 @@ describe("examples/express-app", () => {
     );
   });
 });
+
+describe("app/Dockerfile", () => {
+  it("dogfoods the current Alpine snippet", () => {
+    const dockerfile = readFileSync(join(__dirname, "..", "..", "Dockerfile"), "utf8");
+    const snippet = dockerSnippet("alpine", "http://localhost:3000");
+    const run = snippet.slice(snippet.indexOf("RUN "), snippet.indexOf("\n\nFROM app"));
+    expect(dockerfile).toContain(run);
+  });
+});
+
+describe("README", () => {
+  const readme = readFileSync(join(__dirname, "..", "..", "..", "README.md"), "utf8");
+
+  it("shows the current Alpine snippet", () => {
+    expect(readme).toContain(dockerSnippet("alpine", "https://observator.example.com"));
+  });
+
+  it.each(["node", "curl"] as const)("shows the current %s upload lines", (variant) => {
+    const snippet = dockerSnippet(variant, "https://observator.example.com");
+    const upload = snippet.slice(
+      snippet.indexOf("      && ", snippet.indexOf("tar czf")),
+      snippet.indexOf("      && cat /tmp/obs.txt"),
+    );
+    expect(readme).toContain(upload);
+  });
+});

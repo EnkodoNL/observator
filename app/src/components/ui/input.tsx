@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// From shadcn/ui (https://ui.shadcn.com), MIT licensed.
 import * as React from "react";
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cn } from "cn";

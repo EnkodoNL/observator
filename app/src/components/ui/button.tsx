@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// From shadcn/ui (https://ui.shadcn.com), MIT licensed.
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";

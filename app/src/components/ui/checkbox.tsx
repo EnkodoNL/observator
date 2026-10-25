@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// From shadcn/ui (https://ui.shadcn.com), MIT licensed.
 "use client";
 
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// From shadcn/ui (https://ui.shadcn.com), MIT licensed.
 import { cn } from "cn";
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {

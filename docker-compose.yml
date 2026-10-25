@@ -4,7 +4,12 @@
 
 services:
   web:
-    build: ./app
+    build:
+      context: ./app
+      args:
+        # Optional: let this Observator report its own Node version and packages.
+        OBSERVATOR_URL: ${OBSERVATOR_SELF_URL:-}
+        OBSERVATOR_KEY: ${OBSERVATOR_SELF_KEY:-}
     restart: unless-stopped
     env_file: .env
     environment:
