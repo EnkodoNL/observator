@@ -169,8 +169,10 @@ export function Passkeys({ passkeys }: { passkeys: PasskeyItem[] }) {
         confirmLabel="Remove passkey"
         destructive
         onConfirm={async () => {
-          if (deleting) await deletePasskeyAction(deleting.id);
-          toast.success("Passkey removed");
+          if (!deleting) return;
+          const res = await deletePasskeyAction(deleting.id);
+          if (res.error) toast.error(res.error);
+          else toast.success("Passkey removed");
         }}
       />
     </div>

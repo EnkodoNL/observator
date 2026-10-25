@@ -12,12 +12,10 @@ export async function listUsers(): Promise<
   const pb = await adminPb();
   const [users, passkeys] = await Promise.all([
     // Only whether a TOTP secret exists; the secret itself never leaves this function.
-    pb
-      .collection("users")
-      .getFullList<UserRecord & { totpSecret: string }>({
-        sort: "created",
-        fields: "id,email,created,totpSecret",
-      }),
+    pb.collection("users").getFullList<UserRecord & { totpSecret: string }>({
+      sort: "created",
+      fields: "id,email,created,totpSecret",
+    }),
     pb.collection("passkeys").getFullList<PasskeyRecord>({ fields: "user" }),
   ]);
   return users.map((u) => ({

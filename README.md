@@ -20,7 +20,7 @@ schedule and OSV.dev, and stays quiet until there is something to do.
 - **In the build log:** every report prints a short status line, so Coolify's deploy log already
   tells you what is wrong. An opt-in gate can fail the build on critical advisories.
 - **Small:** two containers (Next.js and PocketBase), no Redis, no queue, no extra worker.
-  Sign in with a password or a passkey.
+- **Sign-in:** a passkey, or a password plus an authenticator code. Never a password alone.
 
 And for the days you do open it:
 
@@ -281,6 +281,22 @@ The rules:
 `X-Observator-Event`, `X-Observator-Timestamp` and, with a secret,
 `X-Observator-Signature: sha256=<hex>`, where the hex is HMAC-SHA256 of `<timestamp>.<body>`.
 
+## Sign-in
+
+- **Passkey:** signs you in on its own. The device plus its PIN or biometrics already make two
+  factors.
+- **Password:** always followed by a second step: a code from an authenticator app, a recovery code,
+  or one of your passkeys. There is no session until that step is done.
+- **First sign-in** (after `/setup`, an invite or a reset) links an authenticator app and shows ten
+  recovery codes, each usable once. New codes and passkeys are under **Settings → Account**.
+- **No way back to password-only:** the authenticator app can only be turned off while a passkey
+  remains, and the last passkey can only be removed once an authenticator app is linked.
+- **Lost device:** another user resets two-step verification under **Settings → Users**. That removes
+  the account's authenticator, recovery codes and passkeys, and signs it out everywhere.
+- **Locked out as the only user:** open the PocketBase admin UI (see
+  [Deploying on Coolify](#deploying-on-coolify)), clear `totpSecret` and `recoveryCodes` on your user
+  and delete your records in `passkeys`. The next password sign-in links a new authenticator app.
+
 ## Architecture
 
 ```
@@ -300,7 +316,9 @@ docker build ── snippet: tar.gz + headers ──▶ web (Next.js) ───�
   the internal Docker network. Its schema is defined in
   [`pocketbase/pb_migrations`](pocketbase/pb_migrations), so a fresh volume sets itself up.
 - **Sessions** are PocketBase user tokens in an httpOnly cookie. Passkeys are verified by Next.js with
-  SimpleWebAuthn, which then gets a token for that user through PocketBase impersonation.
+  SimpleWebAuthn, which then gets a token for that user through PocketBase impersonation. After a
+  password, the token waits in memory (ten minutes, five tries) until the second step succeeds.
+  Authenticator codes are standard TOTP (RFC 6238); recovery codes are stored as hashes.
 - **Data sources:** [nodejs.org/dist/index.json](https://nodejs.org/dist/index.json) and the
   [release schedule](https://github.com/nodejs/Release) for Node, and the
   [OSV.dev](https://osv.dev) API for packages. Neither needs an account.
@@ -368,8 +386,9 @@ CI runs all of these, and starts the compose stack to build the example app on `
 
 - npm packages only, and only the root `package.json` of a workspace.
 - `package-lock.json` lockfileVersion 1 (npm 6) and pnpm lockfiles older than 6.0 are not supported.
-- One web instance. The job lock works across instances, but rate limits and the passkey challenge
-  store live in memory.
+- One web instance. The job lock works across instances, but rate limits, passkey challenges and
+  half-finished sign-ins live in memory. A restart during the second step means entering the
+  password again.
 
 ## License
 

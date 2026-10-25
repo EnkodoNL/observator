@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { qrSvg } from "@/lib/auth/qr";
@@ -26,11 +25,10 @@ function Cancel() {
  * an authenticator code, a recovery code or a passkey has to follow, and an account without
  * any of those sets up an authenticator here first.
  */
-export default async function VerifyPage({ searchParams }: PageProps<"/login/verify">) {
+export default async function VerifyPage() {
   const pending = await getPending();
-  if (!pending) redirect("/login");
+  if (!pending) redirect("/login?reason=expired");
   const status = await twoFactorStatus(pending.userId);
-  const setup = (await searchParams).setup === "1";
 
   if (pending.recoveryCodes) {
     return (
@@ -61,24 +59,18 @@ export default async function VerifyPage({ searchParams }: PageProps<"/login/ver
     );
   }
 
-  if (status.passkeys > 0 && !setup) {
+  // No way to enrol an authenticator from here: that would turn the password into the only factor.
+  if (status.passkeys > 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Confirm it is you</CardTitle>
-          <CardDescription>
-            A password alone is not enough. Use your passkey, or set up an authenticator app.
-          </CardDescription>
+          <CardDescription>A password alone is not enough. Confirm with your passkey.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <PasskeyButton next={pending.next} primary />
-          <p className="text-center text-sm">
-            <Link
-              href="/login/verify?setup=1"
-              className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              Set up an authenticator app instead
-            </Link>
+          <p className="text-center text-sm text-muted-foreground">
+            Lost it? Another user can reset two-step verification for you under Settings, Users.
           </p>
           <Cancel />
         </CardContent>

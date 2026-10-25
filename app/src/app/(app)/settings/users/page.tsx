@@ -48,7 +48,9 @@ export default async function UsersPage() {
                       : "2FA not set up yet"}
                 </p>
               </div>
-              {u.id !== me.id && u.totp && <ResetTwoFactorButton id={u.id} email={u.email} />}
+              {u.id !== me.id && (u.totp || u.passkeys > 0) && (
+                <ResetTwoFactorButton id={u.id} email={u.email} />
+              )}
               {u.id !== me.id && users.length > 1 && <RemoveUserButton id={u.id} email={u.email} />}
             </li>
           ))}

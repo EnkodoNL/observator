@@ -10,6 +10,7 @@ import {
   checkSecondFactor,
   disableTotp,
   enableTotp,
+  keepsAFactor,
   regenerateRecoveryCodes,
   twoFactorStatus,
 } from "@/lib/auth/two-factor";
@@ -32,11 +33,14 @@ export async function renamePasskeyAction(id: string, name: string): Promise<voi
   revalidatePath("/settings/account");
 }
 
-export async function deletePasskeyAction(id: string): Promise<void> {
+export async function deletePasskeyAction(id: string): Promise<{ error?: string }> {
   const passkey = await ownPasskey(id);
+  if (!keepsAFactor(await twoFactorStatus(passkey.user), "passkey"))
+    return { error: "Set up an authenticator app before you remove your last passkey." };
   const pb = await adminPb();
   await pb.collection("passkeys").delete(passkey.id);
   revalidatePath("/settings/account");
+  return {};
 }
 
 const passwordSchema = z
@@ -103,6 +107,8 @@ export async function regenerateRecoveryAction(code: string): Promise<{ codes?: 
 
 export async function disableTotpAction(code: string): Promise<{ ok?: boolean; error?: string }> {
   const { user } = await requireUser();
+  if (!keepsAFactor(await twoFactorStatus(user.id), "totp"))
+    return { error: "Add a passkey before you turn off the authenticator app." };
   const check = await checkSecondFactor(user.id, code);
   if (!check.ok) return { error: check.error };
   await disableTotp(user.id);

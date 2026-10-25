@@ -136,7 +136,7 @@ export function ResetTwoFactorButton({ id, email }: { id: string; email: string 
         </Button>
       }
       title={`Reset two-step verification for ${email}?`}
-      description="Their authenticator app and recovery codes stop working. Their next sign-in with a password asks them to set up a new one; passkeys keep working."
+      description="Removes their authenticator app, recovery codes and passkeys, and signs them out everywhere. Their next sign-in with a password asks them to set up a new authenticator."
       confirmLabel="Reset"
       destructive
       onConfirm={async () => {

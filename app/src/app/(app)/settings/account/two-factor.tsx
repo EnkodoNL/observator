@@ -96,7 +96,8 @@ export function TwoFactor({
           <p className="font-medium">Authenticator app {enabled ? "on" : "off"}</p>
           <p className="text-xs text-muted-foreground">
             {enabled
-              ? `Since ${enabledAt} · ${recoveryLeft} recovery code${recoveryLeft === 1 ? "" : "s"} left`
+              ? `Since ${enabledAt} · ${recoveryLeft} recovery code${recoveryLeft === 1 ? "" : "s"} left` +
+                (passkeys > 0 ? "" : " · add a passkey to be able to turn it off")
               : passkeys > 0
                 ? "Password sign-ins are confirmed with your passkey."
                 : "Your next password sign-in will ask you to set it up."}
@@ -107,9 +108,11 @@ export function TwoFactor({
             <Button variant="outline" size="sm" onClick={() => open("recovery")}>
               New recovery codes
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => open("disable")}>
-              Turn off
-            </Button>
+            {passkeys > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => open("disable")}>
+                Turn off
+              </Button>
+            )}
           </div>
         ) : (
           <Button size="sm" onClick={() => open("setup")}>
@@ -133,9 +136,7 @@ export function TwoFactor({
                 ? "Scan the code with your authenticator app, then enter the code it shows."
                 : mode === "recovery"
                   ? "Your old recovery codes stop working. Confirm with a current code."
-                  : passkeys > 0
-                    ? "Password sign-ins will then be confirmed with your passkey. Confirm with a current code."
-                    : "Your next password sign-in will ask you to set one up again. Confirm with a current code."}
+                  : "Password sign-ins will then be confirmed with your passkey. Confirm with a current code."}
             </DialogDescription>
           </DialogHeader>
 
@@ -158,7 +159,10 @@ export function TwoFactor({
                         className="mx-auto w-44 overflow-hidden rounded-lg border bg-white p-2"
                         dangerouslySetInnerHTML={{ __html: setup.qr }}
                       />
-                      <CodeBlock code={setup.secret.replace(/(.{4})/g, "$1 ").trim()} />
+                      <CodeBlock
+                        code={setup.secret.replace(/(.{4})/g, "$1 ").trim()}
+                        className="[&_code]:whitespace-normal"
+                      />
                     </>
                   ) : (
                     <Loader2Icon className="mx-auto animate-spin text-muted-foreground" />

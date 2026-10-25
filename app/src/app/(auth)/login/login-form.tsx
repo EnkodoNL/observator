@@ -14,8 +14,8 @@ import { loginAction } from "../actions";
 
 const noopSubscribe = () => () => {};
 
-export function LoginForm({ next }: { next: string }) {
-  const [state, action] = useActionState(loginAction, {});
+export function LoginForm({ next, notice }: { next: string; notice?: string }) {
+  const [state, action] = useActionState(loginAction, notice ? { error: notice } : {});
   const router = useRouter();
   // false during SSR, the real answer in the browser, without a setState in an effect.
   const supported = useSyncExternalStore(

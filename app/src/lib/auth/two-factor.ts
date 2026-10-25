@@ -119,6 +119,7 @@ export type CodeResult =
 
 /** Checks an authenticator code or a recovery code; each works once. */
 export async function checkSecondFactor(userId: string, input: string): Promise<CodeResult> {
+  // Counts wrong codes only: a success resets it, like the password limiter.
   if (!limiter.take(userId)) return { ok: false, error: "Too many attempts. Wait a few minutes." };
   const user = await loadUser(userId);
   const pb = await adminPb();
@@ -132,6 +133,7 @@ export async function checkSecondFactor(userId: string, input: string): Promise<
         error: "That code is not valid. Check the time on your phone, or use a recovery code.",
       };
     await pb.collection("users").update(userId, { totpLastStep: step });
+    limiter.reset(userId);
     return { ok: true, via: "totp", recoveryLeft: codes.length };
   }
 
@@ -139,6 +141,7 @@ export async function checkSecondFactor(userId: string, input: string): Promise<
   const match = codes.find((c) => safeEqual(c, hash));
   if (!match) return { ok: false, error: "That code is not valid." };
   await pb.collection("users").update(userId, { recoveryCodes: codes.filter((c) => c !== match) });
+  limiter.reset(userId);
   return { ok: true, via: "recovery", recoveryLeft: codes.length - 1 };
 }
 
@@ -172,4 +175,27 @@ export async function disableTotp(userId: string): Promise<void> {
   await pb
     .collection("users")
     .update(userId, { totpSecret: "", totpEnabledAt: "", totpLastStep: 0, recoveryCodes: [] });
+}
+
+/**
+ * Whether removing one factor still leaves another. An account without any is back at first
+ * sign-in, where anyone with the password could link their own authenticator.
+ */
+export function keepsAFactor(status: TwoFactorStatus, removing: "totp" | "passkey"): boolean {
+  return removing === "totp" ? status.passkeys > 0 : status.totp || status.passkeys > 1;
+}
+
+/**
+ * For a colleague who lost their device: removes every second factor and signs them out
+ * everywhere, so their next password sign-in sets up a new authenticator.
+ */
+export async function resetSecondFactors(userId: string): Promise<void> {
+  await disableTotp(userId);
+  const pb = await adminPb();
+  const passkeys = await pb
+    .collection("passkeys")
+    .getFullList({ filter: pb.filter("user = {:u}", { u: userId }) });
+  for (const p of passkeys) await pb.collection("passkeys").delete(p.id);
+  // A new tokenKey invalidates every token PocketBase issued for this user.
+  await pb.collection("users").update(userId, { tokenKey: randomToken(32) });
 }
