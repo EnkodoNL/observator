@@ -4,13 +4,7 @@
 
 services:
   web:
-    build:
-      context: ./app
-      args:
-        # Optional: with OBSERVATOR_SELF_KEY set, this Observator reports its own Node version
-        # and packages when its image is built. The project is created on the first report.
-        OBSERVATOR_URL: ${OBSERVATOR_SELF_URL:-${APP_URL:-}}
-        OBSERVATOR_KEY: ${OBSERVATOR_SELF_KEY:-}
+    build: ./app
     restart: unless-stopped
     env_file: .env
     environment:

@@ -31,6 +31,11 @@ const LOCKFILE_TYPE: Record<LockfileName, (text: string) => LockfileType> = {
   "yarn.lock": (text) => (/^__metadata:/m.test(text) ? "yarn-berry" : "yarn-v1"),
 };
 
+/** Identifies a package.json + lockfile pair; a build with the same hash changes no packages. */
+export function reportHash(packageJson: string, lockfileName: string | null, lockfileText: string): string {
+  return sha256(`${packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
+}
+
 export async function latestBuild(projectId: string): Promise<BuildRecord | null> {
   const pb = await adminPb();
   const res = await pb.collection("builds").getList<BuildRecord>(1, 1, {
@@ -80,7 +85,7 @@ export async function recordBuild(
   const lockfileName = pkg ? chooseLockfile(pkg, available) : (available[0] ?? null);
   const lockfileText = lockfileName ? files.lockfiles[lockfileName]! : "";
   const lockfileType: LockfileType = lockfileName ? LOCKFILE_TYPE[lockfileName](lockfileText) : "none";
-  const lockfileHash = sha256(`${files.packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
+  const lockfileHash = reportHash(files.packageJson, lockfileName, lockfileText);
 
   const changes: BuildChanges = { added: [], removed: [], changed: [] };
   if (previous && previous.nodeVersion !== meta.nodeVersion) {

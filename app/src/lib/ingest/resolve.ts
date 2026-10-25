@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
-import { randomToken, safeEqual, sha256 } from "@/lib/crypto";
+import { randomToken, sha256 } from "@/lib/crypto";
 import { findIngestKey } from "@/lib/data/ingest-keys";
 import { getProjectByKey, slugify, uniqueSlug } from "@/lib/data/projects";
-import { env } from "@/lib/env";
-import { kvGet, kvSet } from "@/lib/kv";
-import { adminPb, isNotFound, isUniqueViolation } from "@/lib/pb/admin";
+import { adminPb, isUniqueViolation } from "@/lib/pb/admin";
 import type { IngestKeyRecord, ProjectRecord } from "@/lib/pb/types";
 import { RateLimiter } from "@/lib/rate-limit";
 import { IngestError } from "./request";
@@ -13,51 +11,12 @@ import { displayName } from "./source";
 
 export type KeyMatch = { kind: "project"; project: ProjectRecord } | { kind: "shared"; key: IngestKeyRecord };
 
-/** Which project or shared key a bearer key belongs to; OBSERVATOR_SELF_KEY creates its own project. */
+/** Which project or shared key a bearer key belongs to. */
 export async function matchKey(bearer: string): Promise<KeyMatch | null> {
   const project = await getProjectByKey(bearer);
   if (project) return { kind: "project", project };
-  const self = env().OBSERVATOR_SELF_KEY;
-  if (self && safeEqual(bearer, self)) return { kind: "project", project: await ensureSelfProject(self) };
   const key = await findIngestKey(bearer);
   return key ? { kind: "shared", key } : null;
-}
-
-/**
- * The project Observator reports its own image to. Created on first use; when the key in
- * the environment changes, the same project takes the new key.
- */
-async function ensureSelfProject(selfKey: string): Promise<ProjectRecord> {
-  const pb = await adminPb();
-  const hash = sha256(selfKey);
-  const known = await kvGet<{ id: string }>("self:project");
-  if (known) {
-    try {
-      const project = await pb.collection("projects").getOne<ProjectRecord>(known.id);
-      if (project.apiKeyHash === hash) return project;
-      return await pb
-        .collection("projects")
-        .update<ProjectRecord>(project.id, { apiKeyHash: hash, apiKeyPrefix: "env" });
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-  }
-  try {
-    const project = await pb.collection("projects").create<ProjectRecord>({
-      name: "Observator",
-      slug: await uniqueSlug("observator"),
-      apiKeyHash: hash,
-      apiKeyPrefix: "env",
-      badgeToken: randomToken(18),
-    });
-    await kvSet("self:project", { id: project.id });
-    return project;
-  } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
-    const raced = await getProjectByKey(selfKey);
-    if (!raced) throw err;
-    return raced;
-  }
 }
 
 const g = globalThis as typeof globalThis & { __createLimiter?: RateLimiter };

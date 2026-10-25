@@ -8,6 +8,7 @@ import { processQueue } from "@/lib/notify/queue";
 import { sendReminders } from "@/lib/notify/reminders";
 import { refreshLatest } from "@/lib/npm-latest";
 import { checkAllProjects } from "@/lib/osv/check";
+import { reportSelf } from "@/lib/self-report";
 import { cleanup } from "./cleanup";
 
 const MINUTE = 60_000;
@@ -72,6 +73,16 @@ export const JOBS = {
     lockTtlMs: 30 * MINUTE,
     run: async () => {
       await refreshLatest();
+    },
+  },
+  /** Observator itself, as a project: forced at every start (see scheduler), then daily. */
+  "self-report": {
+    label: "Observator reporting on itself",
+    intervalMs: DAY,
+    lockTtlMs: 10 * MINUTE,
+    run: async () => {
+      const result = await reportSelf();
+      if (result !== "unchanged") console.info(`[self-report] ${result}`);
     },
   },
   cleanup: {

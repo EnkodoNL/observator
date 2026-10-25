@@ -26,8 +26,8 @@ const schema = z.object({
   INGEST_RATE_LIMIT: z.coerce.number().int().positive().default(60),
   SOURCE_URL: z.url().default("https://github.com/EnkodoNL/observator"),
   TZ: z.string().default("UTC"),
-  /** Optional key Observator's own image reports with; the project is created on first use. */
-  OBSERVATOR_SELF_KEY: z.string().min(20, "use at least 20 random characters").optional(),
+  /** Report Observator's own Node version and packages at startup, as the "Observator" project. */
+  OBSERVATOR_SELF: bool.default(true),
 });
 
 export type Env = z.infer<typeof schema>;
