@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import semver from "semver";
-import type { VulnIssueData } from "@/lib/issues/types";
+import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import { adminPb } from "@/lib/pb/admin";
 import type { ComponentRecord, IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
@@ -43,7 +43,7 @@ export async function searchPackages(
   const advisories = new Map<string, { severity: Severity; count: number }>();
   for (const issue of issues) {
     const d = issue.data as unknown as VulnIssueData;
-    for (const version of d.version.split(", ")) {
+    for (const version of vulnVersions(d)) {
       const key = `${issue.project}/${d.package}@${version}`;
       const prev = advisories.get(key);
       advisories.set(key, {

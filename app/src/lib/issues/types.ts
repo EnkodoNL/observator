@@ -36,3 +36,8 @@ export interface StaleData {
   lastBuildAt: string;
   days: number;
 }
+
+/** A vuln issue covers every installed version of the package with that advisory. */
+export function vulnVersions(d: Pick<VulnIssueData, "version">): string[] {
+  return d.version.split(", ").filter(Boolean);
+}

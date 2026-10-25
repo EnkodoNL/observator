@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import semver from "semver";
-import type { VulnIssueData } from "@/lib/issues/types";
+import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import type { LockfileType } from "@/lib/pb/types";
 
 export interface Advice {
@@ -18,7 +18,7 @@ export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice 
       snippets: [],
     };
   }
-  const installed = d.version.split(", ")[0];
+  const installed = vulnVersions(d)[0];
   const crossesMajor = majorOf(d.fixedIn) !== null && majorOf(d.fixedIn) !== majorOf(installed);
   const majorNote = crossesMajor
     ? ` The fix is in a new major version (${majorOf(d.fixedIn)}.x), so check for breaking changes.`
