@@ -2,11 +2,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { SearchIcon } from "lucide-react";
 import { SeverityBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { packageHref } from "@/lib/package-href";
 import type { Severity } from "@/lib/pb/types";
 import { cn } from "@/lib/utils";
 
@@ -103,7 +105,11 @@ export function PackagesTable({ rows }: { rows: PackageRow[] }) {
             )}
             {visible.map((r) => (
               <TableRow key={`${r.name}@${r.version}`}>
-                <TableCell className="font-mono text-[13px]">{r.name}</TableCell>
+                <TableCell className="font-mono text-[13px]">
+                  <Link href={packageHref(r.name)} className="hover:underline" title="Show in all projects">
+                    {r.name}
+                  </Link>
+                </TableCell>
                 <TableCell className="font-mono text-[13px]">
                   {r.version}
                   {r.latest && r.outdated && (

@@ -2,90 +2,121 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SeverityBadge } from "@/components/status";
+import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { popularPackages, searchPackages } from "@/lib/data/packages";
+import { listPackages, PACKAGE_SCOPES, type PackageScope } from "@/lib/data/packages";
+import { packageHref } from "@/lib/package-href";
 import { SearchBox } from "./search-box";
 
 export const metadata: Metadata = { title: "Packages" };
 
+const LIMIT = 200;
+const SCOPE_LABEL: Record<PackageScope, string> = { direct: "Direct", all: "All", vulnerable: "Vulnerable" };
+
+function scopeHref(scope: PackageScope, q: string): string {
+  const params = new URLSearchParams();
+  if (scope !== "direct") params.set("scope", scope);
+  if (q) params.set("q", q);
+  const search = params.toString();
+  return search ? `/packages?${search}` : "/packages";
+}
+
 export default async function PackagesPage({ searchParams }: PageProps<"/packages">) {
-  const q = String((await searchParams).q ?? "").slice(0, 214);
-  const [{ results, truncated }, popular] = await Promise.all([
-    searchPackages(q),
-    q ? Promise.resolve([]) : popularPackages(),
-  ]);
+  const params = await searchParams;
+  const q = String(params.q ?? "")
+    .trim()
+    .slice(0, 214);
+  const scope = PACKAGE_SCOPES.find((s) => s === params.scope) ?? "direct";
+  const { packages, counts } = await listPackages(q, scope);
+  const shown = packages.slice(0, LIMIT);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Packages</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Where is a package used, and in which version?</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every npm package in your projects&rsquo; lockfiles. Open one to see which projects use it, in which
+          version, and why.
+        </p>
       </div>
-      <SearchBox initial={q} />
 
-      {!q && popular.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Most used direct dependencies</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {popular.map((p) => (
-              <Link
-                key={p.name}
-                href={`/packages?q=${encodeURIComponent(p.name)}`}
-                className="rounded-md border px-2 py-1 font-mono text-xs transition-colors hover:bg-muted"
-              >
-                {p.name} <span className="text-muted-foreground">{p.projects}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchBox initial={q} />
+        <nav className="flex flex-wrap gap-1" aria-label="Show">
+          {PACKAGE_SCOPES.map((s) => (
+            <Link
+              key={s}
+              href={scopeHref(s, q)}
+              scroll={false}
+              className={buttonVariants({ size: "sm", variant: s === scope ? "secondary" : "ghost" })}
+              aria-current={s === scope ? "page" : undefined}
+            >
+              {SCOPE_LABEL[s]}
+              <span className="text-muted-foreground tabular-nums">{counts[s]}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
 
-      {q && results.length === 0 && (
-        <p className="text-sm text-muted-foreground">No project uses a package matching &ldquo;{q}&rdquo;.</p>
-      )}
-
-      {results.map((r) => (
-        <section key={r.name} className="space-y-2">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-mono text-base font-medium">{r.name}</h2>
-            <span className="text-sm text-muted-foreground">
-              {r.usages.length} use{r.usages.length === 1 ? "" : "s"} · {r.versions.length} version
-              {r.versions.length === 1 ? "" : "s"}: <span className="font-mono">{r.versions.join(", ")}</span>
-            </span>
-          </div>
+      {counts.all === 0 ? (
+        <div className="rounded-xl border border-dashed p-10 text-center">
+          <p className="font-medium">{q ? `No package matching “${q}”` : "No packages yet"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {q
+              ? "Packages come from the lockfiles your builds report. Check the spelling, or search for part of the name."
+              : "They appear here after the first build reports its lockfile."}
+          </p>
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-10 text-center">
+          <p className="font-medium">
+            {scope === "vulnerable" ? "No open advisories" : "No direct dependency matches"}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {counts.all} package{counts.all === 1 ? "" : "s"} in{" "}
+            <Link href={scopeHref("all", q)} className="underline underline-offset-4 hover:text-foreground">
+              All
+            </Link>
+            .
+          </p>
+        </div>
+      ) : (
+        <>
           <div className="overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="hidden md:table-cell">Pulled in by</TableHead>
+                  <TableHead>Package</TableHead>
+                  <TableHead>Versions in use</TableHead>
+                  <TableHead className="text-right">Projects</TableHead>
                   <TableHead className="text-right">Advisories</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {r.usages.map((u) => (
-                  <TableRow key={`${u.project.id}-${u.version}`}>
-                    <TableCell>
-                      <Link href={`/projects/${u.project.slug}?tab=packages`} className="hover:underline">
-                        {u.project.name}
+                {shown.map((p) => (
+                  <TableRow key={p.name} className="relative">
+                    <TableCell className="font-mono text-[13px]">
+                      {/* The link covers the row, so the whole row opens the package. */}
+                      <Link href={packageHref(p.name)} className="font-medium after:absolute after:inset-0">
+                        {p.name}
                       </Link>
+                      {!p.direct && scope !== "direct" && (
+                        <span className="ml-2 font-sans text-xs text-muted-foreground">transitive</span>
+                      )}
                     </TableCell>
-                    <TableCell className="font-mono text-[13px]">{u.version}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {u.direct ? "direct" : "transitive"}
-                      {u.dev && <span className="ml-1.5 rounded bg-muted px-1 py-0.5">dev</span>}
+                    <TableCell className="font-mono text-[13px] text-muted-foreground">
+                      {p.versions.slice(0, 3).join(", ")}
+                      {p.versions.length > 3 && (
+                        <span className="font-sans text-xs"> +{p.versions.length - 3}</span>
+                      )}
                     </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
-                      {u.direct ? "" : u.via.join(", ")}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{p.projects}</TableCell>
                     <TableCell className="text-right">
-                      {u.severity ? (
+                      {p.severity ? (
                         <span className="inline-flex items-center gap-1.5">
-                          <SeverityBadge severity={u.severity} />
-                          {u.advisories > 1 && (
-                            <span className="text-xs text-muted-foreground">×{u.advisories}</span>
+                          <SeverityBadge severity={p.severity} />
+                          {p.advisories > 1 && (
+                            <span className="text-xs text-muted-foreground">×{p.advisories}</span>
                           )}
                         </span>
                       ) : (
@@ -97,12 +128,12 @@ export default async function PackagesPage({ searchParams }: PageProps<"/package
               </TableBody>
             </Table>
           </div>
-        </section>
-      ))}
-      {truncated && (
-        <p className="text-sm text-muted-foreground">
-          Showing the first matches. Narrow the search for more.
-        </p>
+          {packages.length > shown.length && (
+            <p className="text-sm text-muted-foreground">
+              Showing {shown.length} of {packages.length}. Filter by name to narrow it down.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
