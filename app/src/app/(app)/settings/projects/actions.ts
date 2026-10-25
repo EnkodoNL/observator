@@ -4,6 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
+import { createIngestKey, revokeIngestKey } from "@/lib/data/ingest-keys";
 import { createProject, deleteProject, rotateApiKey } from "@/lib/data/projects";
 import { type FormState, formObject, zodState } from "@/lib/forms";
 
@@ -34,5 +35,23 @@ export async function rotateKeyAction(projectId: string): Promise<{ apiKey: stri
 export async function deleteProjectAction(projectId: string): Promise<void> {
   await requireUser();
   await deleteProject(z.string().min(1).parse(projectId));
+  revalidatePath("/", "layout");
+}
+
+export async function createSharedKeyAction(
+  name: string,
+  splitByIp: boolean,
+): Promise<{ key?: string; error?: string }> {
+  const { user } = await requireUser();
+  const parsed = z.string().trim().min(1, "Give the key a name").max(100).safeParse(name);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { key } = await createIngestKey(parsed.data, Boolean(splitByIp), user.id);
+  revalidatePath("/settings/projects");
+  return { key };
+}
+
+export async function revokeSharedKeyAction(id: string): Promise<void> {
+  await requireUser();
+  await revokeIngestKey(z.string().min(1).parse(id));
   revalidatePath("/", "layout");
 }

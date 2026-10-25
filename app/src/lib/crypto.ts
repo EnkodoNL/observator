@@ -11,6 +11,12 @@ export function safeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
+/** Shared keys: "obss_" + 256 random bits; one write-only key for many projects. */
+export function newSharedKey(): { key: string; hash: string; prefix: string } {
+  const key = `obss_${randomToken(32)}`;
+  return { key, hash: sha256(key), prefix: key.slice(0, 13) };
+}
+
 /** Project API keys: "obs_" + 256 random bits. Only the sha256 is stored. */
 export function newApiKey(): { key: string; hash: string; prefix: string } {
   const key = `obs_${randomToken(32)}`;

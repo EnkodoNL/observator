@@ -118,7 +118,12 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
                   <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">Node changed</span>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {[b.lockfileType !== "none" && b.lockfileType, `${b.packageCount} packages`, b.os]
+                  {[
+                    b.lockfileType !== "none" && b.lockfileType,
+                    `${b.packageCount} packages`,
+                    b.os,
+                    b.sourceIp && b.sourceIp !== "unknown" && `from ${b.sourceIp}`,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>

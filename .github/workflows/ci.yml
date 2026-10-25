@@ -53,8 +53,11 @@ jobs:
         run: curl -fsS http://localhost:3000/api/health
       - name: Build the example app with every snippet variant
         run: |
-          key=$(docker compose exec -T web node --input-type=module - < scripts/e2e-seed.mjs)
-          OBSERVATOR_URL=http://host.docker.internal:3000 OBSERVATOR_KEY="$key" examples/test-snippet.sh
+          seed=$(docker compose exec -T web node --input-type=module - < scripts/e2e-seed.mjs)
+          key=${seed% *}
+          shared=${seed#* }
+          OBSERVATOR_URL=http://host.docker.internal:3000 OBSERVATOR_KEY="$key" OBSERVATOR_SHARED_KEY="$shared" \
+            examples/test-snippet.sh
       - name: Logs
         if: failure()
         run: docker compose logs --no-color

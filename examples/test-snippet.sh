@@ -8,6 +8,9 @@
 # Usage:
 #   OBSERVATOR_URL=http://host.docker.internal:3000 OBSERVATOR_KEY=obs_... examples/test-snippet.sh
 #
+# With OBSERVATOR_SHARED_KEY=obss_... it also checks that a shared key creates its project on
+# the first report, reuses it after that, and falls back to the package.json name.
+#
 # OBSERVATOR_URL is the URL as seen from inside a build container.
 set -eu
 
@@ -30,7 +33,7 @@ fail() {
   FAILED=1
 }
 
-# build <tag> <dockerfile> <base image> <url> <key>
+# build <tag> <dockerfile> <base image> <url> <key> [project]
 build() {
   echo "==> $1 ($3, $2)"
   if ! docker build --progress=plain --no-cache-filter observator \
@@ -39,6 +42,7 @@ build() {
     --build-arg "NODE_IMAGE=$3" \
     --build-arg "OBSERVATOR_URL=$4" \
     --build-arg "OBSERVATOR_KEY=$5" \
+    --build-arg "OBSERVATOR_PROJECT=${6:-}" \
     . >"$LOG" 2>&1; then
     tail -30 "$LOG"
     fail "docker build failed"
@@ -79,6 +83,17 @@ build unreachable Dockerfile node:22-alpine "http://127.0.0.1:9" "$OBSERVATOR_KE
 
 build unreachable-slim Dockerfile.slim node:22-slim "http://127.0.0.1:9" "$OBSERVATOR_KEY" &&
   { output | grep -q 'report failed, continuing' || fail "unreachable server did not fall back (slim)"; }
+
+if [ -n "${OBSERVATOR_SHARED_KEY:-}" ]; then
+  name="snippet-shared-$$"
+  build shared-new Dockerfile node:22-alpine "$OBSERVATOR_URL" "$OBSERVATOR_SHARED_KEY" "$name" &&
+    { output | grep -q "created project $name" || fail "shared key did not create $name"; }
+  build shared-again Dockerfile node:22-alpine "$OBSERVATOR_URL" "$OBSERVATOR_SHARED_KEY" "$name" &&
+    { output | grep -q "recorded build for $name" || fail "shared key did not reuse $name"; } &&
+    { ! output | grep -q "created project" || fail "shared key created $name twice"; }
+  build shared-fallback Dockerfile node:22-alpine "$OBSERVATOR_URL" "$OBSERVATOR_SHARED_KEY" "" &&
+    { output | grep -q "observator-example" || fail "shared key did not fall back to the package.json name"; }
+fi
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Some checks failed."

@@ -222,12 +222,32 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">API key</h2>
-            <p className="text-sm text-muted-foreground">
-              Pass it as build argument <code className="font-mono text-foreground">OBSERVATOR_KEY</code> (in
-              Coolify: an environment variable with &ldquo;Build Variable&rdquo; ticked). The current key
-              starts with <code className="font-mono text-foreground">{project.apiKeyPrefix}</code>. Lost it?
-              Rotate it from the menu at the top right.
-            </p>
+            {project.ingestKey ? (
+              <p className="text-sm text-muted-foreground">
+                Created by a shared key. It reports with that key and{" "}
+                <code className="font-mono text-foreground">OBSERVATOR_PROJECT={project.sourceName}</code>
+                {project.instance && (
+                  <>
+                    {" "}
+                    from <code className="font-mono text-foreground">{project.instance}</code>
+                  </>
+                )}
+                . To give it a key of its own, rotate it from the menu at the top right.
+              </p>
+            ) : project.apiKeyPrefix === "env" ? (
+              <p className="text-sm text-muted-foreground">
+                Observator&rsquo;s own image reports here with{" "}
+                <code className="font-mono text-foreground">OBSERVATOR_SELF_KEY</code> from the environment.
+                Change that variable to change the key.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Pass it as build argument <code className="font-mono text-foreground">OBSERVATOR_KEY</code>{" "}
+                (in Coolify: an environment variable with &ldquo;Build Variable&rdquo; ticked). The current
+                key starts with <code className="font-mono text-foreground">{project.apiKeyPrefix}</code>.
+                Lost it? Rotate it from the menu at the top right.
+              </p>
+            )}
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">Status badge</h2>

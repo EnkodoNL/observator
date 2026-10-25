@@ -21,6 +21,7 @@ const POST: Record<SnippetVariant, string[]> = {
     `           --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
     `           --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
     `           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
+    `           --header "X-Project: $OBSERVATOR_PROJECT" \\`,
     `           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \\`,
   ],
   curl: [
@@ -30,6 +31,7 @@ const POST: Record<SnippetVariant, string[]> = {
     `           -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
     `           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
     `           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
+    `           -H "X-Project: $OBSERVATOR_PROJECT" \\`,
     `           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \\`,
   ],
   node: [
@@ -39,7 +41,8 @@ const POST: Record<SnippetVariant, string[]> = {
     `           fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \\`,
     `             signal: AbortSignal.timeout(30000), headers: { \\`,
     `               "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \\`,
-    `               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "" } }) \\`,
+    `               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \\`,
+    `               "X-Project": env.OBSERVATOR_PROJECT || "" } }) \\`,
     `           .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \\`,
     `             fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \\`,
   ],
@@ -58,6 +61,7 @@ export function dockerSnippet(variant: SnippetVariant, url: string): string {
     `ARG OBSERVATOR_URL=${url}`,
     `ARG OBSERVATOR_KEY=""`,
     `ARG OBSERVATOR_FAIL_ON=""`,
+    `ARG OBSERVATOR_PROJECT=""`,
     // Read through node instead of $OBSERVATOR_KEY: BuildKit prints RUN commands with build
     // args substituted, which would put the key in the build log. (printenv is not in BusyBox.)
     `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \\`,
@@ -73,6 +77,7 @@ export function dockerSnippet(variant: SnippetVariant, url: string): string {
   ].join("\n");
 }
 
-export function buildCommand(key: string): string {
-  return `docker build --build-arg OBSERVATOR_KEY=${key} .`;
+export function buildCommand(key: string, project?: string): string {
+  const name = project ? ` --build-arg OBSERVATOR_PROJECT=${project}` : "";
+  return `docker build --build-arg OBSERVATOR_KEY=${key}${name} .`;
 }
