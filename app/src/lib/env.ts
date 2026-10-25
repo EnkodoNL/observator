@@ -24,6 +24,11 @@ const schema = z.object({
     .positive()
     .default(10 * 1024 * 1024),
   INGEST_RATE_LIMIT: z.coerce.number().int().positive().default(60),
+  /**
+   * Reverse proxies in front of Observator that each add an X-Forwarded-For entry (Coolify's
+   * Traefik is one). Cloudflare does not count: it is recognised by its address.
+   */
+  TRUSTED_PROXIES: z.coerce.number().int().min(1).max(10).default(1),
   SOURCE_URL: z.url().default("https://github.com/EnkodoNL/observator"),
   TZ: z.string().default("UTC"),
   /** Report Observator's own Node version and packages at startup, as the "Observator" project. */

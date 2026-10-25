@@ -20,16 +20,6 @@ export function reportedName(header: string | null, pkg: PackageJson | null): st
   throw new IngestError(400, "no project name: set OBSERVATOR_PROJECT, or a name in package.json");
 }
 
-/**
- * The address the report came from. Behind a reverse proxy (Coolify's Traefik) that is the
- * first X-Forwarded-For entry; without one, Next.js fills that header with the socket address.
- */
-export function sourceIp(headers: Headers): string {
-  const raw = headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip")?.trim() || "";
-  const ip = raw.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, "$1");
-  return /^[0-9a-fA-F:.]{2,45}$/.test(ip) ? ip : "unknown";
-}
-
 /** How an auto-created project is shown: the reported name, plus the server when split by IP. */
 export function displayName(name: string, instance: string): string {
   return instance ? `${name} · ${instance}` : name;

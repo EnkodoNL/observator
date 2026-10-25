@@ -4,7 +4,8 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminPb, userPb } from "@/lib/pb/admin";
-import { secureCookies } from "@/lib/env";
+import { clientIpFrom } from "@/lib/client-ip";
+import { env, secureCookies } from "@/lib/env";
 import type { UserRecord } from "@/lib/pb/types";
 
 export const SESSION_COOKIE = "obs_session";
@@ -78,6 +79,5 @@ export async function hasUsers(): Promise<boolean> {
 
 /** Best-effort client IP for rate limiting; the app normally sits behind a reverse proxy. */
 export async function clientIp(): Promise<string> {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+  return clientIpFrom(await headers(), env().TRUSTED_PROXIES);
 }
