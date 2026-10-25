@@ -29,6 +29,8 @@ export interface IssueEvent {
   severity: Severity;
   title: string;
   data: Record<string, unknown>;
+  /** When this occurrence happened; part of the notification dedupe key. */
+  occurredAt: string;
   /** Re-sent because the issue is still open after the reminder interval. */
   reminder?: boolean;
 }

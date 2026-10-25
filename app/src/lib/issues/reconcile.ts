@@ -84,6 +84,7 @@ export function reconcile(
     severity: d.severity,
     title: d.title,
     data: d.data as Record<string, unknown>,
+    occurredAt: now.toISOString(),
   });
 
   for (const d of desired) {

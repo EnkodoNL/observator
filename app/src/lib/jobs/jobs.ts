@@ -3,7 +3,11 @@ import "server-only";
 import { evaluateAll } from "@/lib/issues/evaluate";
 import { refreshNodeData } from "@/lib/node/releases";
 import { publish } from "@/lib/notify/publish";
+import { sendDigestIfDue } from "@/lib/notify/digest";
+import { processQueue } from "@/lib/notify/queue";
+import { sendReminders } from "@/lib/notify/reminders";
 import { checkAllProjects } from "@/lib/osv/check";
+import { cleanup } from "./cleanup";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -36,6 +40,35 @@ export const JOBS = {
       await checkAllProjects();
       await publish(await evaluateAll());
     },
+  },
+  /** Retries for notifications that could not be delivered right away. */
+  "notify-queue": {
+    label: "Notification retries",
+    intervalMs: 30_000,
+    lockTtlMs: 10 * MINUTE,
+    run: processQueue,
+  },
+  "weekly-digest": {
+    label: "Weekly digest",
+    intervalMs: 10 * MINUTE,
+    lockTtlMs: 5 * MINUTE,
+    run: async () => {
+      await sendDigestIfDue();
+    },
+  },
+  reminders: {
+    label: "Reminders for open issues",
+    intervalMs: DAY,
+    lockTtlMs: 10 * MINUTE,
+    run: async () => {
+      await sendReminders();
+    },
+  },
+  cleanup: {
+    label: "Cleanup",
+    intervalMs: DAY,
+    lockTtlMs: 30 * MINUTE,
+    run: cleanup,
   },
 } satisfies Record<string, Job>;
 
