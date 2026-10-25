@@ -49,15 +49,24 @@ const POST: Record<SnippetVariant, string[]> = {
 };
 
 /**
+ * The name of the user's final stage, as typed. BuildKit wants stage names lowercase; anything
+ * that is not a valid name (or would clash with the snippet's own stage) falls back to "app".
+ */
+export function stageName(input: string): string {
+  const name = input.trim().toLowerCase();
+  return /^[a-z][a-z0-9._-]{0,62}$/.test(name) && name !== "observator" ? name : "app";
+}
+
+/**
  * The Dockerfile addition. It reports from a separate stage so the key never lands in the
  * final image or its history; the COPY forces BuildKit to run that stage. The key itself
  * is passed as a build argument and never written into the Dockerfile, and it is read via
  * node so BuildKit's log output does not show it either.
  */
-export function dockerSnippet(variant: SnippetVariant, url: string): string {
+export function dockerSnippet(variant: SnippetVariant, url: string, stage = "app"): string {
   return [
     "# --- Observator: reports Node version + lockfile; does not end up in the final image ---",
-    "FROM app AS observator",
+    `FROM ${stage} AS observator`,
     `ARG OBSERVATOR_URL=${url}`,
     `ARG OBSERVATOR_KEY=""`,
     `ARG OBSERVATOR_FAIL_ON=""`,
@@ -72,7 +81,7 @@ export function dockerSnippet(variant: SnippetVariant, url: string): string {
     `    }; \\`,
     `    ! grep -q '^OBSERVATOR_GATE=fail' /tmp/obs.txt 2>/dev/null && touch /tmp/.observator`,
     "",
-    "FROM app",
+    `FROM ${stage}`,
     "COPY --from=observator /tmp/.observator /tmp/.observator",
   ].join("\n");
 }

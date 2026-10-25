@@ -56,11 +56,23 @@ under **Settings → Projects**. You get an API key, shown once, and the Dockerf
 
 ## Reporting from a Dockerfile
 
-Name the final stage of your Dockerfile `app` and add this to the end:
+Two changes to your Dockerfile:
+
+1. **Name the last stage `app`.** The last `FROM` line builds the image you deploy; add `AS app` to it.
+   If it already has a name (`AS runner`), use that name instead of `app` in the snippet's two `FROM`
+   lines. The *Setup* tab fills it in for you.
+2. **Paste the snippet at the very bottom**, after everything else, `CMD` included. It ends with
+   `FROM app` again, so the image you build and deploy is still your app.
 
 ```dockerfile
+FROM node:22-alpine AS deps
+# ... your earlier stages, unchanged ...
+
+# 1. the last stage, named app
 FROM node:22-alpine AS app
-# ... your existing Dockerfile ...
+# ... COPY, ENV, CMD: unchanged ...
+
+# 2. everything below goes at the very bottom
 
 # --- Observator: reports Node version + lockfile; does not end up in the final image ---
 FROM app AS observator

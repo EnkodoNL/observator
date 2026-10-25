@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeftIcon } from "lucide-react";
 import { CodeBlock } from "@/components/code-block";
-import { SnippetTabs } from "@/components/snippet-tabs";
+import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
@@ -215,10 +215,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <section className="space-y-2">
             <h2 className="font-medium">Dockerfile</h2>
             <p className="text-sm text-muted-foreground">
-              Add this to the end of the Dockerfile and name the final stage{" "}
-              <code className="font-mono text-foreground">app</code>. It contains no secrets.
+              Two changes, marked below. The snippet contains no secrets, so it is safe to commit.
             </p>
-            <SnippetTabs url={appUrl} />
+            <DockerfileSetup url={appUrl} />
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">API key</h2>
