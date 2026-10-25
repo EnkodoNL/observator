@@ -5,7 +5,8 @@ import { touchIngestKey } from "@/lib/data/ingest-keys";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { recordBuild } from "@/lib/ingest/ingest";
 import { matchKey, resolveSharedProject } from "@/lib/ingest/resolve";
-import { reportedName, sourceIp } from "@/lib/ingest/source";
+import { clientIpFrom } from "@/lib/client-ip";
+import { reportedName } from "@/lib/ingest/source";
 import { parsePackageJson } from "@/lib/lockfile";
 import { publish } from "@/lib/notify/publish";
 import { refreshLatest } from "@/lib/npm-latest";
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     if (!key) return text(401, "Observator: missing Authorization: Bearer <key>");
 
     const limits = getLimits();
-    const ip = sourceIp(request.headers);
+    const ip = clientIpFrom(request.headers, env().TRUSTED_PROXIES);
     if (!limits.badKey.take(`probe:${ip}`)) return text(429, "Observator: too many requests");
     const match = await matchKey(key);
     if (!match) return text(401, "Observator: unknown key");

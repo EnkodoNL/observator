@@ -359,10 +359,23 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `OBSERVATOR_JOBS` | `on` | Background checks |
 | `INGEST_MAX_BYTES` | `10485760` | Maximum report size |
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
+| `TRUSTED_PROXIES` | `1` | Reverse proxies in front of Observator that add an `X-Forwarded-For` entry; see [Client addresses](#client-addresses) |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
 | `OBSERVATOR_SELF` | `on` | Observator reports its own Node version and packages as the "Observator" project |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
+
+### Client addresses
+
+Rate limits and the per-server split of shared-key projects use the client's address. Observator
+expects a reverse proxy in front of it (Coolify's Traefik, Caddy, nginx) and trusts only the
+`X-Forwarded-For` entry that proxy added, the last one; earlier entries come from the client and can
+say anything. With more proxies in a row, set `TRUSTED_PROXIES` to their number.
+
+Cloudflare in front of that proxy needs no setting. When the last hop is a
+[Cloudflare address](https://www.cloudflare.com/ips/), Observator takes the visitor from
+`CF-Connecting-IP`; a request that skips Cloudflare and goes to the server directly cannot fake
+that header.
 
 ## Deploying on Coolify
 
