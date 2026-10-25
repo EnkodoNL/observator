@@ -122,7 +122,7 @@ export function EnrollForm({ qr, secret, email }: { qr: string; secret: string; 
         />
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Key for {email}</p>
-          <CodeBlock code={secret.replace(/(.{4})/g, "$1 ").trim()} />
+          <CodeBlock code={secret.replace(/(.{4})/g, "$1 ").trim()} className="[&_code]:whitespace-normal" />
         </div>
         <TextField
           label="Code from the app"

@@ -4,7 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
-import { disableTotp } from "@/lib/auth/two-factor";
+import { resetSecondFactors } from "@/lib/auth/two-factor";
 import { createInvite, revokeInvite } from "@/lib/data/users";
 import { env } from "@/lib/env";
 import { adminPb } from "@/lib/pb/admin";
@@ -42,7 +42,7 @@ export async function resetTwoFactorAction(id: string): Promise<{ error?: string
   const { user } = await requireUser();
   const target = z.string().min(1).parse(id);
   if (target === user.id) return { error: "Change your own two-step verification under Account." };
-  await disableTotp(target);
+  await resetSecondFactors(target);
   revalidatePath("/settings/users");
   return {};
 }
