@@ -56,12 +56,29 @@ export async function readBody(request: Request, maxBytes: number): Promise<Buff
   return Buffer.concat(chunks);
 }
 
+const isGzip = (b: Buffer) => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
+
+/**
+ * The Alpine snippet base64-encodes the archive because BusyBox wget truncates binary
+ * --post-file bodies at the first NUL byte. Accept both raw and base64 gzip.
+ */
+export function decodeBody(body: Buffer): Buffer {
+  if (isGzip(body)) return body;
+  const text = body.toString("latin1").trim();
+  if (/^[A-Za-z0-9+/=\s]+$/.test(text)) {
+    const decoded = Buffer.from(text, "base64");
+    if (isGzip(decoded)) return decoded;
+  }
+  throw new IngestError(400, "body is not gzip");
+}
+
 /** Unpacks the tar.gz in memory and keeps only the expected top-level files. */
 export function extractFiles(body: Buffer): IngestFiles {
   let archive: Buffer;
   try {
-    archive = gunzipSync(body, { maxOutputLength: MAX_UNPACKED });
+    archive = gunzipSync(decodeBody(body), { maxOutputLength: MAX_UNPACKED });
   } catch (err) {
+    if (err instanceof IngestError) throw err;
     const tooBig = err instanceof RangeError || String(err).includes("maxOutputLength");
     throw new IngestError(tooBig ? 413 : 400, tooBig ? "report too large when unpacked" : "body is not gzip");
   }

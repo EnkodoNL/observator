@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. Full Debian image with curl.
+ARG NODE_IMAGE=node:22
+
+FROM ${NODE_IMAGE} AS app
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY index.js ./
+ENV NODE_ENV=production
+CMD ["node", "index.js"]
+
+# --- Observator: reports Node version + lockfile; does not end up in the final image ---
+FROM app AS observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
+      tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
+      && curl -fsS -m 30 -o /tmp/obs.txt \
+           -H "Authorization: Bearer $key" \
+           -H "X-Node-Version: $(node -v)" \
+           -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
+           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
+           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \
+      && cat /tmp/obs.txt \
+      || echo "Observator: report failed, continuing"; \
+    }; \
+    ! grep -q '^OBSERVATOR_GATE=fail' /tmp/obs.txt 2>/dev/null && touch /tmp/.observator
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator

@@ -66,6 +66,13 @@ describe("extractFiles", () => {
     expect(extractFiles(body)).toEqual({ packageJson: "{}", lockfiles: { "yarn.lock": "x" } });
   });
 
+  it("accepts base64-encoded gzip, as sent by the Alpine snippet", () => {
+    const b64 = gzipSync(tarOf({ "package.json": "{}" }))
+      .toString("base64")
+      .replace(/(.{76})/g, "$1\n");
+    expect(extractFiles(Buffer.from(b64 + "\n")).packageJson).toBe("{}");
+  });
+
   it("requires package.json and rejects non-gzip bodies", () => {
     expect(() => extractFiles(gzipSync(tarOf({ "yarn.lock": "x" })))).toThrow(/package.json missing/);
     expect(() => extractFiles(Buffer.from("plain"))).toThrow(IngestError);

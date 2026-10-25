@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. Debian slim: no wget or curl, posts with Node's fetch.
+ARG NODE_IMAGE=node:22-slim
+
+FROM ${NODE_IMAGE} AS app
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY index.js ./
+ENV NODE_ENV=production
+CMD ["node", "index.js"]
+
+# --- Observator: reports Node version + lockfile; does not end up in the final image ---
+FROM app AS observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
+      tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
+      && node -e ' \
+           const fs = require("fs"), env = process.env; \
+           const os = ((fs.existsSync("/etc/os-release") ? fs.readFileSync("/etc/os-release", "utf8") : "").match(/^ID="?([a-z0-9._-]+)/m) || [])[1] || ""; \
+           fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \
+             signal: AbortSignal.timeout(30000), headers: { \
+               "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \
+               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "" } }) \
+           .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
+             fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \
+      && cat /tmp/obs.txt \
+      || echo "Observator: report failed, continuing"; \
+    }; \
+    ! grep -q '^OBSERVATOR_GATE=fail' /tmp/obs.txt 2>/dev/null && touch /tmp/.observator
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator

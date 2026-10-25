@@ -12,17 +12,20 @@ const LOCKFILES = "$(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null)"
 
 const POST: Record<SnippetVariant, string[]> = {
   alpine: [
+    // BusyBox wget sends --post-file as a C string and stops at the first NUL byte, so the
+    // gzip is base64-encoded first; the server accepts both forms.
+    `      && base64 /tmp/obs.tgz > /tmp/obs.b64 \\`,
     `      && wget -q -O /tmp/obs.txt -T 30 \\`,
-    `           --header "Authorization: Bearer $OBSERVATOR_KEY" \\`,
+    `           --header "Authorization: Bearer $key" \\`,
     `           --header "X-Node-Version: $(node -v)" \\`,
     `           --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
     `           --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
     `           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
-    `           --post-file /tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \\`,
+    `           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \\`,
   ],
   curl: [
     `      && curl -fsS -m 30 -o /tmp/obs.txt \\`,
-    `           -H "Authorization: Bearer $OBSERVATOR_KEY" \\`,
+    `           -H "Authorization: Bearer $key" \\`,
     `           -H "X-Node-Version: $(node -v)" \\`,
     `           -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
     `           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
@@ -45,7 +48,8 @@ const POST: Record<SnippetVariant, string[]> = {
 /**
  * The Dockerfile addition. It reports from a separate stage so the key never lands in the
  * final image or its history; the COPY forces BuildKit to run that stage. The key itself
- * is passed as a build argument and never written into the Dockerfile.
+ * is passed as a build argument and never written into the Dockerfile, and it is read via
+ * node so BuildKit's log output does not show it either.
  */
 export function dockerSnippet(variant: SnippetVariant, url: string): string {
   return [
@@ -54,7 +58,9 @@ export function dockerSnippet(variant: SnippetVariant, url: string): string {
     `ARG OBSERVATOR_URL=${url}`,
     `ARG OBSERVATOR_KEY=""`,
     `ARG OBSERVATOR_FAIL_ON=""`,
-    `RUN [ -z "$OBSERVATOR_KEY" ] || { \\`,
+    // Read through node instead of $OBSERVATOR_KEY: BuildKit prints RUN commands with build
+    // args substituted, which would put the key in the build log. (printenv is not in BusyBox.)
+    `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \\`,
     `      tar czf /tmp/obs.tgz package.json ${LOCKFILES} \\`,
     ...POST[variant],
     `      && cat /tmp/obs.txt \\`,
