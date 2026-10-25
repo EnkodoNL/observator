@@ -155,3 +155,13 @@ describe("RateLimiter", () => {
     expect(limiter.take("other")).toBe(true);
   });
 });
+
+describe("changeDirection", () => {
+  it("compares the highest installed version", async () => {
+    const { changeDirection } = await import("./direction");
+    expect(changeDirection("4.17.20", "4.18.1")).toBe("up");
+    expect(changeDirection("2.0.0, 2.1.1", "2.0.0")).toBe("down");
+    expect(changeDirection("1.0.0", "1.0.0")).toBe("other");
+    expect(changeDirection("git+abc", "1.0.0")).toBe("other");
+  });
+});

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowRightIcon, ArrowUpIcon, TriangleAlertIcon } from "lucide-react";
+import { changeDirection } from "@/lib/ingest/direction";
 import { pbDate } from "@/lib/pb/admin";
 import type { BuildRecord } from "@/lib/pb/types";
 import { formatDateTime, timeAgo } from "@/lib/time";
@@ -7,20 +8,33 @@ import { formatDateTime, timeAgo } from "@/lib/time";
 function ChangeSummary({ build }: { build: BuildRecord }) {
   const c = build.changes;
   if (!c) return null;
+  const ups = c.changed.filter((p) => changeDirection(p.from, p.to) === "up").length;
+  const downs = c.changed.filter((p) => changeDirection(p.from, p.to) === "down").length;
+  const other = c.changed.length - ups - downs;
   const parts = [
     c.added.length > 0 && (
-      <span key="a" className="text-ok">
+      <span key="a" className="text-ok" title="added">
         +{c.added.length}
       </span>
     ),
     c.removed.length > 0 && (
-      <span key="r" className="text-danger">
+      <span key="r" className="text-danger" title="removed">
         −{c.removed.length}
       </span>
     ),
-    c.changed.length > 0 && (
-      <span key="c" className="text-warn">
-        ~{c.changed.length}
+    ups > 0 && (
+      <span key="u" title="upgraded">
+        ↑{ups}
+      </span>
+    ),
+    downs > 0 && (
+      <span key="d" className="text-warn" title="downgraded">
+        ↓{downs}
+      </span>
+    ),
+    other > 0 && (
+      <span key="o" className="text-muted-foreground" title="changed">
+        ~{other}
       </span>
     ),
   ].filter(Boolean);
@@ -37,15 +51,26 @@ function Diff({ build }: { build: BuildRecord }) {
         Show package changes
       </summary>
       <div className="mt-2 grid gap-1 rounded-lg bg-muted/40 p-3 font-mono text-xs">
-        {c.changed.map((p) => (
-          <div key={`c-${p.name}`} className="flex flex-wrap items-center gap-1.5">
-            <span className="w-3 text-warn">~</span>
-            {p.name}
-            <span className="text-muted-foreground">{p.from}</span>
-            <ArrowRightIcon className="size-3 text-muted-foreground" />
-            <span>{p.to}</span>
-          </div>
-        ))}
+        {c.changed.map((p) => {
+          const dir = changeDirection(p.from, p.to);
+          return (
+            <div key={`c-${p.name}`} className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex w-4">
+                {dir === "up" ? (
+                  <ArrowUpIcon className="size-3" aria-label="upgraded" />
+                ) : dir === "down" ? (
+                  <ArrowDownIcon className="size-3 text-warn" aria-label="downgraded" />
+                ) : (
+                  <span className="text-muted-foreground">~</span>
+                )}
+              </span>
+              {p.name}
+              <span className="text-muted-foreground">{p.from}</span>
+              <ArrowRightIcon className="size-3 text-muted-foreground" />
+              <span>{p.to}</span>
+            </div>
+          );
+        })}
         {c.added.map((p) => (
           <div key={`a-${p.name}@${p.version}`}>
             <span className="inline-block w-4 text-ok">+</span>
