@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { ShieldAlertIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { CodeBlock } from "@/components/code-block";
+import type { NodeEolData, NodeSecurityData } from "@/lib/issues/types";
+import type { BuildRecord } from "@/lib/pb/types";
+import type { StatusSummary } from "@/lib/status";
+import { formatDate, timeAgo } from "@/lib/time";
+import { pbDate } from "@/lib/pb/admin";
+
+export function pinnedTag(version: string, os: string): string {
+  return `node:${version}-${os === "alpine" ? "alpine" : "slim"}`;
+}
+
+export function NodePanel({ latest, summary }: { latest: BuildRecord | null; summary: StatusSummary }) {
+  if (!latest) {
+    return (
+      <div className="rounded-xl border p-5 text-sm text-muted-foreground">
+        No build has reported yet. Add the snippet from the Setup tab and run a build.
+      </div>
+    );
+  }
+  const security = summary.nodeSecurity?.data as NodeSecurityData | undefined;
+  const eol = summary.nodeEol?.data as NodeEolData | undefined;
+
+  return (
+    <div className="grid gap-4 rounded-xl border p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <div className="space-y-1">
+        <p className="text-sm text-muted-foreground">Node.js</p>
+        <p className="font-mono text-3xl tracking-tight">{latest.nodeVersion}</p>
+        <p className="text-xs text-muted-foreground">
+          {[latest.platform && `${latest.platform}/${latest.arch}`, latest.os].filter(Boolean).join(" · ")} ·
+          reported {timeAgo(pbDate(latest.created))}
+        </p>
+      </div>
+      <div className="space-y-3">
+        {security ? (
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 font-medium text-warn">
+              <ShieldAlertIcon className="size-4" /> Security update available: {security.target}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Node {security.securityReleases.join(", ")}{" "}
+              {security.securityReleases.length === 1 ? "was a" : "were"} security release
+              {security.securityReleases.length === 1 ? "" : "s"}. Pin the image and redeploy; a rebuild of a
+              floating tag like <code className="font-mono">node:{security.major}-alpine</code> often reuses
+              the cached base image.
+            </p>
+            <CodeBlock code={`FROM ${pinnedTag(security.target, security.os)} AS app`} />
+          </div>
+        ) : (
+          <p className="flex items-center gap-2 font-medium text-ok">
+            <ShieldCheckIcon className="size-4" /> No known security release missing
+          </p>
+        )}
+        {eol && (
+          <p className="flex items-start gap-2 text-sm text-warn">
+            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+            {eol.phase === "eol"
+              ? `Node ${eol.major} reached end-of-life on ${formatDate(new Date(eol.end))}. Move to a supported line.`
+              : `Node ${eol.major} reaches end-of-life on ${formatDate(new Date(eol.end))}.`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

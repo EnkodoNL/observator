@@ -55,6 +55,7 @@ function NewProjectForm({ appUrl, onDone }: { appUrl: string; onDone: () => void
         <DialogFooter>
           <Button
             variant="outline"
+            nativeButton={false}
             render={<Link href={`/projects/${state.project.slug}`} />}
             onClick={onDone}
           >

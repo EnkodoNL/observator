@@ -39,7 +39,7 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
           href="/"
           className="shrink-0 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Logo />
+          <Logo compact />
         </Link>
         <nav className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {NAV.map((item) => {

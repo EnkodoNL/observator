@@ -11,11 +11,11 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function Logo({ className }: { className?: string }) {
+export function Logo({ className, compact }: { className?: string; compact?: boolean }) {
   return (
     <span className={cn("inline-flex items-center gap-2 font-medium tracking-tight", className)}>
       <LogoMark />
-      Observator
+      <span className={cn(compact && "sr-only sm:not-sr-only")}>Observator</span>
     </span>
   );
 }
