@@ -22,6 +22,24 @@ schedule and OSV.dev, and stays quiet until there is something to do.
 - **Small:** two containers (Next.js and PocketBase), no Redis, no queue, no extra worker.
   Sign in with a password or a passkey.
 
+And for the days you do open it:
+
+- **Node overview:** all projects grouped by Node version. "These four apps need 22.23.4", with the
+  `FROM` line to pin.
+- **Fix advice:** per advisory, the command or override that fixes it in your package manager
+  (`npm install`, `yarn add`, `pnpm add`, `overrides`, `resolutions`), and whether it is a major upgrade.
+- **Redeploy:** with a deploy webhook (Coolify, Dokploy, Portainer, ...), a Redeploy button on the
+  project and in notifications, always with a confirmation.
+- **Ignore with a reason:** accept an advisory for one project or all of them, optionally until a
+  date. It stays visible as *ignored* and comes back when the ignore expires.
+- **Build history and diffs:** when the Node version changed, and which packages were added, removed,
+  upgraded or downgraded.
+- **Outdated direct dependencies:** the latest version from the npm registry, labelled major, minor or
+  patch. Display only.
+- **Package search:** "where is `lodash` used, and in which version?" across all projects.
+- **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
+  users.
+
 ## Quickstart
 
 ```sh
@@ -166,6 +184,31 @@ stored; Observator keeps the resulting package list.
 
 A build that is fully cached does not report again. Nothing changed then, so nothing is lost. The
 *stale* notification tells you when a project has not reported for a while (14 days by default).
+
+## Per project
+
+### Redeploy
+
+On a project's *Setup* tab you can store a deploy webhook. Observator calls it when you press
+*Redeploy* on the project page or in a notification, always after a confirmation.
+
+- **Coolify:** the resource's deploy webhook URL (`https://coolify.example.com/api/v1/deploy?uuid=...`),
+  method `GET`, and a Coolify API token as bearer token.
+- **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
+
+A rebuild only gets a newer Node if the Dockerfile pins the new version (as the advice says) or the
+build pulls the base image.
+
+### Status badge
+
+The *Setup* tab also has a badge URL for your README, showing `ok`, `node update` or the number of
+open advisories:
+
+```markdown
+[![Observator](https://observator.example.com/badge/api.svg?token=...)](https://observator.example.com/projects/api)
+```
+
+The token only grants the badge. Without it the badge says `unknown`.
 
 ## Notifications
 
