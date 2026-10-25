@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { createInviteAction, removeUserAction, revokeInviteAction } from "./actions";
+import { createInviteAction, removeUserAction, resetTwoFactorAction, revokeInviteAction } from "./actions";
 
 export function InviteButton({ days }: { days: number }) {
   const [open, setOpen] = useState(false);
@@ -122,6 +122,27 @@ export function RemoveUserButton({ id, email }: { id: string; email: string }) {
         const res = await removeUserAction(id);
         if (res.error) toast.error(res.error);
         else toast.success(`Removed ${email}`);
+      }}
+    />
+  );
+}
+
+export function ResetTwoFactorButton({ id, email }: { id: string; email: string }) {
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button variant="ghost" size="sm">
+          Reset 2FA
+        </Button>
+      }
+      title={`Reset two-step verification for ${email}?`}
+      description="Their authenticator app and recovery codes stop working. Their next sign-in with a password asks them to set up a new one; passkeys keep working."
+      confirmLabel="Reset"
+      destructive
+      onConfirm={async () => {
+        const res = await resetTwoFactorAction(id);
+        if (res.error) toast.error(res.error);
+        else toast.success(`Two-step verification reset for ${email}`);
       }}
     />
   );

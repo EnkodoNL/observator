@@ -6,13 +6,27 @@ import type { InviteRecord, PasskeyRecord, UserRecord } from "@/lib/pb/types";
 
 export const INVITE_TTL_DAYS = 7;
 
-export async function listUsers(): Promise<(UserRecord & { passkeys: number })[]> {
+export async function listUsers(): Promise<
+  (Pick<UserRecord, "id" | "email" | "created"> & { passkeys: number; totp: boolean })[]
+> {
   const pb = await adminPb();
   const [users, passkeys] = await Promise.all([
-    pb.collection("users").getFullList<UserRecord>({ sort: "created" }),
+    // Only whether a TOTP secret exists; the secret itself never leaves this function.
+    pb
+      .collection("users")
+      .getFullList<UserRecord & { totpSecret: string }>({
+        sort: "created",
+        fields: "id,email,created,totpSecret",
+      }),
     pb.collection("passkeys").getFullList<PasskeyRecord>({ fields: "user" }),
   ]);
-  return users.map((u) => ({ ...u, passkeys: passkeys.filter((p) => p.user === u.id).length }));
+  return users.map((u) => ({
+    id: u.id,
+    email: u.email,
+    created: u.created,
+    totp: Boolean(u.totpSecret),
+    passkeys: passkeys.filter((p) => p.user === u.id).length,
+  }));
 }
 
 export async function listInvites(): Promise<InviteRecord[]> {

@@ -4,6 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
+import { disableTotp } from "@/lib/auth/two-factor";
 import { createInvite, revokeInvite } from "@/lib/data/users";
 import { env } from "@/lib/env";
 import { adminPb } from "@/lib/pb/admin";
@@ -32,6 +33,16 @@ export async function removeUserAction(id: string): Promise<{ error?: string }> 
   if (total.totalItems <= 1) return { error: "Observator needs at least one user." };
   // Passkeys go with the user (cascade); the user's sessions stop working immediately.
   await pb.collection("users").delete(target);
+  revalidatePath("/settings/users");
+  return {};
+}
+
+/** For a colleague who lost their phone: their next password sign-in sets up a new authenticator. */
+export async function resetTwoFactorAction(id: string): Promise<{ error?: string }> {
+  const { user } = await requireUser();
+  const target = z.string().min(1).parse(id);
+  if (target === user.id) return { error: "Change your own two-step verification under Account." };
+  await disableTotp(target);
   revalidatePath("/settings/users");
   return {};
 }

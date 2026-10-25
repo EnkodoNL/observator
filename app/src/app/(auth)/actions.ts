@@ -4,7 +4,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { adminPb } from "@/lib/pb/admin";
-import { clearSessionCookie, clientIp, hasUsers, passwordLogin, setSessionCookie } from "@/lib/auth/session";
+import { clearSessionCookie, clientIp, hasUsers, passwordLogin } from "@/lib/auth/session";
+import { clearPending, startPending } from "@/lib/auth/two-factor";
 import { RateLimiter } from "@/lib/rate-limit";
 import { type FormState, formObject, publicValues, safeNext, zodState } from "@/lib/forms";
 
@@ -29,15 +30,16 @@ export async function loginAction(_prev: FormState, data: FormData): Promise<For
     return { error: "Too many attempts. Try again in a few minutes.", values: publicValues(values) };
   }
 
-  let token: string;
+  let login: Awaited<ReturnType<typeof passwordLogin>>;
   try {
-    token = await passwordLogin(email, password);
+    login = await passwordLogin(email, password);
   } catch {
     return { error: "Incorrect e-mail or password.", values: publicValues(values) };
   }
   limiter.reset(`email:${email}`);
-  await setSessionCookie(token);
-  redirect(safeNext(next));
+  // Never a session from a password alone: the second factor comes first.
+  await startPending(login.user, login.token, safeNext(next));
+  redirect("/login/verify");
 }
 
 const setupSchema = z
@@ -64,11 +66,13 @@ export async function setupAction(_prev: FormState, data: FormData): Promise<For
   } catch {
     return { error: "Could not create the account.", values: publicValues(values) };
   }
-  await setSessionCookie(await passwordLogin(email, password));
-  redirect("/");
+  const login = await passwordLogin(email, password);
+  await startPending(login.user, login.token, "/");
+  redirect("/login/verify");
 }
 
 export async function logoutAction(): Promise<void> {
   await clearSessionCookie();
+  await clearPending();
   redirect("/login");
 }

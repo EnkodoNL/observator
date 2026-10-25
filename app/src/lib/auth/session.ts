@@ -51,10 +51,16 @@ export async function requireUser(): Promise<Session> {
   return session;
 }
 
-/** Password login. Returns the PocketBase user token. */
-export async function passwordLogin(email: string, password: string): Promise<string> {
-  const res = await userPb().collection("users").authWithPassword(email, password);
-  return res.token;
+/**
+ * Checks a password and returns the PocketBase token. That token is not a session yet: a
+ * password always needs a second factor first (see two-factor.ts).
+ */
+export async function passwordLogin(
+  email: string,
+  password: string,
+): Promise<{ token: string; user: { id: string; email: string } }> {
+  const res = await userPb().collection("users").authWithPassword<UserRecord>(email, password);
+  return { token: res.token, user: { id: res.record.id, email: res.record.email } };
 }
 
 /** Token for a user verified by other means (passkey, invite). */
