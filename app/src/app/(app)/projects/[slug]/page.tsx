@@ -7,6 +7,8 @@ import { SnippetTabs } from "@/components/snippet-tabs";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
+import { evaluateNode } from "@/lib/node/evaluate";
+import { getNodeData } from "@/lib/node/releases";
 import { env } from "@/lib/env";
 import type { VulnIssueData } from "@/lib/issues/types";
 import type { Severity } from "@/lib/pb/types";
@@ -29,11 +31,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";
-  const view = await getProjectView(slug);
+  const [view, nodeData] = await Promise.all([getProjectView(slug), getNodeData()]);
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
   const appUrl = env().APP_URL;
+  const evaluation = latest && nodeData ? evaluateNode(latest.nodeVersion, nodeData) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
@@ -103,7 +106,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
 
       {tab === "overview" && (
         <div className="space-y-6">
-          <NodePanel latest={latest} summary={summary} />
+          <NodePanel latest={latest} summary={summary} evaluation={evaluation} />
           <section className="space-y-3">
             <h2 className="font-medium">
               Vulnerabilities{" "}

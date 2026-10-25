@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { after } from "next/server";
 import { env } from "@/lib/env";
 import { getProjectByKey } from "@/lib/data/projects";
+import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { recordBuild } from "@/lib/ingest/ingest";
+import { publish } from "@/lib/notify/publish";
 import { renderReport } from "@/lib/ingest/report";
 import { extractFiles, IngestError, parseMeta, readBody } from "@/lib/ingest/request";
 import { RateLimiter } from "@/lib/rate-limit";
@@ -52,6 +55,16 @@ export async function POST(request: Request) {
     const meta = parseMeta(request.headers);
     const files = extractFiles(await readBody(request, env().INGEST_MAX_BYTES));
     const outcome = await recordBuild(project, files, meta);
+    const analysis = await analyzeInline(project, outcome, meta);
+
+    // Notifications never hold up the build: OSV lookups and sending happen after the response.
+    after(async () => {
+      try {
+        await publish(await analyzeInBackground(project.id, analysis));
+      } catch (err) {
+        console.error("[ingest] background analysis failed", err);
+      }
+    });
 
     return text(
       200,
@@ -64,9 +77,10 @@ export async function POST(request: Request) {
         packageCount: outcome.packageCount,
         lockfileChanged: outcome.lockfileChanged,
         parseError: outcome.parseError,
-        warnings: [],
-        packagesPending: false,
-        gate: meta.failOn.severity || meta.failOn.node ? "pass" : null,
+        warnings: analysis.warnings,
+        packagesPending: analysis.packagesPending,
+        gate: analysis.gate,
+        gateReason: analysis.gateReason,
       }),
     );
   } catch (err) {

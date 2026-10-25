@@ -9,7 +9,15 @@ import { cn } from "@/lib/utils";
 
 const ORDER: Severity[] = ["critical", "high", "moderate", "low", "unknown"];
 
-export function ProjectCard({ item, staleDays }: { item: ProjectSummary; staleDays: number }) {
+export function ProjectCard({
+  item,
+  staleDays,
+  line,
+}: {
+  item: ProjectSummary;
+  staleDays: number;
+  line?: string | null;
+}) {
   const { project, latest, summary, lastBuildAt } = item;
   const age = daysSince(lastBuildAt);
   const stale = summary.stale || (age !== null && age >= staleDays);
@@ -37,6 +45,7 @@ export function ProjectCard({ item, staleDays }: { item: ProjectSummary; staleDa
             <span className="text-muted-foreground">node </span>
             {latest.nodeVersion}
           </p>
+          {line && <p className="text-xs">{line}</p>}
           <p className="text-xs text-muted-foreground">
             {[
               latest.platform && `${latest.platform}/${latest.arch}`,

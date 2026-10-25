@@ -6,6 +6,9 @@ import { ProjectCard } from "@/components/project-card";
 import { StatTile } from "@/components/stat-tile";
 import { Button } from "@/components/ui/button";
 import { getOverview } from "@/lib/data/views";
+import { evaluateNode } from "@/lib/node/evaluate";
+import { getNodeData } from "@/lib/node/releases";
+import { lineDescription } from "@/app/(app)/projects/[slug]/node-panel";
 import { getSettings } from "@/lib/settings";
 import { daysSince } from "@/lib/time";
 
@@ -14,7 +17,7 @@ export const metadata: Metadata = { title: "Overview" };
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export default async function DashboardPage() {
-  const [items, settings] = await Promise.all([getOverview(), getSettings()]);
+  const [items, settings, nodeData] = await Promise.all([getOverview(), getSettings(), getNodeData()]);
   const built = items.filter((i) => i.latest);
   const nodeFix = built.filter((i) => i.summary.nodeSecurity);
   const vulnerable = built.filter((i) => i.summary.vulnCount > 0);
@@ -32,7 +35,7 @@ export default async function DashboardPage() {
             {items.length === 0
               ? "Nothing to watch yet."
               : nodeFix.length > 0
-                ? `${nodeFix.length} of ${plural(built.length, "project")} run a Node version with an open security fix.`
+                ? `${nodeFix.length} of ${plural(built.length, "project")} ${nodeFix.length === 1 ? "runs" : "run"} a Node version with an open security fix.`
                 : vulnerable.length > 0
                   ? `Node is up to date everywhere; ${plural(vulnerable.length, "project")} has vulnerable packages.`
                   : "Nothing needs your attention."}
@@ -79,7 +82,16 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
-            <ProjectCard key={item.project.id} item={item} staleDays={settings.staleDays} />
+            <ProjectCard
+              key={item.project.id}
+              item={item}
+              staleDays={settings.staleDays}
+              line={
+                item.latest && nodeData
+                  ? lineDescription(evaluateNode(item.latest.nodeVersion, nodeData))
+                  : null
+              }
+            />
           ))}
         </div>
       )}

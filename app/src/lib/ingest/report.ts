@@ -29,7 +29,7 @@ export function renderReport(r: ReportInput): string {
   if (r.parseError) lines.push(`Observator: WARN lockfile not processed: ${r.parseError}`);
   if (r.lockfileType === "none")
     lines.push("Observator: no lockfile found; only the Node version is tracked");
-  for (const w of r.warnings) lines.push(`Observator: WARN ${w}`);
+  for (const w of r.warnings) lines.push(w.startsWith(" ") ? `Observator: ${w}` : `Observator: WARN ${w}`);
   if (r.packagesPending) lines.push("Observator: package check running; results follow via notifications");
   if (r.warnings.length > 0) lines.push(`Observator: details: ${r.projectUrl}`);
   if (r.gate) lines.push(`OBSERVATOR_GATE=${r.gate}${r.gateReason ? ` (${r.gateReason})` : ""}`);
