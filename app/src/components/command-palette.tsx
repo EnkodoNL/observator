@@ -16,6 +16,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { searchPackageNamesAction } from "@/app/(app)/palette-actions";
+import { packageHref } from "@/lib/package-href";
 
 const PAGES = [
   { label: "Overview", href: "/" },
@@ -119,7 +120,7 @@ export function CommandPalette({ projects }: { projects: { name: string; slug: s
                   <CommandItem
                     key={p.name}
                     value={`package ${p.name}`}
-                    onSelect={() => go(`/packages?q=${encodeURIComponent(p.name)}`)}
+                    onSelect={() => go(packageHref(p.name))}
                   >
                     <BoxIcon />
                     <span className="font-mono">{p.name}</span>

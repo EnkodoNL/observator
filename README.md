@@ -36,7 +36,8 @@ And for the days you do open it:
   upgraded or downgraded.
 - **Outdated direct dependencies:** the latest version from the npm registry, labelled major, minor or
   patch. Display only.
-- **Package search:** "where is `lodash` used, and in which version?" across all projects.
+- **Packages:** every package across all projects, vulnerable ones first. Per package: which projects
+  use it, in which version, through which dependency, and the advisories that apply.
 - **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
   users.
 - **It watches itself:** Observator reports the Node version it runs on and its own packages at every
