@@ -22,6 +22,11 @@ import { ProjectSettings } from "./project-settings";
 import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
 import { VulnList } from "./vuln-list";
+import { IgnoreDialog, UnignoreButton } from "./ignore-dialog";
+import { matchingIgnore } from "@/lib/issues/reconcile";
+import type { DesiredIssue } from "@/lib/issues/desired";
+import { formatDate } from "@/lib/time";
+import { pbDate } from "@/lib/pb/admin";
 
 const TABS = ["overview", "packages", "builds", "setup"] as const;
 type Tab = (typeof TABS)[number];
@@ -43,7 +48,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const redeploy = project.deployWebhookUrl ? await lastRedeploy(project.id) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
-    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+    .sort(
+      (a, b) =>
+        Number(a.status === "ignored") - Number(b.status === "ignored") ||
+        severityRank(b.severity) - severityRank(a.severity),
+    );
   const openVulns = vulns.filter((i) => i.status === "open");
 
   const vulnByPackage = new Map<string, { severity: Severity; count: number }>();
@@ -137,6 +146,35 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <VulnList
               issues={vulns}
               lockfile={latest?.lockfileType ?? "npm"}
+              actions={(issue) => {
+                const d = issue.data as unknown as VulnIssueData;
+                if (issue.status !== "ignored") {
+                  return (
+                    <IgnoreDialog
+                      projectId={project.id}
+                      projectName={project.name}
+                      osvId={d.osvId}
+                      pkg={d.package}
+                    />
+                  );
+                }
+                const ignore = matchingIgnore(
+                  issue as unknown as DesiredIssue,
+                  project.id,
+                  view.ignores,
+                  new Date(),
+                );
+                return ignore ? (
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    <span title={ignore.reason}>
+                      Ignored{ignore.project ? "" : " everywhere"}
+                      {ignore.expiresAt ? ` until ${formatDate(pbDate(ignore.expiresAt))}` : ""}:{" "}
+                      {ignore.reason}
+                    </span>
+                    <UnignoreButton ignoreId={ignore.id} />
+                  </span>
+                ) : null;
+              }}
               empty={
                 !latest
                   ? "Packages are checked after the first build reports."
