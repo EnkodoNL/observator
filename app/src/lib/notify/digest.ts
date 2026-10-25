@@ -72,7 +72,16 @@ export async function buildDigest(now = new Date()): Promise<Message> {
   const summary = [
     `${plural(items.length, "project")} watched.`,
     attention.length
-      ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention: ${plural(nodeUpdates, "Node security update")}, ${plural(advisories, "open advisory", "open advisories")}.`
+      ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention${
+          nodeUpdates || advisories
+            ? `: ${[
+                nodeUpdates && plural(nodeUpdates, "Node security update"),
+                advisories && plural(advisories, "open advisory", "open advisories"),
+              ]
+                .filter(Boolean)
+                .join(", ")}`
+            : ""
+        }.`
       : "Nothing needs attention.",
     resolvedVulns ? `${plural(resolvedVulns, "advisory", "advisories")} resolved this week.` : null,
     nodeLine ? `Node in use: ${nodeLine}.` : null,
