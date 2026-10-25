@@ -236,9 +236,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               </p>
             ) : project.apiKeyPrefix === "self" ? (
               <p className="text-sm text-muted-foreground">
-                This is Observator itself. It reports the Node version and packages it runs with at startup and
-                once a day, without a key. Set <code className="font-mono text-foreground">OBSERVATOR_SELF=off</code>{" "}
-                to stop.
+                This is Observator itself. It reports the Node version and packages it runs with at startup
+                and once a day, without a key. Set{" "}
+                <code className="font-mono text-foreground">OBSERVATOR_SELF=off</code> to stop.
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
