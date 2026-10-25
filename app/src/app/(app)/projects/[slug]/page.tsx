@@ -232,10 +232,15 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <section className="space-y-2">
             <h2 className="font-medium">Status badge</h2>
             <p className="text-sm text-muted-foreground">
-              For a README. The token only grants this badge; it shows <code className="font-mono">unknown</code> without it.
+              For a README. The token only grants this badge; it shows{" "}
+              <code className="font-mono">unknown</code> without it.
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/badge/${project.slug}.svg?token=${project.badgeToken}`} alt="Observator status" height={20} />
+            <img
+              src={`/badge/${project.slug}.svg?token=${project.badgeToken}`}
+              alt="Observator status"
+              height={20}
+            />
             <CodeBlock
               code={`[![Observator](${appUrl}/badge/${project.slug}.svg?token=${project.badgeToken})](${appUrl}/projects/${project.slug})`}
             />
