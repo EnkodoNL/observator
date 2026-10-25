@@ -234,11 +234,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 )}
                 . To give it a key of its own, rotate it from the menu at the top right.
               </p>
-            ) : project.apiKeyPrefix === "env" ? (
+            ) : project.apiKeyPrefix === "self" ? (
               <p className="text-sm text-muted-foreground">
-                Observator&rsquo;s own image reports here with{" "}
-                <code className="font-mono text-foreground">OBSERVATOR_SELF_KEY</code> from the environment.
-                Change that variable to change the key.
+                This is Observator itself. It reports the Node version and packages it runs with at startup and
+                once a day, without a key. Set <code className="font-mono text-foreground">OBSERVATOR_SELF=off</code>{" "}
+                to stop.
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">

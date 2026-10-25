@@ -39,6 +39,8 @@ And for the days you do open it:
 - **Package search:** "where is `lodash` used, and in which version?" across all projects.
 - **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
   users.
+- **It watches itself:** Observator reports the Node version it runs on and its own packages at every
+  start and daily, as the *Observator* project. No key or snippet involved.
 
 ## Quickstart
 
@@ -181,7 +183,7 @@ The project's *Setup* tab shows all three variants with your URL filled in.
 
 The report stage needs `package.json` and the lockfile in its working directory, and the `node`
 binary that actually runs in production. If your final stage only contains build output, copy the two
-files in, like Observator's own [`app/Dockerfile`](app/Dockerfile) does:
+files in:
 
 ```dockerfile
 FROM app AS observator
@@ -318,8 +320,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `INGEST_MAX_BYTES` | `10485760` | Maximum report size |
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
-| `OBSERVATOR_SELF_KEY` | | Any long random string; Observator's own image then reports on itself, and the project is created on the first report |
-| `OBSERVATOR_SELF_URL` | `APP_URL` | Where that build reaches Observator |
+| `OBSERVATOR_SELF` | `on` | Observator reports its own Node version and packages as the "Observator" project |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
 

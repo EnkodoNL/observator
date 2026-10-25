@@ -57,8 +57,8 @@ export default async function ProjectsSettingsPage() {
                     <TableCell className="text-xs text-muted-foreground">
                       {p.ingestKey ? (
                         <span>shared: {keyName.get(p.ingestKey) ?? "revoked"}</span>
-                      ) : p.apiKeyPrefix === "env" ? (
-                        <span className="font-mono">OBSERVATOR_SELF_KEY</span>
+                      ) : p.apiKeyPrefix === "self" ? (
+                        <span>reports itself</span>
                       ) : (
                         <span className="font-mono">{p.apiKeyPrefix}…</span>
                       )}

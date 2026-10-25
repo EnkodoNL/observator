@@ -29,15 +29,6 @@ describe("examples/express-app", () => {
   });
 });
 
-describe("app/Dockerfile", () => {
-  it("dogfoods the current Alpine snippet", () => {
-    const dockerfile = readFileSync(join(__dirname, "..", "..", "Dockerfile"), "utf8");
-    const snippet = dockerSnippet("alpine", "http://localhost:3000");
-    const run = snippet.slice(snippet.indexOf("RUN "), snippet.indexOf("\n\nFROM app"));
-    expect(dockerfile).toContain(run);
-  });
-});
-
 describe("README", () => {
   const readme = readFileSync(join(__dirname, "..", "..", "..", "README.md"), "utf8");
 
