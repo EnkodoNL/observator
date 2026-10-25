@@ -52,9 +52,36 @@ const POST: Record<SnippetVariant, string[]> = {
  * The name of the user's final stage, as typed. BuildKit wants stage names lowercase; anything
  * that is not a valid name (or would clash with the snippet's own stage) falls back to "app".
  */
-export function stageName(input: string): string {
+export function stageName(input: string, fallback = "app"): string {
   const name = input.trim().toLowerCase();
-  return /^[a-z][a-z0-9._-]{0,62}$/.test(name) && name !== "observator" ? name : "app";
+  return /^[a-z][a-z0-9._-]{0,62}$/.test(name) && name !== "observator" ? name : fallback;
+}
+
+/**
+ * Where package.json and the lockfile are when the last stage does not have them, such as a
+ * Next.js standalone image: an earlier stage and the folder they were copied to there.
+ */
+export interface LockfileSource {
+  stage: string;
+  dir: string;
+}
+
+/** An absolute folder as typed, without a trailing slash; anything odd falls back to /app. */
+export function sourceDir(input: string): string {
+  const dir = input.trim().replace(/\/+$/, "") || "/";
+  return /^\/[A-Za-z0-9._/-]*$/.test(dir) && !dir.split("/").includes("..") ? dir : "/app";
+}
+
+/**
+ * Copies package.json and whichever lockfile exists into a folder of its own. The * makes each
+ * lockfile optional: COPY skips a pattern without matches as long as another source matches.
+ */
+export function copyLockfileLines({ stage, dir }: LockfileSource): string[] {
+  const d = dir === "/" ? "" : dir;
+  return [
+    "WORKDIR /tmp/observator-report",
+    `COPY --from=${stage} ${d}/package.json ${d}/package-lock.json* ${d}/pnpm-lock.yaml* ${d}/yarn.lock* ./`,
+  ];
 }
 
 /**
@@ -63,10 +90,16 @@ export function stageName(input: string): string {
  * is passed as a build argument and never written into the Dockerfile, and it is read via
  * node so BuildKit's log output does not show it either.
  */
-export function dockerSnippet(variant: SnippetVariant, url: string, stage = "app"): string {
+export function dockerSnippet(
+  variant: SnippetVariant,
+  url: string,
+  stage = "app",
+  lockfileFrom?: LockfileSource,
+): string {
   return [
     "# --- Observator: reports Node version + lockfile; does not end up in the final image ---",
     `FROM ${stage} AS observator`,
+    ...(lockfileFrom ? copyLockfileLines(lockfileFrom) : []),
     `ARG OBSERVATOR_URL=${url}`,
     `ARG OBSERVATOR_KEY=""`,
     `ARG OBSERVATOR_FAIL_ON=""`,

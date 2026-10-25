@@ -215,7 +215,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <section className="space-y-2">
             <h2 className="font-medium">Dockerfile</h2>
             <p className="text-sm text-muted-foreground">
-              Two changes, marked below. The snippet contains no secrets, so it is safe to commit.
+              The snippet contains no secrets, so it is safe to commit.
             </p>
             <DockerfileSetup url={appUrl} />
           </section>

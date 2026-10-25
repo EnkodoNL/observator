@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { dockerSnippet, SNIPPET_VARIANTS, stageName } from "./snippet";
+import { copyLockfileLines, dockerSnippet, SNIPPET_VARIANTS, sourceDir, stageName } from "./snippet";
 import { EXAMPLE_DOCKERFILES, exampleDockerfile } from "./snippet-examples";
 
 describe("dockerSnippet", () => {
@@ -30,6 +30,35 @@ describe("dockerSnippet", () => {
     expect(stageName(input)).toBe(expected);
   });
 
+  it("copies package.json and the lockfile from another stage when asked", () => {
+    const lines = dockerSnippet("alpine", "https://obs.example.com", "runner", {
+      stage: "deps",
+      dir: "/app",
+    }).split("\n");
+    expect(lines.slice(1, 4)).toEqual([
+      "FROM runner AS observator",
+      "WORKDIR /tmp/observator-report",
+      "COPY --from=deps /app/package.json /app/package-lock.json* /app/pnpm-lock.yaml* /app/yarn.lock* ./",
+    ]);
+  });
+
+  it.each([
+    ["/app", "/app"],
+    ["/srv/app/", "/srv/app"],
+    ["/", "/"],
+    ["app", "/app"],
+    ["/app/../etc", "/app"],
+    ["/app; rm -rf", "/app"],
+  ])("source folder %j becomes %j", (input, expected) => {
+    expect(sourceDir(input)).toBe(expected);
+  });
+
+  it("copies from the root without a double slash", () => {
+    expect(copyLockfileLines({ stage: "deps", dir: "/" })[1]).toContain(
+      " /package.json /package-lock.json* ",
+    );
+  });
+
   it("fills in the URL", () => {
     expect(dockerSnippet("alpine", "https://obs.example.com")).toContain(
       "ARG OBSERVATOR_URL=https://obs.example.com",
@@ -51,6 +80,10 @@ describe("README", () => {
 
   it("shows the current Alpine snippet", () => {
     expect(readme).toContain(dockerSnippet("alpine", "https://observator.example.com"));
+  });
+
+  it("shows the current lines for copying the lockfile from another stage", () => {
+    expect(readme).toContain(copyLockfileLines({ stage: "deps", dir: "/app" }).join("\n"));
   });
 
   it.each(["node", "curl"] as const)("shows the current %s upload lines", (variant) => {
