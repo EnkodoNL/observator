@@ -64,6 +64,7 @@ export async function recordBuild(
   project: ProjectRecord,
   files: IngestFiles,
   meta: IngestMeta,
+  sourceIp = "",
 ): Promise<IngestOutcome> {
   const pb = await adminPb();
   const previous = await latestBuild(project.id);
@@ -119,6 +120,7 @@ export async function recordBuild(
     packageCount,
     changes,
     error: parseError ?? "",
+    sourceIp,
   });
   await pb.collection("projects").update(project.id, { lastBuildAt: toPbDate(new Date()) });
 

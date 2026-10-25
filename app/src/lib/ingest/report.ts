@@ -2,6 +2,8 @@
 
 export interface ReportInput {
   projectName: string;
+  /** Name of the shared key, when this report created the project. */
+  createdVia?: string;
   projectUrl: string;
   nodeVersion: string;
   platform: string;
@@ -18,6 +20,7 @@ export interface ReportInput {
 /** Plain-text summary printed in the build log by the Dockerfile snippet. */
 export function renderReport(r: ReportInput): string {
   const lines: string[] = [];
+  if (r.createdVia) lines.push(`Observator: created project ${r.projectName} (shared key "${r.createdVia}")`);
   const details = [
     `node v${r.nodeVersion}`,
     r.platform,

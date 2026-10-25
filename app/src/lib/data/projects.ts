@@ -44,7 +44,7 @@ export async function getProjectByKey(key: string): Promise<ProjectRecord | null
   }
 }
 
-async function uniqueSlug(base: string): Promise<string> {
+export async function uniqueSlug(base: string): Promise<string> {
   for (let i = 1; i < 100; i++) {
     const slug = i === 1 ? base : `${base}-${i}`;
     if (!(await getProjectBySlug(slug))) return slug;

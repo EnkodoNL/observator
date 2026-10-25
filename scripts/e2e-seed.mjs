@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Creates a project with a fresh API key in a running stack and prints the key.
+// Creates a project with a fresh API key and a shared key in a running stack, and prints
+// "<project key> <shared key>".
 // Runs inside the web container, which can reach PocketBase:
 //   docker compose exec -T web node --input-type=module - < scripts/e2e-seed.mjs
 import { createHash, randomBytes } from "node:crypto";
@@ -27,4 +28,17 @@ const res = await fetch(`${pb}/api/collections/projects/records`, {
   }),
 });
 if (!res.ok) throw new Error(`project creation failed: ${res.status} ${await res.text()}`);
-console.log(key);
+
+const shared = `obss_${randomBytes(32).toString("base64url")}`;
+const sharedRes = await fetch(`${pb}/api/collections/ingest_keys/records`, {
+  method: "POST",
+  headers: { "content-type": "application/json", authorization: auth.token },
+  body: JSON.stringify({
+    name: `E2E ${slug}`,
+    keyHash: createHash("sha256").update(shared).digest("hex"),
+    keyPrefix: shared.slice(0, 13),
+    splitByIp: true,
+  }),
+});
+if (!sharedRes.ok) throw new Error(`shared key creation failed: ${sharedRes.status} ${await sharedRes.text()}`);
+console.log(`${key} ${shared}`);

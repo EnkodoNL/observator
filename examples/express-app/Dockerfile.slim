@@ -15,6 +15,7 @@ FROM app AS observator
 ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
 RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
       tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
       && node -e ' \
@@ -23,7 +24,8 @@ RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
            fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \
              signal: AbortSignal.timeout(30000), headers: { \
                "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \
-               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "" } }) \
+               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \
+               "X-Project": env.OBSERVATOR_PROJECT || "" } }) \
            .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
              fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \
       && cat /tmp/obs.txt \

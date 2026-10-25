@@ -65,6 +65,7 @@ FROM app AS observator
 ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
 RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
       tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
       && base64 /tmp/obs.tgz > /tmp/obs.b64 \
@@ -74,6 +75,7 @@ RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
            --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
            --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+           --header "X-Project: $OBSERVATOR_PROJECT" \
            --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \
       && cat /tmp/obs.txt \
       || echo "Observator: report failed, continuing"; \
@@ -103,6 +105,30 @@ Observator:   minimist@1.2.5: GHSA-xvch-5gv4-984h (critical), fixed in 1.2.6
 Observator: details: https://observator.example.com/projects/api
 ```
 
+### One key for all apps
+
+Creating a project per app is optional. Under **Settings → Projects → Shared keys** you create one
+write-only key and give it to every app, each with its own name:
+
+```sh
+docker build --build-arg OBSERVATOR_KEY=obss_... --build-arg OBSERVATOR_PROJECT=billing-api .
+```
+
+The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `name` from
+`package.json` is used.
+
+- **Scope.** A shared key only reports, and only to projects it created itself. If a project with
+  that name already exists (made in the UI or by another key), the report is refused with a message
+  in the build log; the build itself goes on.
+- **One project per server** (on by default). The same name reported from different source IPs
+  becomes separate projects, such as `api · 203.0.113.7` and `api · 203.0.113.8`. With load-balanced
+  replicas that each build their own image, a replica that is still on an old Node then shows up on
+  its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
+  IP changes with every build; use names like `server-1/api` if you want to tell servers apart there.
+  Behind Coolify's Traefik the IP comes from `X-Forwarded-For`.
+- **Revoking** a shared key stops it. Its projects stay with their history and can get their own key
+  through *Rotate API key*.
+
 ### How the snippet behaves
 
 - **It never breaks your build.** No key, a wrong key or an unreachable server prints
@@ -128,7 +154,8 @@ Node's `fetch`:
            fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \
              signal: AbortSignal.timeout(30000), headers: { \
                "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \
-               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "" } }) \
+               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \
+               "X-Project": env.OBSERVATOR_PROJECT || "" } }) \
            .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
              fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \
 ```
@@ -142,6 +169,7 @@ Images with `curl` (such as the full `node:22`) can use:
            -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
            -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+           -H "X-Project: $OBSERVATOR_PROJECT" \
            --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \
 ```
 
@@ -175,7 +203,7 @@ Exactly this, and nothing else:
 
 - `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`)
 - the output of `node -v`, the platform and architecture, and the `ID` from `/etc/os-release`
-- the gate setting, if any
+- the gate setting and the project name (`OBSERVATOR_PROJECT`), if set
 
 No source code, no environment variables, no other files. The raw files are parsed in memory and not
 stored; Observator keeps the resulting package list.
@@ -290,7 +318,8 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `INGEST_MAX_BYTES` | `10485760` | Maximum report size |
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
-| `OBSERVATOR_SELF_URL`, `OBSERVATOR_SELF_KEY` | | Let Observator report on its own image |
+| `OBSERVATOR_SELF_KEY` | | Any long random string; Observator's own image then reports on itself, and the project is created on the first report |
+| `OBSERVATOR_SELF_URL` | `APP_URL` | Where that build reaches Observator |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
 

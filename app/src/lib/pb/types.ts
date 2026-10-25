@@ -49,6 +49,22 @@ export interface ProjectRecord extends BaseRecord {
   deployWebhookToken: string;
   lastBuildAt: string;
   vulnsCheckedAt: string;
+  /** Set for projects created on the fly by a shared key. */
+  ingestKey: string;
+  /** The project name as reported with the shared key. */
+  sourceName: string;
+  /** Source IP the project was split by, when the shared key splits by IP. */
+  instance: string;
+}
+
+export interface IngestKeyRecord extends BaseRecord {
+  name: string;
+  keyHash: string;
+  keyPrefix: string;
+  splitByIp: boolean;
+  createdBy: string;
+  lastUsedAt: string;
+  lastUsedIp: string;
 }
 
 export interface BuildChanges {
@@ -70,6 +86,7 @@ export interface BuildRecord extends BaseRecord {
   packageCount: number;
   changes: BuildChanges | null;
   error: string;
+  sourceIp: string;
 }
 
 export interface ComponentRecord extends BaseRecord {

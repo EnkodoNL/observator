@@ -15,6 +15,7 @@ FROM app AS observator
 ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
 RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
       tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
       && base64 /tmp/obs.tgz > /tmp/obs.b64 \
@@ -24,6 +25,7 @@ RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
            --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
            --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+           --header "X-Project: $OBSERVATOR_PROJECT" \
            --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \
       && cat /tmp/obs.txt \
       || echo "Observator: report failed, continuing"; \
