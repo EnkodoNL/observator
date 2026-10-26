@@ -162,17 +162,23 @@ Dockerfile works in CI.
   [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
   on the same server as Observator may arrive from the Docker gateway (such as `172.17.0.1`) instead.
   Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log, with
-  the address, and appear in the allowlist dialog with an *Add* button.
+  the address. They are listed under *Not recorded* on the settings page and in the allowlist dialog
+  with an *Add* button, and the web container logs them as `[ingest] not recorded (401) from ...`.
+- **A wrong key** from an allowed address, such as a stale `OBSERVATOR_KEY` or an unresolved
+  `{{team.OBSERVATOR_KEY}}`, does not block the report: it is recorded, with a warning in the build log.
 - **Ranges.** Single addresses or CIDR ranges, at most /8 for IPv4 and /32 for IPv6, each with an
-  optional note. An address belongs to one shared key only.
+  optional note. An address belongs to one shared key only. Hosting providers give each server an
+  IPv6 /64, shown as `2a01:4f8:c2c:9793::`; write it as `2a01:4f8:c2c:9793::/64`.
 - **Trade-off.** Any process on an allowed server can report. Since reports only ever write, that is
   about as safe as a shared key in a private repository; the key-checked snippet remains the
   default.
 
 ### How the snippet behaves
 
-- **It never breaks your build.** No key skips the report; a wrong key or an unreachable server
-  prints `report failed, continuing` and the build goes on. The only exception is the gate below, and only
+- **It never breaks your build.** No key skips the report. A report Observator does not accept (a
+  wrong key, a rate limit, a name taken by another project) prints `Observator: not recorded: ...` with
+  the reason and the address it came from; an unreachable server prints `report failed, continuing`.
+  Either way the build goes on. The only exception is the gate below, and only
   if you turn it on.
 - **The key stays out of the image.** The report runs in a separate stage; the final image only gets
   an empty marker file from it (the `COPY` makes BuildKit run that stage). The key is read through

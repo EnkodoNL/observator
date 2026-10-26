@@ -26,6 +26,17 @@ function parseEntry(raw: string): { cidr: string } | { error: string } {
   if (prefix > width) return { error: "has an invalid prefix" };
   if (prefix < MIN_PREFIX[address.version])
     return { error: `is too broad (at least /${MIN_PREFIX[address.version]})` };
+  // Providers hand out an IPv6 /64 per server and show it as "2a01:4f8:c2c:9793::". Written
+  // without a prefix that is only the address ending in zeros, which the server rarely uses.
+  if (
+    address.version === 6 &&
+    bits === undefined &&
+    address.value !== 0n &&
+    (address.value & ((1n << 64n) - 1n)) === 0n
+  )
+    return {
+      error: `is only the single address ending in zeros; for the server's whole subnet write ${base}/64 (or ${base}/128 for just this address)`,
+    };
   // 198.51.100.4/24 means 198.51.100.0/24.
   const shift = BigInt(width - prefix);
   const network = { ...address, value: (address.value >> shift) << shift };
@@ -57,7 +68,10 @@ export function formatAllowlist(entries: AllowEntry[]): string {
 /** How an entry is shown: a single address without its /32 or /128. */
 export function displayEntry(cidr: string): string {
   const single = cidr.includes(":") ? "/128" : "/32";
-  return cidr.endsWith(single) ? cidr.slice(0, -single.length) : cidr;
+  if (!cidr.endsWith(single)) return cidr;
+  const address = cidr.slice(0, -single.length);
+  // "2a01:…::" alone reads as a subnet (and is refused as input), so it keeps its /128.
+  return address.endsWith("::") && address !== "::" ? cidr : address;
 }
 
 const prefixOf = (cidr: string) => Number(cidr.split("/")[1]);

@@ -39,6 +39,8 @@ export interface SharedKeyItem {
 export interface RefusedItem {
   ip: string;
   project: string;
+  /** "no key", or "unknown key obss_abcd…". */
+  reason: string;
   count: number;
   when: string;
 }
@@ -179,16 +181,24 @@ export function SharedKeyList({
         ))}
       </ul>
       {refused.length > 0 && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {refused.length === 1 ? "A build" : `${refused.length} builds`} reported without a key from{" "}
-          {refused
-            .slice(0, 3)
-            .map((r) => (r.project ? `${r.ip} (${r.project})` : r.ip))
-            .join(", ")}
-          {refused.length > 3 ? " and more" : ""}, which is on no allowlist. Open a key&rsquo;s IP allowlist
-          to add
-          {refused.length === 1 ? " it" : " them"}.
-        </p>
+        <div className="mt-6 space-y-2">
+          <h3 className="text-sm font-medium">Not recorded, last 7 days</h3>
+          <ul className="divide-y rounded-xl border">
+            {refused.map((r) => (
+              <li key={r.ip} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5">
+                <span className="font-mono text-[13px]">{r.ip}</span>
+                <span className="text-xs text-muted-foreground">
+                  {[r.project, r.reason, `${r.count}×`, r.when].filter(Boolean).join(" · ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            Reports from addresses on no allowlist, without a valid key. To accept them, add the address to a
+            key&rsquo;s IP allowlist; a wrong key from an allowed address is then ignored, with a warning in
+            the build log.
+          </p>
+        </div>
       )}
       {allowing && (
         <AllowlistDialog
@@ -236,7 +246,10 @@ function AllowlistDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const current = parseAllowlist(text).entries.map((e) => e.cidr);
+  // Checked while typing, so a mistake shows before saving; overlaps are checked on save.
+  const parsed = parseAllowlist(text);
+  const current = parsed.entries.map((e) => e.cidr);
+  const problems = parsed.errors.length ? parsed.errors.join("\n") : error;
   const suggestions = [
     ...(item.lastUsedIp && item.lastUsedIp !== "unknown"
       ? [
@@ -250,7 +263,7 @@ function AllowlistDialog({
     ...refused.map((r) => ({
       ip: r.ip,
       note: r.project,
-      detail: `${r.project ? `${r.project}, ` : ""}refused ${r.count}× without a key, last ${r.when}`,
+      detail: [r.project, r.reason, `${r.count}×`, r.when].filter(Boolean).join(" · "),
     })),
   ].filter((s, i, all) => !matchEntry(s.ip, current) && all.findIndex((o) => o.ip === s.ip) === i);
   const add = (ip: string, note: string) =>
@@ -296,9 +309,9 @@ function AllowlistDialog({
             &ldquo;Client addresses&rdquo; in the README, so behind Cloudflare it is your server&rsquo;s own
             address. A build on the same server as Observator may arrive from the Docker gateway instead.
           </p>
-          {error && (
+          {problems && (
             <p role="alert" className="text-sm whitespace-pre-line text-destructive">
-              {error}
+              {problems}
             </p>
           )}
           {suggestions.length > 0 && (
@@ -321,7 +334,7 @@ function AllowlistDialog({
           )}
           {/* Not a DialogFooter: the snippet follows below, so this is not the end of the dialog. */}
           <div className="flex justify-end">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || parsed.errors.length > 0}>
               {pending && <Loader2Icon className="animate-spin" />}
               Save allowlist
             </Button>

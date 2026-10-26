@@ -58,6 +58,8 @@ export interface RefusedReport {
   ip: string;
   /** OBSERVATOR_PROJECT as sent, to recognise the build. */
   project: string;
+  /** "no key", or "unknown key obss_abcd…". */
+  reason: string;
   count: number;
   lastAt: string;
 }
@@ -70,13 +72,14 @@ const REFUSED_DAYS = 7;
  * Remembers reports without a key from addresses on no allowlist, so the settings page can
  * offer to add them. Only the address and the project name are kept, never the files.
  */
-export async function recordRefused(ip: string, project: string): Promise<void> {
+export async function recordRefused(ip: string, project: string, reason: string): Promise<void> {
   const list = (await kvGet<RefusedReport[]>(REFUSED_KEY)) ?? [];
   const now = new Date();
   const prev = list.find((r) => r.ip === ip);
   const entry: RefusedReport = {
     ip,
     project: project || prev?.project || "",
+    reason,
     count: (prev?.count ?? 0) + 1,
     lastAt: toPbDate(now),
   };

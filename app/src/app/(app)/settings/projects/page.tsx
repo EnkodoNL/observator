@@ -89,6 +89,7 @@ export default async function ProjectsSettingsPage() {
             refused={refused.map((r) => ({
               ip: r.ip,
               project: r.project,
+              reason: r.reason ?? "no key",
               count: r.count,
               when: timeAgo(pbDate(r.lastAt)),
             }))}

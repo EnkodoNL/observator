@@ -51,6 +51,19 @@ describe("parseAllowlist", () => {
     ]);
   });
 
+  it("asks for a prefix when an IPv6 subnet is written as a single address", () => {
+    expect(parseAllowlist("2a01:4f8:c2c:9793::").errors).toEqual([
+      "Line 1: “2a01:4f8:c2c:9793::” is only the single address ending in zeros; for the server's whole subnet write 2a01:4f8:c2c:9793::/64 (or 2a01:4f8:c2c:9793::/128 for just this address).",
+    ]);
+    expect(parseAllowlist("2a01:4f8:c2c:9793::/64").entries).toEqual([
+      { cidr: "2a01:4f8:c2c:9793::/64", note: "" },
+    ]);
+    expect(parseAllowlist("2a01:4f8:c2c:9793::/128").entries).toEqual([
+      { cidr: "2a01:4f8:c2c:9793::/128", note: "" },
+    ]);
+    expect(parseAllowlist("2a01:4f8:c2c:9793::1").errors).toEqual([]);
+  });
+
   it("caps the number of entries", () => {
     const text = Array.from({ length: 51 }, (_, i) => `198.51.100.${i}`).join("\n");
     expect(parseAllowlist(text).errors).toEqual(["At most 50 addresses or ranges."]);
@@ -86,5 +99,8 @@ describe("overlaps / displayEntry", () => {
     expect(displayEntry("2a01:4f8::1/128")).toBe("2a01:4f8::1");
     expect(displayEntry("203.0.113.0/24")).toBe("203.0.113.0/24");
     expect(displayEntry("2a01:4f8::/32")).toBe("2a01:4f8::/32");
+    expect(displayEntry("2a01:4f8:c2c:9793::/128")).toBe("2a01:4f8:c2c:9793::/128");
+    const saved = parseAllowlist("2a01:4f8:c2c:9793::/128").entries;
+    expect(parseAllowlist(formatAllowlist(saved))).toEqual({ entries: saved, errors: [] });
   });
 });
