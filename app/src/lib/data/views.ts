@@ -19,7 +19,8 @@ async function latestBuilds(projectIds: string[]): Promise<Map<string, BuildReco
       const res = await pb.collection("builds").getList<BuildRecord>(1, 1, {
         filter: pb.filter("project = {:id}", { id }),
         sort: "-created",
-        fields: "id,project,nodeVersion,platform,arch,os,lockfileType,packageCount,created,error",
+        fields:
+          "id,project,runtimes,appName,appVersion,platform,arch,os,lockfileType,packageCount,created,error",
       });
       return [id, res.items[0]] as const;
     }),

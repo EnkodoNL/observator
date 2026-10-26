@@ -3,8 +3,8 @@ import "server-only";
 import { activeIssues } from "@/lib/data/views";
 import type { IssueEvent } from "@/lib/issues/events";
 import { evaluateProject } from "@/lib/issues/evaluate";
-import type { NodeEolData, NodeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { pinnedImage } from "@/lib/node/advice";
+import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
+import { pinFor, runtimeLabel } from "@/lib/runtimes";
 import { checkProject } from "@/lib/osv/check";
 import type { IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
 import { atLeast, severityRank } from "@/lib/severity";
@@ -34,20 +34,19 @@ function countBySeverity(issues: IssueRecord[]): string {
 export function describeIssues(issues: IssueRecord[]): string[] {
   const open = issues.filter((i) => i.status === "open");
   const lines: string[] = [];
-  const security = open.find((i) => i.kind === "node_security");
-  if (security) {
-    const d = security.data as unknown as NodeSecurityData;
+  for (const security of open.filter((i) => i.kind === "runtime_security")) {
+    const d = security.data as unknown as RuntimeSecurityData;
+    const pin = pinFor(d.runtime, d.target, d.os);
     lines.push(
-      `Node security update available: ${d.target}. Pin ${pinnedImage(d.target, d.os)} and redeploy.`,
+      `${runtimeLabel(d.runtime)} security update available: ${d.target}.${pin ? ` Pin ${pin} and redeploy.` : ""}`,
     );
   }
-  const eol = open.find((i) => i.kind === "node_eol");
-  if (eol) {
-    const d = eol.data as unknown as NodeEolData;
+  for (const eol of open.filter((i) => i.kind === "runtime_eol")) {
+    const d = eol.data as unknown as RuntimeEolData;
     lines.push(
       d.phase === "eol"
-        ? `Node ${d.major} has been end-of-life since ${d.end}. Move to a supported release line.`
-        : `Node ${d.major} reaches end-of-life on ${d.end}.`,
+        ? `${runtimeLabel(d.runtime)} ${d.line} has been end-of-life since ${d.end}. Move to a supported release line.`
+        : `${runtimeLabel(d.runtime)} ${d.line} reaches end-of-life on ${d.end}.`,
     );
   }
   const vulns = open
@@ -75,13 +74,21 @@ function gateDecision(failOn: FailOn, issues: IssueRecord[]): { gate: "pass" | "
     if (hits.length > 0)
       reasons.push(`${hits.length} advisor${hits.length === 1 ? "y" : "ies"} at ${failOn.severity} or above`);
   }
-  if (failOn.node && open.some((i) => i.kind === "node_security"))
-    reasons.push("Node security update available");
+  const runtimeHits = open.filter((i) => {
+    const runtime = (i.data as unknown as RuntimeSecurityData | null)?.runtime ?? "";
+    return (
+      i.kind === "runtime_security" && (failOn.runtimes.includes("*") || failOn.runtimes.includes(runtime))
+    );
+  });
+  for (const i of runtimeHits)
+    reasons.push(
+      `${runtimeLabel((i.data as unknown as RuntimeSecurityData).runtime)} security update available`,
+    );
   return reasons.length ? { gate: "fail", reason: reasons.join("; ") } : { gate: "pass" };
 }
 
 /**
- * The part of the analysis that runs inside the ingest request: Node advice and the
+ * The part of the analysis that runs inside the ingest request: runtime advice and the
  * advisories already known for these packages. A changed lockfile is checked against OSV
  * in the background, unless the build gate needs the answer now.
  */
@@ -90,7 +97,7 @@ export async function analyzeInline(
   outcome: IngestOutcome,
   meta: IngestMeta,
 ): Promise<Analysis> {
-  const gateRequested = Boolean(meta.failOn.severity || meta.failOn.node);
+  const gateRequested = Boolean(meta.failOn.severity || meta.failOn.runtimes.length);
   let packagesPending = outcome.lockfileChanged && outcome.packageCount > 0;
   let gateNote: string | undefined;
 

@@ -106,6 +106,7 @@ export async function POST(request: Request) {
     let created: string | null = null;
     if (match.kind === "shared") {
       const pkg = (() => {
+        if (files.packageJson === null) return null;
         try {
           return parsePackageJson(files.packageJson);
         } catch {
@@ -145,14 +146,17 @@ export async function POST(request: Request) {
           projectName: project.name,
           createdVia: created ?? undefined,
           projectUrl: `${env().APP_URL}/projects/${project.slug}`,
-          nodeVersion: meta.nodeVersion,
+          runtimes: meta.runtimes,
           platform: [meta.platform, meta.arch].filter(Boolean).join("/"),
           lockfileType: outcome.build.lockfileType,
           packageCount: outcome.packageCount,
           lockfileChanged: outcome.lockfileChanged,
           parseError: outcome.parseError,
           warnings: [
-            ...(meta.labels?.invalid.length
+            ...(meta.invalidRuntimes.length
+            ? [`runtimes ignored: ${meta.invalidRuntimes.join(", ")} (expected name/version)`]
+            : []),
+          ...(meta.labels?.invalid.length
               ? [
                   `labels ignored: ${meta.labels.invalid.join(", ")} (use word or key:value, lowercase a-z 0-9 . _ - /)`,
                 ]

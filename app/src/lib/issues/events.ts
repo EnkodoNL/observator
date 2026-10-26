@@ -2,8 +2,8 @@
 import type { IssueKind, Severity } from "@/lib/pb/types";
 
 export const EVENT_TYPES = [
-  "node.security_update",
-  "node.eol",
+  "runtime.security_update",
+  "runtime.eol",
   "vuln.new",
   "vuln.resolved",
   "project.stale",
@@ -12,8 +12,8 @@ export const EVENT_TYPES = [
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export const EVENT_LABEL: Record<EventType, string> = {
-  "node.security_update": "Node security update",
-  "node.eol": "Node end-of-life",
+  "runtime.security_update": "Runtime security update",
+  "runtime.eol": "Runtime end-of-life",
   "vuln.new": "New vulnerability",
   "vuln.resolved": "Vulnerability resolved",
   "project.stale": "Project stale",
@@ -36,8 +36,8 @@ export interface IssueEvent {
 }
 
 export const OPEN_EVENT: Record<IssueKind, IssueEvent["type"]> = {
-  node_security: "node.security_update",
-  node_eol: "node.eol",
+  runtime_security: "runtime.security_update",
+  runtime_eol: "runtime.eol",
   vuln: "vuln.new",
   stale: "project.stale",
 };

@@ -22,6 +22,13 @@ const svg = (body: string, cache: string) =>
  * GET /badge/<slug>.svg?token=<badge token>: project status for a README. Without a valid
  * token it renders "unknown", so it does not reveal whether a project exists.
  */
+/** "node update" or "node eol", for the first runtime that needs attention. */
+function runtimeBadge(s: ReturnType<typeof summarize>): string {
+  const issue = s.runtimeSecurity[0] ?? s.runtimeEol[0];
+  const runtime = (issue?.data as { runtime?: string } | null)?.runtime ?? "runtime";
+  return `${runtime} ${s.runtimeSecurity.length ? "update" : "eol"}`;
+}
+
 export async function GET(request: Request, { params }: RouteContext<"/badge/[file]">) {
   const { file } = await params;
   const token = new URL(request.url).searchParams.get("token") ?? "";
@@ -37,7 +44,7 @@ export async function GET(request: Request, { params }: RouteContext<"/badge/[fi
     s.status === "vulnerable"
       ? [`${s.vulnCount} vulnerable`, BADGE_COLORS.vulnerable]
       : s.status === "update"
-        ? [s.nodeSecurity ? "node update" : "node eol", BADGE_COLORS.update]
+        ? [runtimeBadge(s), BADGE_COLORS.update]
         : s.status === "ok"
           ? ["ok", BADGE_COLORS.ok]
           : ["no builds", BADGE_COLORS.none];

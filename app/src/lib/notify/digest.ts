@@ -3,7 +3,8 @@ import "server-only";
 import { channelEvents, listChannels } from "@/lib/data/channels";
 import { getOverview } from "@/lib/data/views";
 import { env } from "@/lib/env";
-import type { NodeSecurityData } from "@/lib/issues/types";
+import type { RuntimeEolData, RuntimeSecurityData } from "@/lib/issues/types";
+import { runtimeLabel } from "@/lib/runtimes/labels";
 import { kvGet, kvSet } from "@/lib/kv";
 import { adminPb, toPbDate } from "@/lib/pb/admin";
 import type { IssueRecord, Severity } from "@/lib/pb/types";
@@ -28,17 +29,20 @@ export async function buildDigest(now = new Date()): Promise<Message> {
 
   const attention: MessageItem[] = [];
   let advisories = 0;
-  let nodeUpdates = 0;
+  let runtimeUpdates = 0;
   for (const { project, latest, summary, lastBuildAt } of items) {
     const parts: string[] = [];
     let severity: Severity | undefined = summary.worstSeverity ?? undefined;
-    if (summary.nodeSecurity) {
-      const d = summary.nodeSecurity.data as unknown as NodeSecurityData;
-      parts.push(`Node ${d.running} → ${d.target}`);
-      nodeUpdates++;
+    for (const issue of summary.runtimeSecurity) {
+      const d = issue.data as unknown as RuntimeSecurityData;
+      parts.push(`${runtimeLabel(d.runtime)} ${d.running} → ${d.target}`);
+      runtimeUpdates++;
       severity ??= "high";
     }
-    if (summary.nodeEol) parts.push("Node line end-of-life");
+    for (const issue of summary.runtimeEol) {
+      const d = issue.data as unknown as RuntimeEolData;
+      parts.push(`${runtimeLabel(d.runtime)} ${d.line} end-of-life`);
+    }
     if (summary.vulnCount) {
       advisories += summary.vulnCount;
       const counts = (["critical", "high"] as const)
@@ -63,19 +67,22 @@ export async function buildDigest(now = new Date()): Promise<Message> {
 
   const versions = new Map<string, number>();
   for (const { latest } of items)
-    if (latest) versions.set(latest.nodeVersion, (versions.get(latest.nodeVersion) ?? 0) + 1);
-  const nodeLine = [...versions]
-    .sort(([a], [b]) => b.localeCompare(a, undefined, { numeric: true }))
-    .map(([v, n]) => `${v} (${n})`)
+    for (const r of latest?.runtimes ?? []) {
+      const key = `${r.name} ${r.version}`;
+      versions.set(key, (versions.get(key) ?? 0) + 1);
+    }
+  const runtimeLine = [...versions]
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([v, n]) => `${v} ×${n}`)
     .join(", ");
 
   const summary = [
     `${plural(items.length, "project")} watched.`,
     attention.length
       ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention${
-          nodeUpdates || advisories
+          runtimeUpdates || advisories
             ? `: ${[
-                nodeUpdates && plural(nodeUpdates, "Node security update"),
+                runtimeUpdates && plural(runtimeUpdates, "runtime security update"),
                 advisories && plural(advisories, "open advisory", "open advisories"),
               ]
                 .filter(Boolean)
@@ -84,7 +91,7 @@ export async function buildDigest(now = new Date()): Promise<Message> {
         }.`
       : "Nothing needs attention.",
     resolvedVulns ? `${plural(resolvedVulns, "advisory", "advisories")} resolved this week.` : null,
-    nodeLine ? `Node in use: ${nodeLine}.` : null,
+    runtimeLine ? `Runtimes in use: ${runtimeLine}.` : null,
   ]
     .filter(Boolean)
     .join(" ");

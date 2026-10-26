@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { evaluateAll } from "@/lib/issues/evaluate";
-import { refreshNodeData } from "@/lib/node/releases";
+import { refreshRuntimes } from "@/lib/runtimes";
 import { publish } from "@/lib/notify/publish";
 import { sendDigestIfDue } from "@/lib/notify/digest";
 import { processQueue } from "@/lib/notify/queue";
@@ -23,13 +23,13 @@ interface Job {
 }
 
 export const JOBS = {
-  /** New Node releases (security!) are picked up within the hour. Also re-evaluates staleness. */
-  "node-index": {
-    label: "Node release check",
+  /** New runtime releases (security!) are picked up within the hour. Also re-evaluates staleness. */
+  "runtime-releases": {
+    label: "Runtime release check",
     intervalMs: HOUR,
     lockTtlMs: 10 * MINUTE,
     run: async () => {
-      await refreshNodeData();
+      await refreshRuntimes();
       await publish(await evaluateAll());
     },
   },

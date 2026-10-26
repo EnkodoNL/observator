@@ -85,7 +85,10 @@ export interface IngestKeyRecord extends BaseRecord {
 }
 
 export interface BuildChanges {
-  node?: { from: string; to: string };
+  /** package.json version, when it changed. */
+  app?: { from: string; to: string };
+  /** Runtimes whose version changed; from or to is null when one was added or removed. */
+  runtimes?: { name: string; from: string | null; to: string | null }[];
   added: { name: string; version: string }[];
   removed: { name: string; version: string }[];
   changed: { name: string; from: string; to: string }[];
@@ -94,7 +97,11 @@ export interface BuildChanges {
 
 export interface BuildRecord extends BaseRecord {
   project: string;
-  nodeVersion: string;
+  /** As reported in X-Runtime, in that order: [{ name: "node", version: "22.11.0" }]. */
+  runtimes: { name: string; version: string }[] | null;
+  /** name and version from package.json, for information. */
+  appName: string;
+  appVersion: string;
   platform: string;
   arch: string;
   os: string;
@@ -108,6 +115,8 @@ export interface BuildRecord extends BaseRecord {
 
 export interface ComponentRecord extends BaseRecord {
   project: string;
+  /** OSV ecosystem of the package: "npm" for now. */
+  ecosystem: string;
   name: string;
   version: string;
   direct: boolean;
@@ -138,7 +147,7 @@ export interface IgnoreRecord extends BaseRecord {
   createdBy: string;
 }
 
-export type IssueKind = "node_security" | "node_eol" | "vuln" | "stale";
+export type IssueKind = "runtime_security" | "runtime_eol" | "vuln" | "stale";
 export type IssueStatus = "open" | "ignored" | "resolved";
 
 export interface IssueRecord extends BaseRecord {

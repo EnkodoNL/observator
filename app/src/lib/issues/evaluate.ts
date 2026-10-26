@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { adminPb, pbDate, toPbDate } from "@/lib/pb/admin";
-import { evaluateNode, type NodeData } from "@/lib/node/evaluate";
-import { getNodeData } from "@/lib/node/releases";
+import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
+import type { Evaluator } from "@/lib/runtimes/types";
 import type {
   BuildRecord,
   ComponentRecord,
@@ -39,7 +39,8 @@ function toRecord(w: Partial<IssueWrite>): Record<string, unknown> {
 }
 
 interface Shared {
-  nodeData: NodeData | null;
+  /** Per runtime with release data right now. */
+  evaluators: Map<string, Evaluator>;
   staleDays: number;
   ignores: IgnoreRecord[];
   vulns: VulnerabilityRecord[];
@@ -48,13 +49,13 @@ interface Shared {
 
 async function loadShared(): Promise<Shared> {
   const pb = await adminPb();
-  const [nodeData, settings, ignores, vulns] = await Promise.all([
-    getNodeData(),
+  const [evaluators, settings, ignores, vulns] = await Promise.all([
+    loadEvaluators(),
     getSettings(),
     pb.collection("ignores").getFullList<IgnoreRecord>(),
-    pb.collection("vulnerabilities").getFullList<VulnerabilityRecord>({ filter: "ecosystem = 'npm'" }),
+    pb.collection("vulnerabilities").getFullList<VulnerabilityRecord>(),
   ]);
-  return { nodeData, staleDays: settings.staleDays, ignores, vulns, now: new Date() };
+  return { evaluators, staleDays: settings.staleDays, ignores, vulns, now: new Date() };
 }
 
 async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<IssueEvent[]> {
@@ -64,26 +65,33 @@ async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<Issu
     pb.collection("builds").getList<BuildRecord>(1, 1, { filter: byProject, sort: "-created" }),
     pb
       .collection("components")
-      .getFullList<ComponentRecord>({ filter: byProject, fields: "name,version,direct,dev,via" }),
+      .getFullList<ComponentRecord>({ filter: byProject, fields: "ecosystem,name,version,direct,dev,via" }),
     pb.collection("issues").getFullList<IssueRecord>({ filter: byProject }),
   ]);
   const build = builds.items[0] ?? null;
-  const names = new Set(components.map((c) => c.name));
+  const runtimes = build?.runtimes ?? [];
+  const ecosystemOf = (c: ComponentRecord) => c.ecosystem || "npm";
+  const names = new Set(components.map((c) => `${ecosystemOf(c)}:${c.name}`));
 
   const desired = computeDesired({
-    build: build ? { nodeVersion: build.nodeVersion, os: build.os } : null,
+    build: build ? { runtimes, os: build.os } : null,
     lastBuildAt: pbDate(project.lastBuildAt),
-    components: components.map((c) => ({ ...c, via: c.via ?? [] })),
-    vulns: shared.vulns.filter((v) => names.has(v.name)).map((v) => ({ ...v, aliases: v.aliases ?? [] })),
-    node: build && shared.nodeData ? evaluateNode(build.nodeVersion, shared.nodeData, shared.now) : null,
+    components: components.map((c) => ({ ...c, ecosystem: ecosystemOf(c), via: c.via ?? [] })),
+    vulns: shared.vulns
+      .filter((v) => names.has(`${v.ecosystem}:${v.name}`))
+      .map((v) => ({ ...v, aliases: v.aliases ?? [] })),
+    evaluations: evaluateRuntimes(runtimes, shared.evaluators, shared.now),
     staleDays: shared.staleDays,
     now: shared.now,
   });
 
-  // Without release data, keep Node issues as they are instead of resolving them.
-  const keep = shared.nodeData
-    ? []
-    : existing.filter((i) => i.kind === "node_security" || i.kind === "node_eol");
+  // A runtime without release data right now (offline, first start) keeps its issues as they
+  // are instead of resolving them. The runtime is the second part of the key.
+  const keep = existing.filter(
+    (i) =>
+      (i.kind === "runtime_security" || i.kind === "runtime_eol") &&
+      !shared.evaluators.has(i.key.split(":")[1] ?? ""),
+  );
   const result = reconcile(
     project.id,
     existing.filter((i) => !keep.includes(i)),

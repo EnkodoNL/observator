@@ -30,6 +30,7 @@ routerAdd(
       for (const c of list) {
         const record = new Record(collection);
         record.set("project", projectId);
+        record.set("ecosystem", String(c.ecosystem || "npm"));
         record.set("name", String(c.name));
         record.set("version", String(c.version));
         record.set("direct", c.direct === true);

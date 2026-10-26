@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { EventType, IssueEvent } from "@/lib/issues/events";
-import type { NodeEolData, NodeSecurityData, StaleData, VulnIssueData } from "@/lib/issues/types";
-import { pinnedImage } from "@/lib/node/advice";
+import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "@/lib/issues/types";
+import { pinFor, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
 import { MAX_ITEMS, type Message, type MessageAction, type MessageItem } from "./message";
@@ -47,7 +47,7 @@ function severityCounts(events: IssueEvent[]): string {
 
 /**
  * One message for all events of one type in one run, so ten new advisories in a build,
- * or one Node security release that affects four projects, become a single message.
+ * or one Node.js security release that affects four projects, become a single message.
  */
 export function renderEvents(
   type: Exclude<EventType, "digest.weekly">,
@@ -60,61 +60,68 @@ export function renderEvents(
   const prefix = reminder ? "Still open: " : "";
 
   switch (type) {
-    case "node.security_update": {
+    case "runtime.security_update": {
+      const pinText = (d: RuntimeSecurityData) => {
+        const pin = pinFor(d.runtime, d.target, d.os);
+        return pin ? `pin ${pin} and redeploy` : `move to ${d.target} and redeploy`;
+      };
       const items = events.map((e) => {
-        const d = e.data as unknown as NodeSecurityData;
+        const d = e.data as unknown as RuntimeSecurityData;
         return {
           severity: "high" as Severity,
           title: name(ctx, e.projectId),
-          detail: `runs ${d.running}; pin ${pinnedImage(d.target, d.os)} and redeploy`,
+          detail: `runs ${runtimeLabel(d.runtime)} ${d.running}; ${pinText(d)}`,
           url: `${ctx.appUrl}/projects/${ctx.projects.get(e.projectId)?.slug ?? ""}`,
         };
       });
-      const targets = [...new Set(events.map((e) => (e.data as unknown as NodeSecurityData).target))];
-      const first = events[0].data as unknown as NodeSecurityData;
+      const all = events.map((e) => e.data as unknown as RuntimeSecurityData);
+      const runtimes = [...new Set(all.map((d) => runtimeLabel(d.runtime)))].join(" and ");
+      const targets = [...new Set(all.map((d) => d.target))];
+      const first = all[0];
       return {
         event: type,
         tone: "high",
         title:
-          projects.length === 1
-            ? `${prefix}Node security update for ${name(ctx, projects[0])}: ${first.target}`
-            : `${prefix}Node security update for ${plural(projects.length, "project")}`,
+          projects.length === 1 && events.length === 1
+            ? `${prefix}${runtimeLabel(first.runtime)} security update for ${name(ctx, projects[0])}: ${first.target}`
+            : `${prefix}${runtimes} security update for ${plural(projects.length, "project")}`,
         summary:
-          projects.length === 1
-            ? `${name(ctx, projects[0])} runs Node ${first.running}. Node ${first.securityReleases.at(-1)} is a security release. Pin ${pinnedImage(first.target, first.os)} and redeploy.`
-            : `A newer Node security release is out (${targets.join(", ")}). These projects still run an older version:`,
-        ...cap(projects.length === 1 ? [] : items),
+          projects.length === 1 && events.length === 1
+            ? `${name(ctx, projects[0])} runs ${runtimeLabel(first.runtime)} ${first.running}. ${first.securityReleases.at(-1)} is a security release. ${pinText(first).replace(/^./, (c) => c.toUpperCase())}.`
+            : `A newer ${runtimes} security release is out (${targets.join(", ")}). These projects still run an older version:`,
+        ...cap(projects.length === 1 && events.length === 1 ? [] : items),
         actions:
           projects.length === 1
             ? projectActions(ctx, projects)
-            : [{ label: "Node overview", url: `${ctx.appUrl}/node` }],
+            : [{ label: "Runtimes overview", url: `${ctx.appUrl}/runtimes` }],
       };
     }
 
-    case "node.eol": {
+    case "runtime.eol": {
       const items = events.map((e) => {
-        const d = e.data as unknown as NodeEolData;
+        const d = e.data as unknown as RuntimeEolData;
         return {
           severity: e.severity,
           title: name(ctx, e.projectId),
           detail:
             d.phase === "eol"
-              ? `Node ${d.major} has been end-of-life since ${d.end}`
-              : `Node ${d.major} ends on ${d.end}`,
+              ? `${runtimeLabel(d.runtime)} ${d.line} has been end-of-life since ${d.end}`
+              : `${runtimeLabel(d.runtime)} ${d.line} ends on ${d.end}`,
         };
       });
-      const d = events[0].data as unknown as NodeEolData;
+      const d = events[0].data as unknown as RuntimeEolData;
+      const label = runtimeLabel(d.runtime);
       return {
         event: type,
-        tone: events.some((e) => (e.data as unknown as NodeEolData).phase === "eol") ? "high" : "moderate",
+        tone: events.some((e) => (e.data as unknown as RuntimeEolData).phase === "eol") ? "high" : "moderate",
         title:
           d.phase === "eol"
-            ? `${prefix}Node ${d.major} is end-of-life (${plural(projects.length, "project")})`
-            : `${prefix}Node ${d.major} reaches end-of-life on ${d.end}`,
+            ? `${prefix}${label} ${d.line} is end-of-life (${plural(projects.length, "project")})`
+            : `${prefix}${label} ${d.line} reaches end-of-life on ${d.end}`,
         summary:
           d.phase === "eol"
-            ? "These projects run a Node release line that no longer gets security fixes. Move them to a supported LTS line."
-            : "These projects run a Node release line that stops getting security fixes within 30 days.",
+            ? `These projects run a ${label} release line that no longer gets security fixes. Move them to a supported line.`
+            : `These projects run a ${label} release line that stops getting security fixes within 30 days.`,
         ...cap(items),
         actions: projectActions(ctx, projectIds),
       };
@@ -193,7 +200,7 @@ export function testMessage(appUrl: string): Message {
       {
         severity: "high",
         title: "example-app",
-        detail: "runs Node 22.11.0; pin node:22.23.4-alpine and redeploy",
+        detail: "runs Node.js 22.11.0; pin node:22.23.4-alpine and redeploy",
       },
       {
         severity: "critical",
