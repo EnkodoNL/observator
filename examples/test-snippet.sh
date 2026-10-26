@@ -76,7 +76,7 @@ build no-key Dockerfile node:22-alpine "$OBSERVATOR_URL" "" &&
   { ! output | grep -q 'Observator:' || fail "reported without a key"; }
 
 build bad-key Dockerfile node:22-alpine "$OBSERVATOR_URL" "obs_invalid" &&
-  { output | grep -q 'report failed, continuing' || fail "bad key did not fall back"; }
+  { output | grep -q 'not recorded: unknown key obs_inval' || fail "bad key was not explained"; }
 
 build unreachable Dockerfile node:22-alpine "http://127.0.0.1:9" "$OBSERVATOR_KEY" &&
   { output | grep -q 'report failed, continuing' || fail "unreachable server did not fall back"; }
