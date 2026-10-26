@@ -34,7 +34,7 @@ export function eventsForChannel(
   return events.filter((e) => {
     if (!types.has(e.type)) return false;
     if (projects.length && !projects.includes(e.projectId)) return false;
-    // The severity filter is about packages; Node security updates always come through.
+    // The severity filter is about packages; runtime security updates always come through.
     if (e.type.startsWith("vuln.") && channel.minSeverity && !atLeast(e.severity, channel.minSeverity))
       return false;
     return true;

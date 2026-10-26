@@ -2,16 +2,34 @@
 import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
 
+/** The code with every occurrence of `placeholder` marked, for a value the user still has to fill in. */
+function Highlighted({ code, placeholder }: { code: string; placeholder?: string }) {
+  if (!placeholder || !code.includes(placeholder)) return code;
+  return code.split(placeholder).flatMap((part, i) =>
+    i === 0
+      ? [part]
+      : [
+          <mark key={i} className="rounded-sm bg-danger/10 px-0.5 text-danger">
+            {placeholder}
+          </mark>,
+          part,
+        ],
+  );
+}
+
 export function CodeBlock({
   code,
   label,
   className,
   copy = true,
+  placeholder,
 }: {
   code: string;
   label?: string;
   className?: string;
   copy?: boolean;
+  /** Part of `code` to mark in red, such as a key that is not shown again. */
+  placeholder?: string;
 }) {
   const multiline = code.includes("\n");
 
@@ -24,7 +42,7 @@ export function CodeBlock({
         )}
       >
         <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[12.5px] whitespace-nowrap">
-          {code}
+          <Highlighted code={code} placeholder={placeholder} />
         </code>
         {copy && <CopyButton value={code} variant="ghost" />}
       </div>
@@ -40,7 +58,9 @@ export function CodeBlock({
         </div>
       )}
       <pre className="overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed">
-        <code>{code}</code>
+        <code>
+          <Highlighted code={code} placeholder={placeholder} />
+        </code>
       </pre>
     </div>
   );
