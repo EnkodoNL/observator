@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: { default: "Observator", template: "%s · Observator" },
-  description: "Self-hosted Node.js version and dependency monitor.",
+  description: "Self-hosted monitor for the runtime versions and packages your containers really run.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

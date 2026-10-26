@@ -23,7 +23,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 
 const NAV = [
   { href: "/", label: "Overview", match: (p: string) => p === "/" || p.startsWith("/projects") },
-  { href: "/node", label: "Node", match: (p: string) => p.startsWith("/node") },
+  { href: "/runtimes", label: "Runtimes", match: (p: string) => p.startsWith("/runtimes") },
   { href: "/packages", label: "Packages", match: (p: string) => p.startsWith("/packages") },
   { href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") },
 ] as const;

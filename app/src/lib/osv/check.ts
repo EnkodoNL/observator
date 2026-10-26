@@ -34,10 +34,10 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out;
 }
 
-const pairKey = (p: OsvQuery) => `${p.name}@${p.version}`;
+const pairKey = (p: OsvQuery) => `${p.ecosystem}:${p.name}@${p.version}`;
 
 /**
- * Checks name@version pairs against OSV and brings the vulnerabilities cache in line:
+ * Checks ecosystem:name@version pairs against OSV and brings the vulnerabilities cache in line:
  * new advisories are added, changed ones updated, and withdrawn or no longer matching
  * ones removed. Only pairs that were checked are touched.
  */
@@ -50,12 +50,10 @@ export async function checkPackages(
 
   const results = await queryBatch(unique, signal);
   const pb = await adminPb();
-  const existing = await pb
-    .collection("vulnerabilities")
-    .getFullList<VulnerabilityRecord>({ filter: "ecosystem = 'npm'" });
+  const existing = await pb.collection("vulnerabilities").getFullList<VulnerabilityRecord>();
   const byPair = new Map<string, VulnerabilityRecord[]>();
   for (const row of existing) {
-    const key = `${row.name}@${row.version}`;
+    const key = pairKey(row);
     byPair.set(key, [...(byPair.get(key) ?? []), row]);
   }
 
@@ -92,12 +90,12 @@ export async function checkPackages(
       const data = {
         name: pair.name,
         version: pair.version,
-        ecosystem: "npm",
+        ecosystem: pair.ecosystem,
         osvId: vuln.id,
         aliases: vuln.aliases ?? [],
         severity: osvSeverity(vuln),
         summary: (vuln.summary || vuln.details || "").slice(0, 2000),
-        fixedIn: fixedIn(vuln, pair.name, pair.version),
+        fixedIn: fixedIn(vuln, pair),
         url: osvUrl(vuln.id),
         modified: vuln.modified ? toPbDate(new Date(vuln.modified)) : "",
         checkedAt: now,
@@ -115,9 +113,9 @@ export async function checkPackages(
 
 export async function checkProject(projectId: string, signal?: AbortSignal): Promise<void> {
   const pb = await adminPb();
-  const components = await pb.collection("components").getFullList<{ name: string; version: string }>({
+  const components = await pb.collection("components").getFullList<OsvQuery>({
     filter: pb.filter("project = {:id}", { id: projectId }),
-    fields: "name,version",
+    fields: "ecosystem,name,version",
   });
   await checkPackages(components, signal);
   await pb.collection("projects").update(projectId, { vulnsCheckedAt: toPbDate(new Date()) });
@@ -126,11 +124,9 @@ export async function checkProject(projectId: string, signal?: AbortSignal): Pro
 /** Daily re-check of every package currently in use by any project. */
 export async function checkAllProjects(): Promise<{ checked: number; vulnerable: number }> {
   const pb = await adminPb();
-  const components = await pb
-    .collection("components")
-    .getFullList<{ name: string; version: string; project: string }>({
-      fields: "name,version,project",
-    });
+  const components = await pb.collection("components").getFullList<OsvQuery & { project: string }>({
+    fields: "ecosystem,name,version,project",
+  });
   const result = await checkPackages(components);
   const now = toPbDate(new Date());
   for (const id of new Set(components.map((c) => c.project))) {

@@ -9,9 +9,8 @@ import { StatusBadge } from "@/components/status";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { getOverview, type ProjectSummary } from "@/lib/data/views";
 import { effectiveLabels, groupServers, hasLabels, labelKeys, sectionsByLabel } from "@/lib/labels";
-import { evaluateNode } from "@/lib/node/evaluate";
-import { getNodeData } from "@/lib/node/releases";
-import { lineDescription } from "@/lib/node/describe";
+import { loadEvaluators } from "@/lib/runtimes";
+import { lineDescription, primaryRuntime } from "@/lib/runtimes/labels";
 import { getSettings } from "@/lib/settings";
 import { isStale, worstStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -38,7 +37,13 @@ function dashboardHref(group: string, labels: string[]): string {
 
 export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
-  const [all, settings, nodeData] = await Promise.all([getOverview(), getSettings(), getNodeData()]);
+  const [all, settings, evaluators] = await Promise.all([getOverview(), getSettings(), loadEvaluators()]);
+  /** The release line of a card's lead runtime, when it is checked. */
+  const lineFor = (i: ProjectSummary) => {
+    const lead = primaryRuntime(i.latest?.runtimes);
+    const evaluate = lead ? evaluators.get(lead.name) : undefined;
+    return lead && evaluate ? lineDescription(evaluate(lead.version)) : null;
+  };
 
   const wanted = [params.label ?? []].flat().map(String);
   const keys = labelKeys(all.map(labelsOf));
@@ -54,7 +59,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
       ? [{ value: undefined as string | null | undefined, items }]
       : sectionsByLabel(items, group, labelsOf);
   const built = items.filter((i) => i.latest);
-  const nodeFix = built.filter((i) => i.summary.nodeSecurity);
+  const runtimeFix = built.filter((i) => i.summary.runtimeSecurity.length > 0);
   const vulnerable = built.filter((i) => i.summary.vulnCount > 0);
   const stale = items.filter((i) => isStale(i.summary, i.lastBuildAt, settings.staleDays));
 
@@ -66,10 +71,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           <p className="mt-1 text-sm text-muted-foreground">
             {all.length === 0
               ? "Nothing to watch yet."
-              : nodeFix.length > 0
-                ? `${nodeFix.length} of ${plural(built.length, "project")} ${nodeFix.length === 1 ? "runs" : "run"} a Node version with an open security fix.`
+              : runtimeFix.length > 0
+                ? `${runtimeFix.length} of ${plural(built.length, "project")} ${runtimeFix.length === 1 ? "runs" : "run"} a runtime version with an open security fix.`
                 : vulnerable.length > 0
-                  ? `Node is up to date everywhere; ${plural(vulnerable.length, "project")} has vulnerable packages.`
+                  ? `Runtimes are up to date everywhere; ${plural(vulnerable.length, "project")} has vulnerable packages.`
                   : "Nothing needs your attention."}
           </p>
         </div>
@@ -81,13 +86,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
       {all.length > 0 && (
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <StatTile
-            label="Node security fixes"
-            value={nodeFix.length}
-            tone={nodeFix.length > 0 ? "warn" : "neutral"}
+            label="Runtime security fixes"
+            value={runtimeFix.length}
+            tone={runtimeFix.length > 0 ? "warn" : "neutral"}
             detail={
-              nodeFix.length > 0
-                ? "Projects on a Node version with a newer security release"
-                : "Every project is on a patched Node"
+              runtimeFix.length > 0
+                ? "Projects on a runtime version with a newer security release"
+                : "Every checked runtime is patched"
             }
           />
           <StatTile
@@ -104,7 +109,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
         <div className="rounded-xl border border-dashed p-12 text-center">
           <p className="font-medium">Add your first project</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            Create a project, paste the snippet into its Dockerfile, and the next build reports its Node
+            Create a project, paste the snippet into its Dockerfile, and the next build reports its runtime
             version and packages here.
           </p>
           <Button className="mt-4" nativeButton={false} render={<Link href="/settings/projects" />}>
@@ -204,11 +209,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
                       key={entry.item.project.id}
                       item={entry.item}
                       staleDays={settings.staleDays}
-                      line={
-                        entry.item.latest && nodeData
-                          ? lineDescription(evaluateNode(entry.item.latest.nodeVersion, nodeData))
-                          : null
-                      }
+                      line={lineFor(entry.item)}
                     />
                   ),
                 )}

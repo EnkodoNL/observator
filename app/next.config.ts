@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // /node became /runtimes; links in older notifications still point there.
+  async redirects() {
+    return [{ source: "/node", destination: "/runtimes", permanent: true }];
+  },
   async headers() {
     return [
       {

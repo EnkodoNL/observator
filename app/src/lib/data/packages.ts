@@ -44,6 +44,8 @@ export interface PackageAdvisory {
 
 export interface PackageDetail {
   name: string;
+  /** "npm" for now; links and latest versions are only shown where Observator knows the registry. */
+  ecosystem: string;
   latest?: string;
   versions: string[];
   usages: PackageUsage[];
@@ -201,9 +203,11 @@ export async function packageDetail(name: string): Promise<PackageDetail | null>
     advisories.set(d.osvId, a);
   }
 
+  const ecosystem = rows[0].ecosystem || "npm";
   return {
     name,
-    latest: latest[name],
+    ecosystem,
+    latest: ecosystem === "npm" ? latest[name] : undefined,
     versions: [...new Set(usages.map((u) => u.version))].sort(sortVersions),
     usages,
     advisories: [...advisories.values()]

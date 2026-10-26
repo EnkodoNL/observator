@@ -42,8 +42,8 @@ const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
 ];
 
 const EVENT_HINT: Record<EventType, string> = {
-  "node.security_update": "A project runs a Node version with a newer security release",
-  "node.eol": "A project's Node line is end-of-life, or will be within 30 days",
+  "runtime.security_update": "A project runs a runtime version with a newer security release",
+  "runtime.eol": "A project's runtime line is end-of-life, or will be within 30 days",
   "vuln.new": "New advisories in a project's packages",
   "vuln.resolved": "A reported advisory is gone after a new build",
   "project.stale": "A project has not reported for a while",
@@ -292,7 +292,7 @@ function ChannelFields({
             ))}
           </NativeSelect>
           <FieldDescription>
-            Node security updates are always sent, whatever this filter says.
+            Runtime security updates are always sent, whatever this filter says.
           </FieldDescription>
         </Field>
 

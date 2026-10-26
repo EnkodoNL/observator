@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import semver from "semver";
+import type { OsvQuery } from "./client";
 import type { OsvVuln } from "./types";
 
 const lt = (a: string, b: string) => semver.valid(a) && semver.valid(b) && semver.lt(a, b);
@@ -10,12 +11,12 @@ const lte = (a: string, b: string) => semver.valid(a) && semver.valid(b) && semv
  * closes the affected interval containing the version. Falls back to the smallest fix above
  * the installed version when the ranges are not semver.
  */
-export function fixedIn(vuln: OsvVuln, name: string, version: string): string {
+export function fixedIn(vuln: OsvVuln, { ecosystem, name, version }: OsvQuery): string {
   const candidates: string[] = [];
   const fallback: string[] = [];
 
   for (const affected of vuln.affected ?? []) {
-    if (affected.package?.name !== name) continue;
+    if (affected.package?.name !== name || affected.package.ecosystem !== ecosystem) continue;
     for (const range of affected.ranges ?? []) {
       let introduced: string | null = null;
       for (const event of range.events) {

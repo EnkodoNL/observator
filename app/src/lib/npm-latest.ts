@@ -46,7 +46,7 @@ export async function refreshLatest(names?: string[]): Promise<number> {
     const pb = await adminPb();
     const direct = await pb
       .collection("components")
-      .getFullList<{ name: string }>({ filter: "direct = true", fields: "name" });
+      .getFullList<{ name: string }>({ filter: "direct = true && ecosystem = 'npm'", fields: "name" });
     names = direct.map((d) => d.name);
   }
   const stored = (await kvGet<Latest>(KEY)) ?? {};

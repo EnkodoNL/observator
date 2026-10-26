@@ -56,7 +56,7 @@ export function ChannelList({
           <p className="font-medium">No channels yet</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
             Add Slack, Telegram, e-mail or one of the others, and Observator tells you when a project needs a
-            Node update or has a new vulnerable package.
+            runtime update or has a new vulnerable package.
           </p>
         </div>
       ) : (

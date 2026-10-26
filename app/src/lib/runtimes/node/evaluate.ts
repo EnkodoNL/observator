@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import semver from "semver";
+import type { Evaluator, RuntimePhase } from "../types";
 
 export interface NodeRelease {
   version: string;
@@ -112,3 +113,34 @@ export const PHASE_LABEL: Record<LinePhase, string> = {
   eol: "End-of-life",
   unknown: "Unknown line",
 };
+
+const PHASE: Record<LinePhase, RuntimePhase> = {
+  current: "current",
+  "active-lts": "active",
+  maintenance: "maintenance",
+  eol: "eol",
+  unknown: "unknown",
+};
+
+/** Node's evaluation in the shape every runtime shares. */
+export const nodeEvaluator =
+  (data: NodeData): Evaluator =>
+  (version, now) => {
+    const e = evaluateNode(version, data, now);
+    return {
+      runtime: "node",
+      label: "Node.js",
+      version: e.version,
+      line: String(e.major),
+      phase: PHASE[e.phase],
+      phaseLabel: PHASE_LABEL[e.phase],
+      codename: e.codename,
+      end: e.end,
+      daysToEol: e.daysToEol,
+      eolSoon: e.eolSoon,
+      latestInLine: e.latestInLine,
+      securityUpdate: e.securityUpdate,
+      patchAvailable: e.patchAvailable,
+      latestSupported: e.latestLts,
+    };
+  };

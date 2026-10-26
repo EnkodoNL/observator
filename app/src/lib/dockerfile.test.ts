@@ -47,14 +47,11 @@ describe("analyzeDockerfile", () => {
   it("copies the lockfile into a Next.js standalone stage from the install stage", () => {
     const a = ok(NEXT_STANDALONE);
     expect(a.stage).toBe("runner");
-    expect(a.variant).toBe("alpine");
     expect(a.lockfileFrom).toEqual({ stage: "deps", dir: "/app" });
     expect(a.notes.map((n) => n.text).join("\n")).toContain("Next.js standalone output (line 21)");
     expect(a.out.startsWith(NEXT_STANDALONE)).toBe(true);
     expect(
-      a.out.endsWith(
-        dockerSnippet("alpine", URL, { stage: "runner", lockfileFrom: { stage: "deps", dir: "/app" } }),
-      ),
+      a.out.endsWith(dockerSnippet(URL, { stage: "runner", lockfileFrom: { stage: "deps", dir: "/app" } })),
     ).toBe(true);
   });
 
@@ -84,18 +81,11 @@ COPY --from=app /package.json /package-lock.json ./`);
     expect(a.lines[2].text).toBe("FROM node:22-slim AS runtime");
   });
 
-  it.each([
-    ["node:22-alpine3.22", "alpine"],
-    ["node:22-bookworm-slim", "node"],
-    ["node:22", "curl"],
-    ["docker.io/library/node:lts", "curl"],
-    ["ghcr.io/acme/node-base:1", "node"],
-  ])("chooses the variant for %s", (image, variant) => {
-    expect(ok(`FROM ${image} AS app\nWORKDIR /app\nCOPY . .`).variant).toBe(variant);
-  });
-
-  it("follows FROM chains to the real base image", () => {
-    expect(ok("FROM node:24-slim AS base\nFROM base AS app\nCOPY . .").variant).toBe("node");
+  it("names the real base image, following FROM chains", () => {
+    const a = ok("FROM node:24-slim AS base\nFROM base AS app\nCOPY . .");
+    expect(a.notes.find((n) => n.level === "ok" && n.text.startsWith("Base image"))?.text).toContain(
+      "node:24-slim",
+    );
   });
 
   it("warns for images without a shell", () => {
@@ -143,7 +133,20 @@ WORKDIR /app
 COPY package.json ./
 COPY src ./src`);
     expect(a.lockfileFrom).toBeUndefined();
-    expect(a.notes.find((n) => n.level === "warn")?.text).toContain("only the Node version");
+    expect(a.notes.find((n) => n.level === "warn")?.text).toContain(
+      "only the runtime versions would be checked",
+    );
+  });
+
+  it("reports only the runtime for an app without package.json", () => {
+    const a = ok(`FROM python:3.12-slim AS app
+WORKDIR /app
+COPY main.py ./
+CMD ["python3", "main.py"]`);
+    expect(a.lockfileFrom).toBeUndefined();
+    expect(a.notes.some((n) => n.level === "warn")).toBe(false);
+    expect(a.notes.map((n) => n.text).join("\n")).toContain("only the runtime versions are reported");
+    expect(a.out.endsWith(dockerSnippet(URL))).toBe(true);
   });
 
   it("replaces an earlier snippet instead of adding a second one", () => {
