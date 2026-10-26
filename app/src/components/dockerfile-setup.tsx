@@ -93,7 +93,7 @@ function StepByStep({ url, keyless }: { url: string; keyless: boolean }) {
           <Line>COPY . .</Line>
           <Line>CMD [&quot;node&quot;, &quot;server.js&quot;]</Line>
           <Line />
-          <Line mark={2}># --- Observator: reports Node version + lockfile ... ---</Line>
+          <Line mark={2}># --- Observator: reports runtime versions + lockfile ... ---</Line>
           <Line tint>
             FROM <Stage name={stage} /> AS observator
           </Line>
@@ -164,7 +164,7 @@ function StepByStep({ url, keyless }: { url: string; keyless: boolean }) {
             The last stage has no lockfile
             <span className="block text-xs text-muted-foreground">
               Such as a Next.js standalone image: it has <code className="font-mono">package.json</code> but
-              not the lockfile, so only the Node version would be checked.
+              not the lockfile, so only the runtime versions would be checked.
             </span>
           </span>
         </label>

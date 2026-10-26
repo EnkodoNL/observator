@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { KeyRoundIcon, Loader2Icon, NetworkIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { BookOpenIcon, KeyRoundIcon, Loader2Icon, NetworkIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DockerfileSetup } from "@/components/dockerfile-setup";
@@ -146,14 +146,16 @@ export function SharedKeyList({
 }) {
   const [revoking, setRevoking] = useState<SharedKeyItem | null>(null);
   const [allowing, setAllowing] = useState<SharedKeyItem | null>(null);
+  const [showing, setShowing] = useState<SharedKeyItem | null>(null);
   if (keys.length === 0) return null;
   return (
     <>
       <ul className="divide-y rounded-xl border">
         {keys.map((k) => (
-          <li key={k.id} className="flex items-center gap-3 px-4 py-3">
+          <li key={k.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
             <KeyRoundIcon className="size-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
+            {/* On a phone the buttons go below the name instead of squeezing it. */}
+            <div className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] sm:basis-0">
               <p className="truncate font-medium">
                 {k.name}{" "}
                 <span className="font-mono text-xs font-normal text-muted-foreground">{k.prefix}…</span>
@@ -166,17 +168,22 @@ export function SharedKeyList({
                   ` · ${k.allowedIps.length} allowed address${k.allowedIps.length === 1 ? "" : "es"}`}
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setAllowing(k)}>
-              <NetworkIcon /> IP allowlist
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Revoke ${k.name}`}
-              onClick={() => setRevoking(k)}
-            >
-              <Trash2Icon />
-            </Button>
+            <div className="ml-7 flex items-center gap-2 sm:ml-0">
+              <Button variant="outline" size="sm" onClick={() => setShowing(k)}>
+                <BookOpenIcon /> Setup
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAllowing(k)}>
+                <NetworkIcon /> IP allowlist
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Revoke ${k.name}`}
+                onClick={() => setRevoking(k)}
+              >
+                <Trash2Icon />
+              </Button>
+            </div>
           </li>
         ))}
       </ul>
@@ -200,6 +207,25 @@ export function SharedKeyList({
           </p>
         </div>
       )}
+      <Dialog open={showing !== null} onOpenChange={(o) => !o && setShowing(null)}>
+        <DialogContent className="max-h-[90vh] grid-cols-1 overflow-y-auto sm:max-w-2xl">
+          {showing && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Set up {showing.name}</DialogTitle>
+                <DialogDescription>
+                  The steps from when the key was created. Every app gets the same key and its own project
+                  name.
+                </DialogDescription>
+              </DialogHeader>
+              <KeyReveal apiKey={null} prefix={showing.prefix} appUrl={appUrl} shared />
+              <DialogFooter>
+                <Button onClick={() => setShowing(null)}>Done</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
       {allowing && (
         <AllowlistDialog
           key={allowing.id}
