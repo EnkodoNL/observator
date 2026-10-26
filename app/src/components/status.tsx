@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { cn } from "@/lib/utils";
 import type { Severity } from "@/lib/pb/types";
-import type { ProjectStatus } from "@/lib/status";
+import { STATUS_LABEL, type ProjectStatus } from "@/lib/status";
 import { SEVERITY_LABEL } from "@/lib/severity";
 
-const STATUS: Record<ProjectStatus, { label: string; className: string; dot: string }> = {
-  none: {
-    label: "No builds yet",
-    className: "text-muted-foreground bg-muted",
-    dot: "bg-muted-foreground/50",
-  },
-  ok: { label: "OK", className: "text-ok bg-ok/10", dot: "bg-ok" },
-  update: { label: "Update available", className: "text-warn bg-warn/12", dot: "bg-warn" },
-  vulnerable: { label: "Vulnerable", className: "text-danger bg-danger/10", dot: "bg-danger" },
+const STATUS: Record<ProjectStatus, { className: string; dot: string }> = {
+  none: { className: "text-muted-foreground bg-muted", dot: "bg-muted-foreground/50" },
+  ok: { className: "text-ok bg-ok/10", dot: "bg-ok" },
+  update: { className: "text-warn bg-warn/12", dot: "bg-warn" },
+  vulnerable: { className: "text-danger bg-danger/10", dot: "bg-danger" },
 };
 
 export function StatusBadge({ status, className }: { status: ProjectStatus; className?: string }) {
@@ -26,7 +22,7 @@ export function StatusBadge({ status, className }: { status: ProjectStatus; clas
       )}
     >
       <span className={cn("size-1.5 rounded-full", s.dot)} aria-hidden="true" />
-      {s.label}
+      {STATUS_LABEL[status]}
     </span>
   );
 }

@@ -4,8 +4,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
-import { createIngestKey, listIngestKeys, revokeIngestKey, setAllowedIps } from "@/lib/data/ingest-keys";
-import { type AllowEntry, displayEntry, overlaps, parseAllowlist } from "@/lib/ingest/allowlist";
+import { createIngestKey, revokeIngestKey, updateSharedKey } from "@/lib/data/ingest-keys";
+import type { AllowEntry } from "@/lib/ingest/allowlist";
 import { createProject, deleteProject, rotateApiKey } from "@/lib/data/projects";
 import { type FormState, formObject, zodState } from "@/lib/forms";
 
@@ -57,22 +57,12 @@ export async function updateAllowlistAction(
   text: string,
 ): Promise<{ entries?: AllowEntry[]; error?: string }> {
   await requireUser();
-  const keyId = z.string().min(1).parse(id);
-  const { entries, errors } = parseAllowlist(z.string().max(20_000).parse(text));
-  if (errors.length) return { error: errors.join("\n") };
-  // A report without a key must belong to exactly one shared key.
-  for (const other of (await listIngestKeys()).filter((k) => k.id !== keyId)) {
-    for (const entry of entries) {
-      const clash = (other.allowedIps ?? []).find((o) => overlaps(entry.cidr, o.cidr));
-      if (clash)
-        return {
-          error: `${displayEntry(entry.cidr)} overlaps with ${displayEntry(clash.cidr)} on “${other.name}”. An address can belong to one shared key only.`,
-        };
-    }
-  }
-  await setAllowedIps(keyId, entries);
+  const res = await updateSharedKey(z.string().min(1).parse(id), {
+    allowlist: z.string().max(20_000).parse(text),
+  });
+  if (res.error) return { error: res.error };
   revalidatePath("/settings/projects");
-  return { entries };
+  return { entries: res.key?.allowedIps ?? [] };
 }
 
 export async function revokeSharedKeyAction(id: string): Promise<void> {

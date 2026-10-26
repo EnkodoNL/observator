@@ -3,22 +3,12 @@ import { ShieldAlertIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-reac
 import { CodeBlock } from "@/components/code-block";
 import type { NodeEolData, NodeSecurityData } from "@/lib/issues/types";
 import { pinnedImage } from "@/lib/node/advice";
-import { PHASE_LABEL, type NodeEvaluation } from "@/lib/node/evaluate";
+import { lineDescription } from "@/lib/node/describe";
+import type { NodeEvaluation } from "@/lib/node/evaluate";
 import { pbDate } from "@/lib/pb/admin";
 import type { BuildRecord } from "@/lib/pb/types";
 import type { StatusSummary } from "@/lib/status";
 import { formatDate, timeAgo } from "@/lib/time";
-
-export function lineDescription(evaluation: NodeEvaluation | null): string | null {
-  if (!evaluation || evaluation.phase === "unknown") return null;
-  const name = evaluation.codename ? `${evaluation.codename} · ` : "";
-  const until = evaluation.end
-    ? evaluation.phase === "eol"
-      ? ` since ${formatDate(new Date(evaluation.end))}`
-      : ` until ${formatDate(new Date(evaluation.end))}`
-    : "";
-  return `Node ${evaluation.major} · ${name}${PHASE_LABEL[evaluation.phase]}${until}`;
-}
 
 export function NodePanel({
   latest,

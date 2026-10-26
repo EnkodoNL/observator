@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { dockerSnippet, type LockfileSource, type SnippetVariant } from "./snippet";
+import { dockerSnippet, type LockfileSource, type SnippetOptions, type SnippetVariant } from "./snippet";
 
 /**
  * Reads a pasted Dockerfile and works out how to add the snippet: which stage is last and
@@ -288,7 +288,7 @@ const describe = (o: Origin) =>
 export function analyzeDockerfile(
   text: string,
   url: string,
-  { keyless = false }: { keyless?: boolean } = {},
+  options: Pick<SnippetOptions, "keyless" | "key" | "project" | "labels"> = {},
 ): DockerfileAnalysis {
   const all = instructions(text);
   const stages: Stage[] = [];
@@ -422,7 +422,7 @@ export function analyzeDockerfile(
     }
   }
 
-  const snippet = dockerSnippet(variant, url, { stage, lockfileFrom, keyless }).split("\n");
+  const snippet = dockerSnippet(variant, url, { ...options, stage, lockfileFrom }).split("\n");
   const result: DockerfileLine[] = lines.map((l, i) => ({ text: l, added: added.has(i) }));
   result.push({ text: "", added: true }, ...snippet.map((text) => ({ text, added: true })));
   return { ok: true, stage, variant, lockfileFrom, notes, lines: result };

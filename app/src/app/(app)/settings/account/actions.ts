@@ -14,7 +14,9 @@ import {
   regenerateRecoveryCodes,
   twoFactorStatus,
 } from "@/lib/auth/two-factor";
+import { createMcpToken, revokeMcpToken } from "@/lib/data/mcp-tokens";
 import { type FormState, formObject, zodState } from "@/lib/forms";
+import { RateLimiter } from "@/lib/rate-limit";
 import { adminPb } from "@/lib/pb/admin";
 import type { PasskeyRecord } from "@/lib/pb/types";
 
@@ -114,4 +116,42 @@ export async function disableTotpAction(code: string): Promise<{ ok?: boolean; e
   await disableTotp(user.id);
   revalidatePath("/settings/account");
   return { ok: true };
+}
+
+const g = globalThis as typeof globalThis & { __mcpTokenLimiter?: RateLimiter };
+// Creating a token asks for the password again; this limits guessing it from a stolen session.
+const tokenLimiter = (g.__mcpTokenLimiter ??= RateLimiter.perWindow(10, 15 * 60 * 1000));
+
+const mcpTokenSchema = z.object({
+  name: z.string().trim().min(1, "Give the token a name").max(100),
+  canWrite: z.boolean(),
+  password: z.string().min(1, "Enter your password"),
+});
+
+/**
+ * A token acts as you on /api/mcp without a second factor, so it needs the password again
+ * (sudo mode), on top of the signed-in session.
+ */
+export async function createMcpTokenAction(
+  input: z.infer<typeof mcpTokenSchema>,
+): Promise<{ token?: string; error?: string }> {
+  const { user } = await requireUser();
+  const parsed = mcpTokenSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!tokenLimiter.take(user.id)) return { error: "Too many attempts. Try again in a few minutes." };
+  try {
+    await passwordLogin(user.email, parsed.data.password);
+  } catch {
+    return { error: "That password is not right." };
+  }
+  tokenLimiter.reset(user.id);
+  const { token } = await createMcpToken(user.id, parsed.data.name, parsed.data.canWrite);
+  revalidatePath("/settings/account");
+  return { token };
+}
+
+export async function revokeMcpTokenAction(id: string): Promise<void> {
+  const { user } = await requireUser();
+  await revokeMcpToken(user.id, z.string().min(1).parse(id));
+  revalidatePath("/settings/account");
 }

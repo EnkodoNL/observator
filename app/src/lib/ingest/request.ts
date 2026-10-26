@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { parseLabels } from "@/lib/labels";
 import { gunzipSync } from "node:zlib";
 import { LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
 import { readTar, TarError } from "./tar";
@@ -21,6 +22,8 @@ export interface IngestMeta {
   arch: string;
   os: string;
   failOn: FailOn;
+  /** OBSERVATOR_LABELS; null when the header is absent (older snippets), so labels stay. */
+  labels: { labels: string[]; invalid: string[] } | null;
 }
 
 export interface FailOn {
@@ -134,5 +137,13 @@ export function parseMeta(headers: Headers): IngestMeta {
   const osHeader = headers.get("x-os")?.trim().toLowerCase() ?? "";
   const os = /^[a-z0-9._-]{1,32}$/.test(osHeader) ? osHeader : "";
 
-  return { nodeVersion: version, platform, arch, os, failOn: parseFailOn(headers.get("x-fail-on")) };
+  const labelHeader = headers.get("x-labels");
+  return {
+    nodeVersion: version,
+    platform,
+    arch,
+    os,
+    failOn: parseFailOn(headers.get("x-fail-on")),
+    labels: labelHeader === null ? null : parseLabels(labelHeader.slice(0, 2000)),
+  };
 }

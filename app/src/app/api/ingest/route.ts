@@ -151,7 +151,14 @@ export async function POST(request: Request) {
           packageCount: outcome.packageCount,
           lockfileChanged: outcome.lockfileChanged,
           parseError: outcome.parseError,
-          warnings: analysis.warnings,
+          warnings: [
+            ...(meta.labels?.invalid.length
+              ? [
+                  `labels ignored: ${meta.labels.invalid.join(", ")} (use word or key:value, lowercase a-z 0-9 . _ - /)`,
+                ]
+              : []),
+            ...analysis.warnings,
+          ],
           packagesPending: analysis.packagesPending,
           gate: analysis.gate,
           gateReason: analysis.gateReason,

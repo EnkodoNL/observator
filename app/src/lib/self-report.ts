@@ -68,6 +68,8 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     arch: process.arch,
     os: osId(),
     failOn: { severity: null, node: false },
+    // Observator's own project: labels only by hand.
+    labels: null,
   };
 
   const project = await selfProject();

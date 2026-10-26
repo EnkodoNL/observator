@@ -1,8 +1,23 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { IssueRecord, Severity } from "@/lib/pb/types";
 import { maxSeverity } from "@/lib/severity";
+import { daysSince } from "@/lib/time";
 
 export type ProjectStatus = "none" | "ok" | "update" | "vulnerable";
+
+export const STATUS_LABEL: Record<ProjectStatus, string> = {
+  none: "No builds yet",
+  ok: "OK",
+  update: "Update available",
+  vulnerable: "Vulnerable",
+};
+
+const STATUS_RANK: Record<ProjectStatus, number> = { none: 0, ok: 1, update: 2, vulnerable: 3 };
+
+/** The status a group of projects gets: that of its worst member. */
+export function worstStatus(statuses: ProjectStatus[]): ProjectStatus {
+  return statuses.reduce<ProjectStatus>((w, s) => (STATUS_RANK[s] > STATUS_RANK[w] ? s : w), "none");
+}
 
 export interface StatusSummary {
   status: ProjectStatus;
@@ -37,4 +52,17 @@ export function summarize(hasBuild: boolean, issues: IssueRecord[]): StatusSumma
     worstSeverity: maxSeverity(vulns.map((v) => v.severity)),
     stale: open.some((i) => i.kind === "stale"),
   };
+}
+
+/**
+ * Stale: an open stale issue, or no build for staleDays. The second part shows it before the
+ * hourly job has opened the issue.
+ */
+export function isStale(
+  summary: Pick<StatusSummary, "stale">,
+  lastBuildAt: Date | null,
+  staleDays: number,
+): boolean {
+  const age = daysSince(lastBuildAt);
+  return summary.stale || (age !== null && age >= staleDays);
 }

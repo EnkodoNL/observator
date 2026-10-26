@@ -16,6 +16,7 @@ ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
 RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
       tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
       && curl -fsS -m 30 -o /tmp/obs.txt \
@@ -25,6 +26,7 @@ RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
            -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
            -H "X-Project: $OBSERVATOR_PROJECT" \
+           -H "X-Labels: $OBSERVATOR_LABELS" \
            --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \
       && cat /tmp/obs.txt \
       || echo "Observator: report failed, continuing"; \

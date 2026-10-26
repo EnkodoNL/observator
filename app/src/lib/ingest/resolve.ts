@@ -26,6 +26,29 @@ export async function matchAddress(ip: string): Promise<KeyMatch | null> {
   return key ? { kind: "shared", key } : null;
 }
 
+/**
+ * What a report with this shared key and name would do, without reporting: reuse projects the
+ * key made before, create a new one, or be refused because the name belongs to another project.
+ */
+export async function sharedNameStatus(
+  key: IngestKeyRecord,
+  name: string,
+): Promise<{ existing: ProjectRecord[]; conflict: ProjectRecord | null }> {
+  const pb = await adminPb();
+  const [existing, conflict] = await Promise.all([
+    pb.collection("projects").getFullList<ProjectRecord>({
+      filter: pb.filter("ingestKey = {:key} && sourceName = {:name}", { key: key.id, name }),
+    }),
+    pb.collection("projects").getList<ProjectRecord>(1, 1, {
+      filter: pb.filter(
+        "ingestKey != {:key} && (sourceName = {:name} || (ingestKey = '' && (name = {:name} || slug = {:slug})))",
+        { key: key.id, name, slug: slugify(name) },
+      ),
+    }),
+  ]);
+  return { existing, conflict: conflict.items[0] ?? null };
+}
+
 const g = globalThis as typeof globalThis & { __createLimiter?: RateLimiter };
 // A leaked shared key must not be able to flood the dashboard with projects.
 const createLimiter = (g.__createLimiter ??= RateLimiter.perWindow(30, 3600_000));
