@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import "server-only";
+import { z } from "zod";
+import { packageAdvice } from "@/lib/advice";
+import { listChannels, toView } from "@/lib/data/channels";
+import { listIngestKeys } from "@/lib/data/ingest-keys";
+import { nodeOverview } from "@/lib/data/node-overview";
+import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages";
+import { listProjects } from "@/lib/data/projects";
+import { getOverview, getProjectView } from "@/lib/data/views";
+import { analyzeDockerfile } from "@/lib/dockerfile";
+import { env } from "@/lib/env";
+import { displayEntry } from "@/lib/ingest/allowlist";
+import type { DesiredIssue } from "@/lib/issues/desired";
+import { matchingIgnore } from "@/lib/issues/reconcile";
+import type { NodeEolData, NodeSecurityData, VulnIssueData } from "@/lib/issues/types";
+import { vulnVersions } from "@/lib/issues/types";
+import { jobStates } from "@/lib/jobs/scheduler";
+import { effectiveLabels, hasLabels } from "@/lib/labels";
+import { pinnedImage } from "@/lib/node/advice";
+import { lineDescription } from "@/lib/node/describe";
+import { evaluateNode } from "@/lib/node/evaluate";
+import { getNodeData } from "@/lib/node/releases";
+import type { BuildChanges } from "@/lib/pb/types";
+import { getSettings } from "@/lib/settings";
+import { severityRank } from "@/lib/severity";
+import { isStale } from "@/lib/status";
+import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
+
+const STATUSES = ["none", "ok", "update", "vulnerable"] as const;
+
+/** At most `n` entries of a list, saying how many were left out. */
+function capped<T>(list: T[], n: number): { items: T[]; omitted: number } {
+  return { items: list.slice(0, n), omitted: Math.max(0, list.length - n) };
+}
+
+function compactChanges(c: BuildChanges | null) {
+  if (!c) return null;
+  return {
+    node: c.node ?? null,
+    added: capped(c.added, 50),
+    removed: capped(c.removed, 50),
+    changed: capped(c.changed, 50),
+    truncated: Boolean(c.truncated),
+  };
+}
+
+export const readTools: Record<string, Tool> = {
+  list_projects: defineTool({
+    title: "List projects",
+    description:
+      "All projects with their status (ok, update = a Node security or end-of-life update, vulnerable = open package advisories, none = no build yet), Node version, advisory counts, labels and last build. Start here.",
+    input: z.object({
+      labels: z
+        .array(z.string())
+        .optional()
+        .describe('Only projects that have all of these labels, such as ["env:prod"]'),
+      status: z.enum(STATUSES).optional(),
+      query: z.string().max(100).optional().describe("Part of the name or slug"),
+    }),
+    run: async ({ labels, status, query }) => {
+      const [items, settings, keys] = await Promise.all([getOverview(), getSettings(), listIngestKeys()]);
+      const keyName = new Map(keys.map((k) => [k.id, k.name]));
+      const q = query?.trim().toLowerCase();
+      const projects = items
+        .filter((i) =>
+          hasLabels(
+            effectiveLabels(i.project),
+            (labels ?? []).map((l) => l.toLowerCase()),
+          ),
+        )
+        .filter((i) => !status || i.summary.status === status)
+        .filter((i) => !q || i.project.name.toLowerCase().includes(q) || i.project.slug.includes(q))
+        .map(({ project: p, latest, summary, lastBuildAt }) => ({
+          slug: p.slug,
+          name: p.name,
+          url: projectUrl(p.slug),
+          status: summary.status,
+          stale: isStale(summary, lastBuildAt, settings.staleDays),
+          labels: effectiveLabels(p),
+          node: latest?.nodeVersion ?? null,
+          nodeSecurityTarget: (summary.nodeSecurity?.data as NodeSecurityData | undefined)?.target ?? null,
+          nodeEndOfLife: Boolean(summary.nodeEol),
+          advisories: summary.vulnBySeverity,
+          lastBuild: lastBuildAt?.toISOString() ?? null,
+          sharedKey: p.ingestKey ? (keyName.get(p.ingestKey) ?? "revoked") : null,
+          server: p.instance || null,
+        }));
+      return { count: projects.length, projects };
+    },
+  }),
+
+  get_project: defineTool({
+    title: "Project details",
+    description:
+      "One project: Node status with the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), ignored advisories with their reason, labels, setup and the latest build.",
+    input: z.object({ project: projectRef }),
+    run: async ({ project: ref }) => {
+      const found = await resolveProject(ref);
+      const [view, nodeData] = await Promise.all([getProjectView(found.slug), getNodeData()]);
+      if (!view) throw new ToolError(`Project ${ref} disappeared.`);
+      const { project: p, latest, summary, issues, ignores } = view;
+      const evaluation = latest && nodeData ? evaluateNode(latest.nodeVersion, nodeData) : null;
+      const security = summary.nodeSecurity?.data as NodeSecurityData | undefined;
+      const eol = summary.nodeEol?.data as NodeEolData | undefined;
+      const lockfile = latest?.lockfileType && latest.lockfileType !== "none" ? latest.lockfileType : "npm";
+      const vulns = issues
+        .filter((i) => i.kind === "vuln")
+        .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+      const advisory = (i: (typeof vulns)[number]) => {
+        const d = i.data as unknown as VulnIssueData;
+        return {
+          osvId: d.osvId,
+          aliases: d.aliases,
+          package: d.package,
+          versions: vulnVersions(d),
+          severity: i.severity,
+          summary: d.summary,
+          fixedIn: d.fixedIn || null,
+          url: d.url,
+          direct: d.direct,
+          dev: d.dev,
+          via: d.via,
+        };
+      };
+      const open = vulns.filter((i) => i.status === "open");
+      const ignored = vulns.filter((i) => i.status === "ignored");
+      return {
+        slug: p.slug,
+        name: p.name,
+        url: projectUrl(p.slug),
+        status: summary.status,
+        labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
+        node: latest
+          ? {
+              version: latest.nodeVersion,
+              platform: [latest.platform, latest.arch].filter(Boolean).join("/") || null,
+              os: latest.os || null,
+              line: lineDescription(evaluation),
+              securityUpdate: security
+                ? { target: security.target, pin: `FROM ${pinnedImage(security.target, security.os)} AS app` }
+                : null,
+              endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
+            }
+          : null,
+        advisories: capped(
+          open.map((i) => ({
+            ...advisory(i),
+            advice: packageAdvice(i.data as unknown as VulnIssueData, lockfile),
+          })),
+          100,
+        ),
+        ignored: ignored.map((i) => {
+          // The stored issue carries what matching needs (kind, key, data), as on the project page.
+          const ig = matchingIgnore(i as unknown as DesiredIssue, p.id, ignores, new Date());
+          return {
+            ...advisory(i),
+            ignoreId: ig?.id ?? null,
+            reason: ig?.reason ?? null,
+            expiresAt: iso(ig?.expiresAt),
+            scope: ig ? (ig.project ? "project" : "all projects") : null,
+          };
+        }),
+        latestBuild: latest
+          ? {
+              at: iso(latest.created),
+              lockfile: latest.lockfileType,
+              packages: latest.packageCount,
+              from: latest.sourceIp || null,
+              error: latest.error || null,
+            }
+          : null,
+        setup: {
+          apiKeyPrefix: p.ingestKey || p.apiKeyPrefix === "self" ? null : p.apiKeyPrefix,
+          sharedKey: Boolean(p.ingestKey),
+          reportedName: p.sourceName || null,
+          server: p.instance || null,
+          deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "GET" } : null,
+        },
+      };
+    },
+  }),
+
+  list_builds: defineTool({
+    title: "Build history",
+    description:
+      "A project's latest builds, newest first, with what changed in each: Node version and added, removed and changed packages.",
+    input: z.object({ project: projectRef, limit: z.number().int().min(1).max(50).default(10) }),
+    run: async ({ project: ref, limit }) => {
+      const view = await getProjectView((await resolveProject(ref)).slug);
+      if (!view) throw new ToolError(`Project ${ref} disappeared.`);
+      return {
+        builds: view.builds.slice(0, limit).map((b) => ({
+          at: iso(b.created),
+          node: b.nodeVersion,
+          platform: [b.platform, b.arch].filter(Boolean).join("/") || null,
+          os: b.os || null,
+          lockfile: b.lockfileType,
+          packages: b.packageCount,
+          from: b.sourceIp || null,
+          error: b.error || null,
+          changes: compactChanges(b.changes),
+        })),
+      };
+    },
+  }),
+
+  list_packages: defineTool({
+    title: "Packages across projects",
+    description:
+      "Every npm package in the projects' lockfiles, one row per name: versions in use, number of projects and the worst open advisory. Vulnerable packages first.",
+    input: z.object({
+      query: z.string().max(214).optional().describe("Part of the package name"),
+      scope: z.enum(PACKAGE_SCOPES).default("direct"),
+      limit: z.number().int().min(1).max(200).default(100),
+    }),
+    run: async ({ query, scope, limit }) => {
+      const { packages, counts } = await listPackages(query ?? "", scope);
+      return { counts, ...capped(packages, limit) };
+    },
+  }),
+
+  get_package: defineTool({
+    title: "Package details",
+    description:
+      "Where one package is used: per project the version, whether it is direct or pulled in by another package, and the advisories that apply.",
+    input: z.object({
+      name: z.string().min(1).max(214).describe("The npm name, such as lodash or @types/node"),
+    }),
+    run: async ({ name }) => {
+      const detail = await packageDetail(name);
+      if (!detail) throw new ToolError(`No project uses a package called ${name}.`);
+      return { ...detail };
+    },
+  }),
+
+  node_overview: defineTool({
+    title: "Node versions",
+    description:
+      "All projects grouped by Node version, with the security release to move to and the image to pin.",
+    input: z.object({}),
+    run: async () => {
+      const { groups, affected, targets } = await nodeOverview();
+      return {
+        affected,
+        targets,
+        versions: groups.map((g) => {
+          const target = g.evaluation?.securityUpdate?.target ?? null;
+          return {
+            version: g.version,
+            line: lineDescription(g.evaluation),
+            securityUpdate: target,
+            projects: g.projects.map((i) => ({
+              slug: i.project.slug,
+              name: i.project.name,
+              os: i.latest?.os || null,
+              pin: target ? `FROM ${pinnedImage(target, i.latest?.os ?? "")} AS app` : null,
+            })),
+          };
+        }),
+      };
+    },
+  }),
+
+  list_shared_keys: defineTool({
+    title: "Shared keys",
+    description:
+      "Write-only keys that create projects on their first report, with their IP allowlists (builds from those addresses may report without a key).",
+    input: z.object({}),
+    run: async () => ({
+      keys: (await listIngestKeys()).map((k) => ({
+        id: k.id,
+        name: k.name,
+        prefix: k.keyPrefix,
+        onePerServer: k.splitByIp,
+        projects: k.projects,
+        lastUsed: iso(k.lastUsedAt),
+        lastUsedFrom: k.lastUsedIp || null,
+        allowlist: (k.allowedIps ?? []).map((e) => ({ address: displayEntry(e.cidr), note: e.note })),
+      })),
+    }),
+  }),
+
+  get_settings: defineTool({
+    title: "Settings and checks",
+    description: "Stale days, reminders and digest schedule, plus when each background check last ran.",
+    input: z.object({}),
+    run: async () => {
+      const [settings, jobs] = await Promise.all([getSettings(), jobStates()]);
+      return { settings, jobs };
+    },
+  }),
+
+  list_channels: defineTool({
+    title: "Notification channels",
+    description: "Where notifications go. Secret fields are never shown, only whether they are set.",
+    input: z.object({}),
+    run: async () => {
+      const [channels, projects] = await Promise.all([listChannels(), listProjects()]);
+      const slug = new Map(projects.map((p) => [p.id, p.slug]));
+      return {
+        channels: channels.map((c) => {
+          const v = toView(c);
+          return { ...v, projects: v.projects.map((id) => slug.get(id) ?? id) };
+        }),
+      };
+    },
+  }),
+
+  analyze_dockerfile: defineTool({
+    title: "Check a Dockerfile",
+    description:
+      "Reads a Dockerfile and returns it with the Observator snippet added, without a key, plus a note per decision (stage name, variant for the base image, where the lockfile comes from). setup_dockerfile does the same and can also create a project and fill in its key.",
+    input: z.object({
+      dockerfile: z.string().min(1).max(200_000),
+      keyless: z
+        .boolean()
+        .optional()
+        .describe("The snippet without the key check, for servers on an IP allowlist"),
+    }),
+    run: async ({ dockerfile, keyless }) => {
+      const a = analyzeDockerfile(dockerfile, env().APP_URL, { keyless });
+      if (!a.ok) throw new ToolError(a.error);
+      return {
+        stage: a.stage,
+        variant: a.variant,
+        lockfileFrom: a.lockfileFrom ?? null,
+        notes: a.notes,
+        dockerfile: `${a.lines.map((l) => l.text).join("\n")}\n`,
+      };
+    },
+  }),
+};

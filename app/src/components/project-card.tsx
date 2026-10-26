@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import Link from "next/link";
 import { ShieldAlertIcon } from "lucide-react";
+import { LabelChips } from "@/components/label-chips";
 import { SeverityBadge, StatusBadge } from "@/components/status";
 import type { ProjectSummary } from "@/lib/data/views";
+import { effectiveLabels } from "@/lib/labels";
 import type { Severity } from "@/lib/pb/types";
-import { daysSince, timeAgo } from "@/lib/time";
+import { isStale } from "@/lib/status";
+import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const ORDER: Severity[] = ["critical", "high", "moderate", "low", "unknown"];
@@ -19,8 +22,7 @@ export function ProjectCard({
   line?: string | null;
 }) {
   const { project, latest, summary, lastBuildAt } = item;
-  const age = daysSince(lastBuildAt);
-  const stale = summary.stale || (age !== null && age >= staleDays);
+  const stale = isStale(summary, lastBuildAt, staleDays);
   const target = (summary.nodeSecurity?.data as { target?: string } | null)?.target;
 
   return (
@@ -38,6 +40,7 @@ export function ProjectCard({
         </div>
         <StatusBadge status={summary.status} />
       </div>
+      <LabelChips labels={effectiveLabels(project)} max={4} className="-mt-2" />
 
       {latest ? (
         <div className="space-y-1">

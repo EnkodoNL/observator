@@ -55,6 +55,21 @@ export interface ProjectRecord extends BaseRecord {
   sourceName: string;
   /** Source IP the project was split by, when the shared key splits by IP. */
   instance: string;
+  /** Labels kept by hand (UI, MCP). */
+  labels: string[] | null;
+  /** Labels from the latest report (OBSERVATOR_LABELS). */
+  buildLabels: string[] | null;
+}
+
+export interface McpTokenRecord extends BaseRecord {
+  user: string;
+  name: string;
+  tokenHash: string;
+  tokenPrefix: string;
+  /** Read and write; without it the token only reads. */
+  canWrite: boolean;
+  lastUsedAt: string;
+  lastUsedIp: string;
 }
 
 export interface IngestKeyRecord extends BaseRecord {

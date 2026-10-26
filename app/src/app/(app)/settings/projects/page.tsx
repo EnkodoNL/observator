@@ -4,7 +4,9 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listIngestKeys, listRefused } from "@/lib/data/ingest-keys";
+import { LabelChips } from "@/components/label-chips";
 import { listProjects } from "@/lib/data/projects";
+import { effectiveLabels } from "@/lib/labels";
 import { env } from "@/lib/env";
 import { pbDate } from "@/lib/pb/admin";
 import { timeAgo } from "@/lib/time";
@@ -54,6 +56,7 @@ export default async function ProjectsSettingsPage() {
                         {p.name}
                       </Link>
                       <div className="font-mono text-xs text-muted-foreground">{p.slug}</div>
+                      <LabelChips labels={effectiveLabels(p)} className="mt-1" />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {p.ingestKey ? (

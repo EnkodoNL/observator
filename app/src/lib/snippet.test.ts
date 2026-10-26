@@ -68,6 +68,26 @@ describe("dockerSnippet", () => {
     expect(keyless).toBe(guarded.replace('[ -z "$key" ] || ', ""));
   });
 
+  it.each(SNIPPET_VARIANTS.map((v) => v.id))("%s sends the labels", (variant) => {
+    const snippet = dockerSnippet(variant, "https://obs.example.com");
+    expect(snippet).toContain('ARG OBSERVATOR_LABELS=""');
+    expect(snippet).toMatch(/X-Labels(: \$OBSERVATOR_LABELS|": env\.OBSERVATOR_LABELS)/);
+  });
+
+  it("writes key, project and labels in as defaults when asked", () => {
+    const snippet = dockerSnippet("alpine", "https://obs.example.com", {
+      key: "obss_abc-DEF_123",
+      project: 'heat"wave $web',
+      labels: "app:heatwave,role:web",
+    });
+    expect(snippet).toContain('ARG OBSERVATOR_KEY="obss_abc-DEF_123"');
+    // Quotes and variables would be interpreted by Docker, so they are left out.
+    expect(snippet).toContain('ARG OBSERVATOR_PROJECT="heatwave web"');
+    expect(snippet).toContain('ARG OBSERVATOR_LABELS="app:heatwave,role:web"');
+    // Still read through node, so BuildKit does not print it with the RUN line.
+    expect(snippet.split("RUN ")[1]).not.toContain("obss_abc");
+  });
+
   it("fills in the URL", () => {
     expect(dockerSnippet("alpine", "https://obs.example.com")).toContain(
       "ARG OBSERVATOR_URL=https://obs.example.com",

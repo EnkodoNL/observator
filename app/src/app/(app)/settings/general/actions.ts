@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/session";
-import { runJob } from "@/lib/jobs/scheduler";
+import { runAllChecks } from "@/lib/jobs/checks";
 import { sendDigestIfDue } from "@/lib/notify/digest";
 import { saveSettings, settingsSchema, type Settings } from "@/lib/settings";
 
@@ -24,16 +24,9 @@ export async function saveSettingsAction(
 
 export async function runChecksAction(): Promise<{ ok: boolean; error?: string }> {
   await requireUser();
-  const results = [
-    await runJob("node-index", { force: true }),
-    await runJob("osv-recheck", { force: true }),
-    await runJob("npm-latest", { force: true }),
-  ];
+  const result = await runAllChecks();
   revalidatePath("/", "layout");
-  const failed = results.find((r) => r && !r.ok);
-  if (results.some((r) => r === null))
-    return { ok: false, error: "A check is already running; try again in a minute." };
-  return failed ? { ok: false, error: failed.error } : { ok: true };
+  return result;
 }
 
 export async function sendDigestNowAction(): Promise<{ ok: boolean }> {

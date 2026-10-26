@@ -127,7 +127,11 @@ export async function recordBuild(
     error: parseError ?? "",
     sourceIp,
   });
-  await pb.collection("projects").update(project.id, { lastBuildAt: toPbDate(new Date()) });
+  await pb.collection("projects").update(project.id, {
+    lastBuildAt: toPbDate(new Date()),
+    // The build says which labels it has; a report without the header leaves them as they are.
+    ...(meta.labels ? { buildLabels: meta.labels.labels } : {}),
+  });
 
   return { build, previous, lockfileName, lockfileChanged, packageCount, directNames, parseError };
 }

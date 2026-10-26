@@ -104,6 +104,14 @@ describe("headers", () => {
       arch: "arm64",
       os: "alpine",
       failOn: { severity: null, node: false },
+      labels: null,
+    });
+    // An empty header clears the build labels; a missing one (older snippets) leaves them.
+    const base = { "x-node-version": "v22.11.0" };
+    expect(parseMeta(new Headers({ ...base, "x-labels": "" })).labels).toEqual({ labels: [], invalid: [] });
+    expect(parseMeta(new Headers({ ...base, "x-labels": "App:Heatwave, role:web, bad!" })).labels).toEqual({
+      labels: ["app:heatwave", "role:web"],
+      invalid: ["bad!"],
     });
     expect(() => parseMeta(new Headers())).toThrow(IngestError);
     expect(

@@ -196,6 +196,11 @@ export async function resetSecondFactors(userId: string): Promise<void> {
     .collection("passkeys")
     .getFullList({ filter: pb.filter("user = {:u}", { u: userId }) });
   for (const p of passkeys) await pb.collection("passkeys").delete(p.id);
+  // MCP tokens act as the user without a second factor, so they go too.
+  const tokens = await pb
+    .collection("mcp_tokens")
+    .getFullList({ filter: pb.filter("user = {:u}", { u: userId }), fields: "id" });
+  for (const t of tokens) await pb.collection("mcp_tokens").delete(t.id);
   // A new tokenKey invalidates every token PocketBase issued for this user.
   await pb.collection("users").update(userId, { tokenKey: randomToken(32) });
 }

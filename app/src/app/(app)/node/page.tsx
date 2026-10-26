@@ -1,42 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
 import Link from "next/link";
-import semver from "semver";
 import { ArrowRightIcon, ShieldAlertIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
 import { CodeBlock } from "@/components/code-block";
-import { getOverview, type ProjectSummary } from "@/lib/data/views";
+import { nodeOverview } from "@/lib/data/node-overview";
 import { pinnedImage } from "@/lib/node/advice";
-import { evaluateNode, PHASE_LABEL, type NodeEvaluation } from "@/lib/node/evaluate";
-import { getNodeData } from "@/lib/node/releases";
+import { PHASE_LABEL } from "@/lib/node/evaluate";
 import { formatDate, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Node versions" };
 
-interface Group {
-  version: string;
-  evaluation: NodeEvaluation | null;
-  projects: ProjectSummary[];
-}
-
 export default async function NodePage() {
-  const [items, nodeData] = await Promise.all([getOverview(), getNodeData()]);
-  const groups = new Map<string, Group>();
-  for (const item of items) {
-    if (!item.latest) continue;
-    const v = item.latest.nodeVersion;
-    const group = groups.get(v) ?? {
-      version: v,
-      evaluation: nodeData ? evaluateNode(v, nodeData) : null,
-      projects: [],
-    };
-    group.projects.push(item);
-    groups.set(v, group);
-  }
-  const sorted = [...groups.values()].sort((a, b) => semver.rcompare(a.version, b.version));
-  const behind = sorted.filter((g) => g.evaluation?.securityUpdate);
-  const affected = behind.reduce((n, g) => n + g.projects.length, 0);
-  const targets = [...new Set(behind.map((g) => g.evaluation!.securityUpdate!.target))];
+  const { groups: sorted, affected, targets } = await nodeOverview();
 
   return (
     <div className="space-y-8">

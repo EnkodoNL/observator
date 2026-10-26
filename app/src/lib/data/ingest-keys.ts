@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { newSharedKey, sha256 } from "@/lib/crypto";
-import { type AllowEntry, matchEntry } from "@/lib/ingest/allowlist";
+import { type AllowEntry, displayEntry, matchEntry, overlaps, parseAllowlist } from "@/lib/ingest/allowlist";
 import { kvGet, kvSet } from "@/lib/kv";
 import { adminPb, isNotFound, pbDate, toPbDate } from "@/lib/pb/admin";
 import type { IngestKeyRecord, ProjectRecord } from "@/lib/pb/types";
@@ -52,6 +52,35 @@ const cidrs = (k: IngestKeyRecord) => (k.allowedIps ?? []).map((e) => e.cidr);
 export async function setAllowedIps(id: string, entries: AllowEntry[]): Promise<void> {
   const pb = await adminPb();
   await pb.collection("ingest_keys").update(id, { allowedIps: entries });
+}
+
+/**
+ * Changes a shared key's name, split mode or IP allowlist (one address or range per line).
+ * An address may belong to one shared key only, so overlaps with other keys are refused.
+ */
+export async function updateSharedKey(
+  id: string,
+  changes: { name?: string; splitByIp?: boolean; allowlist?: string },
+): Promise<{ key?: IngestKeyRecord; error?: string }> {
+  const data: Partial<Pick<IngestKeyRecord, "name" | "splitByIp" | "allowedIps">> = {};
+  if (changes.name !== undefined) data.name = changes.name;
+  if (changes.splitByIp !== undefined) data.splitByIp = changes.splitByIp;
+  if (changes.allowlist !== undefined) {
+    const { entries, errors } = parseAllowlist(changes.allowlist);
+    if (errors.length) return { error: errors.join("\n") };
+    for (const other of (await listIngestKeys()).filter((k) => k.id !== id)) {
+      for (const entry of entries) {
+        const clash = (other.allowedIps ?? []).find((o) => overlaps(entry.cidr, o.cidr));
+        if (clash)
+          return {
+            error: `${displayEntry(entry.cidr)} overlaps with ${displayEntry(clash.cidr)} on “${other.name}”. An address can belong to one shared key only.`,
+          };
+      }
+    }
+    data.allowedIps = entries;
+  }
+  const pb = await adminPb();
+  return { key: await pb.collection("ingest_keys").update<IngestKeyRecord>(id, data) };
 }
 
 export interface RefusedReport {

@@ -25,6 +25,9 @@ import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
 import { VulnList } from "./vuln-list";
 import { IgnoreDialog, UnignoreButton } from "./ignore-dialog";
+import { LabelsEditor } from "./labels-editor";
+import { LabelChips } from "@/components/label-chips";
+import { effectiveLabels } from "@/lib/labels";
 import { matchingIgnore } from "@/lib/issues/reconcile";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { formatDate } from "@/lib/time";
@@ -107,6 +110,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
               <StatusBadge status={summary.status} />
             </div>
+            <LabelChips labels={effectiveLabels(project)} className="mt-2" />
             <p className="mt-1 text-sm text-muted-foreground">
               {view.lastBuildAt ? `Last build ${timeAgo(view.lastBuildAt)}` : "No builds yet"} ·{" "}
               <span className="font-mono">{project.slug}</span>
@@ -262,6 +266,20 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             />
             <CodeBlock
               code={`[![Observator](${appUrl}/badge/${project.slug}.svg?token=${project.badgeToken})](${appUrl}/projects/${project.slug})`}
+            />
+          </section>
+          <section className="space-y-2">
+            <h2 className="font-medium">Labels</h2>
+            <p className="text-sm text-muted-foreground">
+              For grouping and filtering on the overview, such as{" "}
+              <code className="font-mono">app:heatwave</code> or <code className="font-mono">env:prod</code>.
+              The build can add its own with <code className="font-mono">OBSERVATOR_LABELS</code>; the project
+              shows both.
+            </p>
+            <LabelsEditor
+              projectId={project.id}
+              labels={project.labels ?? []}
+              buildLabels={project.buildLabels ?? []}
             />
           </section>
           <section className="space-y-3">

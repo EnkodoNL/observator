@@ -38,6 +38,10 @@ And for the days you do open it:
   patch. Display only.
 - **Packages:** every package across all projects, vulnerable ones first. Per package: which projects
   use it, in which version, through which dependency, and the advisories that apply.
+- **Labels:** `app:heatwave`, `env:prod`, `client:acme`, from the build or set by hand. Group and
+  filter the overview by them; the servers of one app appear as one card.
+- **MCP:** Claude Code (or another MCP client) can query and maintain Observator, and set it up in a
+  repository's Dockerfiles in one go. It can create and change, never delete.
 - **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
   users.
 - **It watches itself:** Observator reports the Node version it runs on and its own packages at every
@@ -86,6 +90,7 @@ ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
 RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
       tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
       && base64 /tmp/obs.tgz > /tmp/obs.b64 \
@@ -96,6 +101,7 @@ RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
            --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
            --header "X-Project: $OBSERVATOR_PROJECT" \
+           --header "X-Labels: $OBSERVATOR_LABELS" \
            --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \
       && cat /tmp/obs.txt \
       || echo "Observator: report failed, continuing"; \
@@ -201,7 +207,7 @@ Node's `fetch`:
              signal: AbortSignal.timeout(30000), headers: { \
                "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \
                "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \
-               "X-Project": env.OBSERVATOR_PROJECT || "" } }) \
+               "X-Project": env.OBSERVATOR_PROJECT || "", "X-Labels": env.OBSERVATOR_LABELS || "" } }) \
            .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
              fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \
 ```
@@ -216,6 +222,7 @@ Images with `curl` (such as the full `node:22`) can use:
            -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
            -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
            -H "X-Project: $OBSERVATOR_PROJECT" \
+           -H "X-Labels: $OBSERVATOR_LABELS" \
            --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \
 ```
 
@@ -253,7 +260,8 @@ Exactly this, and nothing else:
 
 - `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`)
 - the output of `node -v`, the platform and architecture, and the `ID` from `/etc/os-release`
-- the gate setting and the project name (`OBSERVATOR_PROJECT`), if set
+- the gate setting, the project name (`OBSERVATOR_PROJECT`) and the labels (`OBSERVATOR_LABELS`), if
+  set
 
 No source code, no environment variables, no other files. The raw files are parsed in memory and not
 stored; Observator keeps the resulting package list.
@@ -287,6 +295,20 @@ open advisories:
 ```
 
 The token only grants the badge. Without it the badge says `unknown`.
+
+### Labels
+
+A label is a word (`critical`) or `key:value` (`app:heatwave`, `env:prod`): lowercase letters,
+digits and `. _ - /`, at most 20 per project. A project has two kinds:
+
+- **From the build:** `--build-arg OBSERVATOR_LABELS=app:heatwave,role:web` (or a build variable in
+  Coolify, or the default in the snippet's `ARG`). They follow the latest report; a build without the
+  header (an older snippet) leaves them as they are.
+- **By hand:** on the project's *Setup* tab, or through MCP. They stay until you change them.
+
+The overview groups by *Servers* (default: the per-server projects of one shared-key app become one
+card, with the worst status on top), by nothing, or by any label key (`app`, `env`, ...), and filters
+on labels (all selected labels must match).
 
 ## Notifications
 
@@ -328,6 +350,36 @@ The rules:
 `detail`, `url`), `more`, `actions[]` (`label`, `url`) and `sentAt`. Headers:
 `X-Observator-Event`, `X-Observator-Timestamp` and, with a secret,
 `X-Observator-Signature: sha256=<hex>`, where the hex is HMAC-SHA256 of `<timestamp>.<body>`.
+
+## MCP
+
+Observator is an [MCP](https://modelcontextprotocol.io) server at `/api/mcp`, for Claude Code and
+other clients. Create a token under **Settings → Account → MCP** (it asks for your password again,
+because a token acts as you without a second factor), then:
+
+```sh
+claude mcp add --transport http observator https://observator.example.com/api/mcp \
+  --header "Authorization: Bearer obsm_..."
+```
+
+Then ask things like "which projects run a Node version with an open security fix?", "where is
+lodash 4.17.20 used?", or "set up Observator in my Dockerfiles, use the shared key in my env, and get
+the project names and labels right". The `install` prompt (`/mcp__observator__install`) spells out
+that last one.
+
+- **Read:** projects with status and labels, project details with fix advice, builds and diffs,
+  packages across projects, the Node overview, shared keys, settings and channels (secrets are never
+  shown, only whether they are set).
+- **Create and update** (tokens with *May make changes*): projects and their labels, deploy webhooks
+  and keys, ignores (ending one lets it expire instead of deleting it), shared keys and their IP
+  allowlists, settings and channels; run checks, redeploy, send a test notification.
+  `setup_dockerfile` returns a Dockerfile with the snippet and, if you want, the key, project name
+  and labels filled in as defaults, so the build needs no further configuration.
+- **Never:** deleting anything, and users, invites, tokens, passwords, 2FA and passkeys. Those stay in
+  the web UI.
+
+Every change through MCP is logged by the web container as `[mcp] <email> (<token>) <tool> ...`.
+The endpoint speaks both MCP protocol generations (2026-07-28 and the 2025 ones).
 
 ## Sign-in
 

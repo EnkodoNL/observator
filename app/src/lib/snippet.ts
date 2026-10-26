@@ -22,6 +22,7 @@ const POST: Record<SnippetVariant, string[]> = {
     `           --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
     `           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
     `           --header "X-Project: $OBSERVATOR_PROJECT" \\`,
+    `           --header "X-Labels: $OBSERVATOR_LABELS" \\`,
     `           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \\`,
   ],
   curl: [
@@ -32,6 +33,7 @@ const POST: Record<SnippetVariant, string[]> = {
     `           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
     `           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
     `           -H "X-Project: $OBSERVATOR_PROJECT" \\`,
+    `           -H "X-Labels: $OBSERVATOR_LABELS" \\`,
     `           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \\`,
   ],
   node: [
@@ -42,7 +44,7 @@ const POST: Record<SnippetVariant, string[]> = {
     `             signal: AbortSignal.timeout(30000), headers: { \\`,
     `               "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \\`,
     `               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \\`,
-    `               "X-Project": env.OBSERVATOR_PROJECT || "" } }) \\`,
+    `               "X-Project": env.OBSERVATOR_PROJECT || "", "X-Labels": env.OBSERVATOR_LABELS || "" } }) \\`,
     `           .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \\`,
     `             fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \\`,
   ],
@@ -86,9 +88,9 @@ export function copyLockfileLines({ stage, dir }: LockfileSource): string[] {
 
 /**
  * The Dockerfile addition. It reports from a separate stage so the key never lands in the
- * final image or its history; the COPY forces BuildKit to run that stage. The key itself
- * is passed as a build argument and never written into the Dockerfile, and it is read via
- * node so BuildKit's log output does not show it either.
+ * final image or its history; the COPY forces BuildKit to run that stage. The key is passed
+ * as a build argument (unless the `key` option writes it into the Dockerfile), and it is read
+ * via node so BuildKit's log output does not show it either.
  */
 export interface SnippetOptions {
   /** The name of the user's last stage. */
@@ -100,21 +102,31 @@ export interface SnippetOptions {
    * default snippet sends nothing without a key, so a build on a laptop stays local.
    */
   keyless?: boolean;
+  /** Written into the Dockerfile as the default for OBSERVATOR_KEY (a build variable still wins). */
+  key?: string;
+  /** Default for OBSERVATOR_PROJECT: the project a shared key reports to. */
+  project?: string;
+  /** Default for OBSERVATOR_LABELS, such as "app:heatwave,role:web". */
+  labels?: string;
 }
+
+/** A default inside ARG NAME="...": no quotes, escapes or variables that Docker would interpret. */
+const argValue = (v: string | undefined) => (v ?? "").replace(/["\\$`\r\n]/g, "").trim();
 
 export function dockerSnippet(
   variant: SnippetVariant,
   url: string,
-  { stage = "app", lockfileFrom, keyless = false }: SnippetOptions = {},
+  { stage = "app", lockfileFrom, keyless = false, key, project, labels }: SnippetOptions = {},
 ): string {
   return [
     "# --- Observator: reports Node version + lockfile; does not end up in the final image ---",
     `FROM ${stage} AS observator`,
     ...(lockfileFrom ? copyLockfileLines(lockfileFrom) : []),
     `ARG OBSERVATOR_URL=${url}`,
-    `ARG OBSERVATOR_KEY=""`,
+    `ARG OBSERVATOR_KEY="${argValue(key)}"`,
     `ARG OBSERVATOR_FAIL_ON=""`,
-    `ARG OBSERVATOR_PROJECT=""`,
+    `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
+    `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
     // Read through node instead of $OBSERVATOR_KEY: BuildKit prints RUN commands with build
     // args substituted, which would put the key in the build log. (printenv is not in BusyBox.)
     `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; ${keyless ? "" : '[ -z "$key" ] || '}{ \\`,
