@@ -72,10 +72,13 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
               {project.name}
             </Link>
             <span className="text-xs text-muted-foreground">
-              {[latest?.os, latest?.platform && `${latest.platform}/${latest.arch}`]
+              {[
+                latest?.os,
+                latest?.platform && `${latest.platform}/${latest.arch}`,
+                `last build ${timeAgo(lastBuildAt)}`,
+              ]
                 .filter(Boolean)
-                .join(" · ")}{" "}
-              · last build {timeAgo(lastBuildAt)}
+                .join(" · ")}
             </span>
           </li>
         ))}

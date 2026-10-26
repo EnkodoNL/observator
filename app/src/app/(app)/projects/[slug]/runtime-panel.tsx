@@ -131,10 +131,10 @@ export function RuntimePanel({
           latest.appVersion && `${latest.appName || "app"} ${latest.appVersion}`,
           latest.platform && `${latest.platform}/${latest.arch}`,
           latest.os,
+          `reported ${timeAgo(pbDate(latest.created))}`,
         ]
           .filter(Boolean)
-          .join(" · ")}{" "}
-        · reported {timeAgo(pbDate(latest.created))}
+          .join(" · ")}
       </p>
     </div>
   );

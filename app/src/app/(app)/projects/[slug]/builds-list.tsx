@@ -90,6 +90,24 @@ function Diff({ build }: { build: BuildRecord }) {
   );
 }
 
+/** "Python changed · Node.js removed" */
+function runtimeChangeText(changes: NonNullable<BuildRecord["changes"]>["runtimes"]): string {
+  const list = changes ?? [];
+  const names = (pick: (c: (typeof list)[number]) => boolean) =>
+    list
+      .filter(pick)
+      .map((c) => runtimeLabel(c.name))
+      .join(", ");
+  return [
+    [names((c) => !!c.from && !!c.to), "changed"],
+    [names((c) => !c.from), "added"],
+    [names((c) => !c.to), "removed"],
+  ]
+    .filter(([n]) => n)
+    .map(([n, what]) => `${n} ${what}`)
+    .join(" · ");
+}
+
 export function BuildsList({ builds }: { builds: BuildRecord[] }) {
   if (builds.length === 0) {
     return <p className="text-sm text-muted-foreground">No builds yet.</p>;
@@ -99,6 +117,8 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
       {builds.map((b, i) => {
         const date = pbDate(b.created);
         const runtimeChanges = (b.changes?.runtimes ?? []).filter((c) => c.from && c.to);
+        const removedRuntimes = (b.changes?.runtimes ?? []).filter((c) => c.from && !c.to);
+        const changeText = runtimeChangeText(b.changes?.runtimes);
         const appChange = b.changes?.app;
         const isFirst = i === builds.length - 1;
         return (
@@ -106,7 +126,7 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex flex-wrap items-center gap-x-3 font-mono text-sm">
-                  {(b.runtimes ?? []).length === 0 && (
+                  {(b.runtimes ?? []).length + removedRuntimes.length === 0 && (
                     <span className="text-muted-foreground">no runtime</span>
                   )}
                   {(b.runtimes ?? []).map((r) => {
@@ -125,11 +145,18 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
                       </span>
                     );
                   })}
+                  {removedRuntimes.map((c) => (
+                    <span
+                      key={c.name}
+                      className="text-muted-foreground line-through"
+                      title="No longer in the image"
+                    >
+                      {c.name} {c.from}
+                    </span>
+                  ))}
                 </span>
-                {runtimeChanges.length > 0 && (
-                  <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
-                    {runtimeChanges.map((c) => runtimeLabel(c.name)).join(", ")} changed
-                  </span>
+                {changeText && (
+                  <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">{changeText}</span>
                 )}
                 {appChange && (
                   <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
@@ -139,8 +166,8 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
                 <span className="text-xs text-muted-foreground">
                   {[
                     b.appVersion && !appChange && `v${b.appVersion.replace(/^v/, "")}`,
-                    b.lockfileType !== "none" && b.lockfileType,
-                    `${b.packageCount} packages`,
+                    b.lockfileType === "none" ? "no lockfile" : b.lockfileType,
+                    b.lockfileType !== "none" && `${b.packageCount} packages`,
                     b.os,
                     b.sourceIp && b.sourceIp !== "unknown" && `from ${b.sourceIp}`,
                   ]
