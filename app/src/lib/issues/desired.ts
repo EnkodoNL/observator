@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import type { NodeEvaluation } from "@/lib/node/evaluate";
 import type { IssueKind, Severity } from "@/lib/pb/types";
+import type { Runtime, RuntimeEvaluation } from "@/lib/runtimes/types";
 import { maxSeverity } from "@/lib/severity";
-import type { NodeEolData, NodeSecurityData, StaleData, VulnIssueData } from "./types";
+import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "./types";
 
 export interface DesiredIssue {
   kind: IssueKind;
@@ -10,10 +10,11 @@ export interface DesiredIssue {
   revision: string;
   severity: Severity;
   title: string;
-  data: VulnIssueData | NodeSecurityData | NodeEolData | StaleData;
+  data: VulnIssueData | RuntimeSecurityData | RuntimeEolData | StaleData;
 }
 
 export interface ComponentInput {
+  ecosystem: string;
   name: string;
   version: string;
   direct: boolean;
@@ -22,6 +23,7 @@ export interface ComponentInput {
 }
 
 export interface VulnInput {
+  ecosystem: string;
   name: string;
   version: string;
   osvId: string;
@@ -33,11 +35,12 @@ export interface VulnInput {
 }
 
 export interface DesiredInput {
-  build: { nodeVersion: string; os: string } | null;
+  build: { runtimes: Runtime[]; os: string } | null;
   lastBuildAt: Date | null;
   components: ComponentInput[];
   vulns: VulnInput[];
-  node: NodeEvaluation | null;
+  /** One per reported runtime that has release data. */
+  evaluations: RuntimeEvaluation[];
   staleDays: number;
   now: Date;
 }
@@ -45,54 +48,57 @@ export interface DesiredInput {
 /** Everything that should be open for a project, given its current state. */
 export function computeDesired(input: DesiredInput): DesiredIssue[] {
   const out: DesiredIssue[] = [];
-  const { build, node } = input;
+  const { build } = input;
 
-  if (build && node?.securityUpdate) {
-    out.push({
-      kind: "node_security",
-      key: `node_security:${node.major}`,
-      revision: node.securityUpdate.target,
-      severity: "high",
-      title: `Node ${build.nodeVersion} has a security update: ${node.securityUpdate.target}`,
-      data: {
-        running: build.nodeVersion,
-        target: node.securityUpdate.target,
-        major: node.major,
-        securityReleases: node.securityUpdate.releases,
-        os: build.os,
-      },
-    });
-  }
-
-  if (build && node && node.end && (node.phase === "eol" || node.eolSoon)) {
-    const phase = node.phase === "eol" ? "eol" : "soon";
-    out.push({
-      kind: "node_eol",
-      key: `node_eol:${node.major}`,
-      revision: phase,
-      severity: phase === "eol" ? "high" : "moderate",
-      title:
-        phase === "eol"
-          ? `Node ${node.major} is end-of-life`
-          : `Node ${node.major} reaches end-of-life on ${node.end}`,
-      data: { running: build.nodeVersion, major: node.major, end: node.end, phase },
-    });
+  for (const ev of build ? input.evaluations : []) {
+    if (ev.securityUpdate) {
+      out.push({
+        kind: "runtime_security",
+        key: `runtime_security:${ev.runtime}:${ev.line}`,
+        revision: ev.securityUpdate.target,
+        severity: "high",
+        title: `${ev.label} ${ev.version} has a security update: ${ev.securityUpdate.target}`,
+        data: {
+          runtime: ev.runtime,
+          running: ev.version,
+          target: ev.securityUpdate.target,
+          line: ev.line,
+          securityReleases: ev.securityUpdate.releases,
+          os: build!.os,
+        },
+      });
+    }
+    if (ev.end && (ev.phase === "eol" || ev.eolSoon)) {
+      const phase = ev.phase === "eol" ? "eol" : "soon";
+      out.push({
+        kind: "runtime_eol",
+        key: `runtime_eol:${ev.runtime}:${ev.line}`,
+        revision: phase,
+        severity: phase === "eol" ? "high" : "moderate",
+        title:
+          phase === "eol"
+            ? `${ev.label} ${ev.line} is end-of-life`
+            : `${ev.label} ${ev.line} reaches end-of-life on ${ev.end}`,
+        data: { runtime: ev.runtime, running: ev.version, line: ev.line, end: ev.end, phase },
+      });
+    }
   }
 
   // One issue per advisory per package name; several installed versions share it, so an
   // upgrade that is still vulnerable does not look like "resolved + new".
+  const pkg = (x: { ecosystem: string; name: string }) => `${x.ecosystem}:${x.name}`;
   const components = new Map<string, ComponentInput[]>();
-  for (const c of input.components) components.set(c.name, [...(components.get(c.name) ?? []), c]);
+  for (const c of input.components) components.set(pkg(c), [...(components.get(pkg(c)) ?? []), c]);
   const grouped = new Map<string, VulnInput[]>();
   for (const v of input.vulns) {
-    if (!components.get(v.name)?.some((c) => c.version === v.version)) continue;
+    if (!components.get(pkg(v))?.some((c) => c.version === v.version)) continue;
     const key = `vuln:${v.osvId}:${v.name}`;
     grouped.set(key, [...(grouped.get(key) ?? []), v]);
   }
   for (const [key, list] of [...grouped].sort(([a], [b]) => a.localeCompare(b))) {
     const first = list[0];
     const versions = [...new Set(list.map((v) => v.version))].sort();
-    const affected = (components.get(first.name) ?? []).filter((c) => versions.includes(c.version));
+    const affected = (components.get(pkg(first)) ?? []).filter((c) => versions.includes(c.version));
     out.push({
       kind: "vuln",
       key,
@@ -100,6 +106,7 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
       severity: maxSeverity(list.map((v) => v.severity)) ?? "unknown",
       title: `${first.name}@${versions.join(", ")}: ${first.summary || first.osvId}`,
       data: {
+        ecosystem: first.ecosystem,
         package: first.name,
         version: versions.join(", "),
         osvId: first.osvId,

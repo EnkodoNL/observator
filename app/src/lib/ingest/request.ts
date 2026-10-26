@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { parseLabels } from "@/lib/labels";
 import { gunzipSync } from "node:zlib";
+import { parseLabels } from "@/lib/labels";
 import { LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
+import { runtimeLabel } from "@/lib/runtimes/labels";
+import type { Runtime } from "@/lib/runtimes/types";
 import { readTar, TarError } from "./tar";
 
 export class IngestError extends Error {
@@ -17,7 +19,10 @@ const MAX_UNPACKED = 64 * 1024 * 1024;
 const ACCEPTED = new Set<string>(["package.json", ...LOCKFILE_NAMES]);
 
 export interface IngestMeta {
-  nodeVersion: string;
+  /** X-Runtime, in the order reported; empty when the image has none Observator recognizes. */
+  runtimes: Runtime[];
+  /** X-Runtime entries that could not be read, for a warning in the build log. */
+  invalidRuntimes: string[];
   platform: string;
   arch: string;
   os: string;
@@ -28,11 +33,13 @@ export interface IngestMeta {
 
 export interface FailOn {
   severity: "low" | "moderate" | "high" | "critical" | null;
-  node: boolean;
+  /** Fail on a security update for these runtimes; "*" for any ("runtime"). */
+  runtimes: string[];
 }
 
 export interface IngestFiles {
-  packageJson: string;
+  /** Null when the image has no package.json: then there are no packages, only runtimes. */
+  packageJson: string | null;
   lockfiles: Partial<Record<LockfileName, string>>;
 }
 
@@ -40,7 +47,8 @@ export interface IngestFiles {
 export async function readBody(request: Request, maxBytes: number): Promise<Buffer> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > maxBytes) throw new IngestError(413, `report too large (max ${maxBytes} bytes)`);
-  if (!request.body) throw new IngestError(400, "empty body");
+  // An empty body is a report without files: an image with runtimes but no package manifest.
+  if (!request.body) return Buffer.alloc(0);
 
   const chunks: Buffer[] = [];
   let total = 0;
@@ -55,7 +63,6 @@ export async function readBody(request: Request, maxBytes: number): Promise<Buff
     }
     chunks.push(Buffer.from(value));
   }
-  if (total === 0) throw new IngestError(400, "empty body");
   return Buffer.concat(chunks);
 }
 
@@ -77,6 +84,7 @@ export function decodeBody(body: Buffer): Buffer {
 
 /** Unpacks the tar.gz in memory and keeps only the expected top-level files. */
 export function extractFiles(body: Buffer): IngestFiles {
+  if (body.length === 0) return { packageJson: null, lockfiles: {} };
   let archive: Buffer;
   try {
     archive = gunzipSync(decodeBody(body), { maxOutputLength: MAX_UNPACKED });
@@ -100,8 +108,7 @@ export function extractFiles(body: Buffer): IngestFiles {
     files.set(name, entry.data.toString("utf8"));
   }
 
-  const packageJson = files.get("package.json");
-  if (packageJson === undefined) throw new IngestError(400, "package.json missing from report");
+  const packageJson = files.get("package.json") ?? null;
   const lockfiles: IngestFiles["lockfiles"] = {};
   for (const name of LOCKFILE_NAMES) {
     const content = files.get(name);
@@ -112,10 +119,12 @@ export function extractFiles(body: Buffer): IngestFiles {
 
 const SEVERITY_TOKENS = ["low", "moderate", "high", "critical"] as const;
 
+/** Severities for package advisories, "runtime" for any runtime, or a runtime name ("node"). */
 export function parseFailOn(value: string | null): FailOn {
-  const out: FailOn = { severity: null, node: false };
+  const out: FailOn = { severity: null, runtimes: [] };
   for (const token of (value ?? "").toLowerCase().split(/[\s,]+/)) {
-    if (token === "node") out.node = true;
+    if (token === "runtime") out.runtimes.push("*");
+    else if (token && runtimeLabel(token) !== token) out.runtimes.push(token);
     else if (token === "medium") out.severity = "moderate";
     else if ((SEVERITY_TOKENS as readonly string[]).includes(token))
       out.severity = token as FailOn["severity"];
@@ -123,23 +132,75 @@ export function parseFailOn(value: string | null): FailOn {
   return out;
 }
 
-export function parseMeta(headers: Headers): IngestMeta {
-  const rawVersion = headers.get("x-node-version")?.trim() ?? "";
-  const version = /^v?(\d+\.\d+\.\d+)$/.exec(rawVersion)?.[1];
-  if (!version)
-    throw new IngestError(400, "missing or invalid X-Node-Version header (expected e.g. v22.11.0)");
+const RUNTIME_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+const RUNTIME_VERSION = /^[0-9A-Za-z.+_-]{1,64}$/;
+const MAX_RUNTIMES = 8;
 
-  const platformHeader = headers.get("x-platform")?.trim().toLowerCase() ?? "";
-  const [platform = "", arch = ""] = /^[a-z0-9]+\/[a-z0-9_]+$/.test(platformHeader)
-    ? platformHeader.split("/")
-    : [];
+/** "node/22.11.0, python/3.12.4": name/version pairs, lowercase names, the first of each kept. */
+export function parseRuntimes(header: string): { runtimes: Runtime[]; invalid: string[] } {
+  const runtimes: Runtime[] = [];
+  const invalid: string[] = [];
+  for (const entry of header
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)) {
+    const slash = entry.indexOf("/");
+    const name = entry.slice(0, slash).toLowerCase();
+    // "v22.11.0" from node -v is the same version as "22.11.0".
+    const version = entry.slice(slash + 1).replace(/^v(?=\d)/, "");
+    if (slash < 1 || !RUNTIME_NAME.test(name) || !RUNTIME_VERSION.test(version))
+      invalid.push(entry.slice(0, 80));
+    else if (runtimes.length >= MAX_RUNTIMES) invalid.push(entry.slice(0, 80));
+    else if (!runtimes.some((r) => r.name === name)) runtimes.push({ name, version });
+  }
+  return { runtimes, invalid };
+}
+
+const ARCH: Record<string, string> = {
+  x64: "amd64",
+  x86_64: "amd64",
+  amd64: "amd64",
+  arm64: "arm64",
+  aarch64: "arm64",
+  arm: "arm",
+  armv7: "arm",
+  armv7l: "arm",
+  ia32: "386",
+  i386: "386",
+  i686: "386",
+};
+
+/**
+ * "linux/x86_64" (uname) or "linux/x64" (Node) both become linux/amd64, the names Docker uses,
+ * so one machine shows one architecture whatever reported it.
+ */
+export function normalizePlatform(header: string): { platform: string; arch: string } {
+  const value = header.trim().toLowerCase();
+  if (!/^[a-z0-9]+\/[a-z0-9_]+$/.test(value)) return { platform: "", arch: "" };
+  const [platform, arch] = value.split("/");
+  return { platform, arch: ARCH[arch] ?? arch };
+}
+
+export function parseMeta(headers: Headers): IngestMeta {
+  const runtimeHeader = headers.get("x-runtime");
+  if (runtimeHeader === null) {
+    throw new IngestError(
+      400,
+      headers.has("x-node-version")
+        ? "this Observator snippet is outdated; replace it with the current one (the project's Setup tab, or setup_dockerfile over MCP)"
+        : "missing X-Runtime header",
+    );
+  }
+  const { runtimes, invalid } = parseRuntimes(runtimeHeader.slice(0, 1000));
+  const { platform, arch } = normalizePlatform(headers.get("x-platform") ?? "");
 
   const osHeader = headers.get("x-os")?.trim().toLowerCase() ?? "";
   const os = /^[a-z0-9._-]{1,32}$/.test(osHeader) ? osHeader : "";
 
   const labelHeader = headers.get("x-labels");
   return {
-    nodeVersion: version,
+    runtimes,
+    invalidRuntimes: invalid,
     platform,
     arch,
     os,

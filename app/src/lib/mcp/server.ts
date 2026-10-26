@@ -8,10 +8,10 @@ import { readTools } from "./read-tools";
 import { registerTools } from "./tools";
 import { writeTools } from "./write-tools";
 
-const INSTRUCTIONS = `Observator tracks the Node version and npm packages that self-hosted Node apps really run. Each app reports from a stage in its Dockerfile during docker build; Observator checks the Node version against nodejs.org and every package against OSV, and notifies when something needs doing.
+const INSTRUCTIONS = `Observator tracks the runtimes (Node.js, Python, PHP, ...) and npm packages that self-hosted apps really run. Each app reports from a stage in its Dockerfile during docker build; Observator checks Node.js versions against nodejs.org (other runtimes are shown, not checked yet) and every package against OSV, and notifies when something needs doing.
 
-- A project is one app (or one server of an app, when a shared key splits by IP). Status: ok, update (a Node security release or end of life), vulnerable (open package advisories), none (no build yet).
-- Start with list_projects; get_project has the details and fix advice in the project's package manager; list_packages and get_package answer "where is X used"; node_overview groups projects by Node version.
+- A project is one app (or one server of an app, when a shared key splits by IP). Status: ok, update (a runtime security release or end of life), vulnerable (open package advisories), none (no build yet).
+- Start with list_projects; get_project has the details and fix advice in the project's package manager; list_packages and get_package answer "where is X used"; runtime_overview groups projects by runtime version.
 - Labels (word or key:value such as app:heatwave, env:prod) group and filter projects. Builds add their own via OBSERVATOR_LABELS; update_project sets the project's own.
 - To add Observator to a repository, use setup_dockerfile per Dockerfile (the install prompt has the steps) and write the returned Dockerfile back unchanged.
 - Nothing can be deleted through MCP, and users, tokens and sign-in are out of reach; those stay in the web UI.`;

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { packageAdvice } from "@/lib/advice";
 import { listChannels, toView } from "@/lib/data/channels";
 import { listIngestKeys } from "@/lib/data/ingest-keys";
-import { nodeOverview } from "@/lib/data/node-overview";
+import { runtimeOverview } from "@/lib/data/runtime-overview";
 import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages";
 import { listProjects } from "@/lib/data/projects";
 import { getOverview, getProjectView } from "@/lib/data/views";
@@ -13,15 +13,14 @@ import { env } from "@/lib/env";
 import { displayEntry } from "@/lib/ingest/allowlist";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { matchingIgnore } from "@/lib/issues/reconcile";
-import type { NodeEolData, NodeSecurityData, VulnIssueData } from "@/lib/issues/types";
+import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
 import { vulnVersions } from "@/lib/issues/types";
 import { jobStates } from "@/lib/jobs/scheduler";
 import { effectiveLabels, hasLabels } from "@/lib/labels";
-import { pinnedImage } from "@/lib/node/advice";
-import { lineDescription } from "@/lib/node/describe";
-import { evaluateNode } from "@/lib/node/evaluate";
-import { getNodeData } from "@/lib/node/releases";
-import type { BuildChanges } from "@/lib/pb/types";
+import type { BuildChanges, BuildRecord, IssueRecord } from "@/lib/pb/types";
+import { loadEvaluators } from "@/lib/runtimes";
+import { CHECKED_RUNTIMES, lineDescription, pinFor, runtimeLabel } from "@/lib/runtimes/labels";
+import type { Evaluator } from "@/lib/runtimes/types";
 import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
 import { isStale } from "@/lib/status";
@@ -37,7 +36,8 @@ function capped<T>(list: T[], n: number): { items: T[]; omitted: number } {
 function compactChanges(c: BuildChanges | null) {
   if (!c) return null;
   return {
-    node: c.node ?? null,
+    runtimes: c.runtimes ?? [],
+    app: c.app ?? null,
     added: capped(c.added, 50),
     removed: capped(c.removed, 50),
     changed: capped(c.changed, 50),
@@ -45,11 +45,40 @@ function compactChanges(c: BuildChanges | null) {
   };
 }
 
+/**
+ * The runtimes of a build with what Observator knows about each: the release line, an open
+ * security update with the image to pin, end of life. Unchecked runtimes are listed as such.
+ */
+function describeRuntimes(
+  build: Pick<BuildRecord, "runtimes" | "os"> | null,
+  issues: { security: IssueRecord[]; eol: IssueRecord[] },
+  evaluators?: Map<string, Evaluator>,
+) {
+  return (build?.runtimes ?? []).map((r) => {
+    const security = issues.security
+      .map((i) => i.data as unknown as RuntimeSecurityData)
+      .find((d) => d.runtime === r.name);
+    const eol = issues.eol.map((i) => i.data as unknown as RuntimeEolData).find((d) => d.runtime === r.name);
+    const pin = security ? pinFor(r.name, security.target, security.os) : null;
+    return {
+      name: r.name,
+      label: runtimeLabel(r.name),
+      version: r.version,
+      checked: CHECKED_RUNTIMES.includes(r.name),
+      ...(evaluators ? { line: lineDescription(evaluators.get(r.name)?.(r.version) ?? null) } : {}),
+      securityUpdate: security
+        ? { target: security.target, ...(pin ? { pin: `FROM ${pin} AS app` } : {}) }
+        : null,
+      endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
+    };
+  });
+}
+
 export const readTools: Record<string, Tool> = {
   list_projects: defineTool({
     title: "List projects",
     description:
-      "All projects with their status (ok, update = a Node security or end-of-life update, vulnerable = open package advisories, none = no build yet), Node version, advisory counts, labels and last build. Start here.",
+      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, none = no build yet), runtimes (such as node 22.11.0; only Node.js is checked so far), app version, advisory counts, labels and last build. Start here.",
     input: z.object({
       labels: z
         .array(z.string())
@@ -78,9 +107,8 @@ export const readTools: Record<string, Tool> = {
           status: summary.status,
           stale: isStale(summary, lastBuildAt, settings.staleDays),
           labels: effectiveLabels(p),
-          node: latest?.nodeVersion ?? null,
-          nodeSecurityTarget: (summary.nodeSecurity?.data as NodeSecurityData | undefined)?.target ?? null,
-          nodeEndOfLife: Boolean(summary.nodeEol),
+          runtimes: describeRuntimes(latest, { security: summary.runtimeSecurity, eol: summary.runtimeEol }),
+          app: latest?.appVersion ? { name: latest.appName, version: latest.appVersion } : null,
           advisories: summary.vulnBySeverity,
           lastBuild: lastBuildAt?.toISOString() ?? null,
           sharedKey: p.ingestKey ? (keyName.get(p.ingestKey) ?? "revoked") : null,
@@ -93,16 +121,13 @@ export const readTools: Record<string, Tool> = {
   get_project: defineTool({
     title: "Project details",
     description:
-      "One project: Node status with the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), ignored advisories with their reason, labels, setup and the latest build.",
+      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), ignored advisories with their reason, labels, setup and the latest build.",
     input: z.object({ project: projectRef }),
     run: async ({ project: ref }) => {
       const found = await resolveProject(ref);
-      const [view, nodeData] = await Promise.all([getProjectView(found.slug), getNodeData()]);
+      const [view, evaluators] = await Promise.all([getProjectView(found.slug), loadEvaluators()]);
       if (!view) throw new ToolError(`Project ${ref} disappeared.`);
       const { project: p, latest, summary, issues, ignores } = view;
-      const evaluation = latest && nodeData ? evaluateNode(latest.nodeVersion, nodeData) : null;
-      const security = summary.nodeSecurity?.data as NodeSecurityData | undefined;
-      const eol = summary.nodeEol?.data as NodeEolData | undefined;
       const lockfile = latest?.lockfileType && latest.lockfileType !== "none" ? latest.lockfileType : "npm";
       const vulns = issues
         .filter((i) => i.kind === "vuln")
@@ -131,18 +156,14 @@ export const readTools: Record<string, Tool> = {
         url: projectUrl(p.slug),
         status: summary.status,
         labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
-        node: latest
-          ? {
-              version: latest.nodeVersion,
-              platform: [latest.platform, latest.arch].filter(Boolean).join("/") || null,
-              os: latest.os || null,
-              line: lineDescription(evaluation),
-              securityUpdate: security
-                ? { target: security.target, pin: `FROM ${pinnedImage(security.target, security.os)} AS app` }
-                : null,
-              endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
-            }
-          : null,
+        runtimes: describeRuntimes(
+          latest,
+          { security: summary.runtimeSecurity, eol: summary.runtimeEol },
+          evaluators,
+        ),
+        app: latest?.appVersion ? { name: latest.appName, version: latest.appVersion } : null,
+        platform: latest ? [latest.platform, latest.arch].filter(Boolean).join("/") || null : null,
+        os: latest?.os || null,
         advisories: capped(
           open.map((i) => ({
             ...advisory(i),
@@ -184,7 +205,7 @@ export const readTools: Record<string, Tool> = {
   list_builds: defineTool({
     title: "Build history",
     description:
-      "A project's latest builds, newest first, with what changed in each: Node version and added, removed and changed packages.",
+      "A project's latest builds, newest first, with what changed in each: runtime versions, the app version from package.json, and added, removed and changed packages.",
     input: z.object({ project: projectRef, limit: z.number().int().min(1).max(50).default(10) }),
     run: async ({ project: ref, limit }) => {
       const view = await getProjectView((await resolveProject(ref)).slug);
@@ -192,7 +213,8 @@ export const readTools: Record<string, Tool> = {
       return {
         builds: view.builds.slice(0, limit).map((b) => ({
           at: iso(b.created),
-          node: b.nodeVersion,
+          runtimes: b.runtimes ?? [],
+          app: b.appVersion ? { name: b.appName, version: b.appVersion } : null,
           platform: [b.platform, b.arch].filter(Boolean).join("/") || null,
           os: b.os || null,
           lockfile: b.lockfileType,
@@ -234,32 +256,37 @@ export const readTools: Record<string, Tool> = {
     },
   }),
 
-  node_overview: defineTool({
-    title: "Node versions",
+  runtime_overview: defineTool({
+    title: "Runtime versions",
     description:
-      "All projects grouped by Node version, with the security release to move to and the image to pin.",
+      "All projects grouped per runtime and version. For checked runtimes (Node.js so far): the release line, the security release to move to and the image to pin.",
     input: z.object({}),
-    run: async () => {
-      const { groups, affected, targets } = await nodeOverview();
-      return {
-        affected,
-        targets,
-        versions: groups.map((g) => {
+    run: async () => ({
+      runtimes: (await runtimeOverview()).map((section) => ({
+        runtime: section.runtime,
+        label: section.label,
+        checked: section.checked,
+        affected: section.affected,
+        targets: section.targets,
+        versions: section.versions.map((g) => {
           const target = g.evaluation?.securityUpdate?.target ?? null;
           return {
             version: g.version,
             line: lineDescription(g.evaluation),
             securityUpdate: target,
-            projects: g.projects.map((i) => ({
-              slug: i.project.slug,
-              name: i.project.name,
-              os: i.latest?.os || null,
-              pin: target ? `FROM ${pinnedImage(target, i.latest?.os ?? "")} AS app` : null,
-            })),
+            projects: g.projects.map((i) => {
+              const pin = target ? pinFor(section.runtime, target, i.latest?.os ?? "") : null;
+              return {
+                slug: i.project.slug,
+                name: i.project.name,
+                os: i.latest?.os || null,
+                pin: pin ? `FROM ${pin} AS app` : null,
+              };
+            }),
           };
         }),
-      };
-    },
+      })),
+    }),
   }),
 
   list_shared_keys: defineTool({

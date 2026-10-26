@@ -7,7 +7,7 @@ import { uniqueSlug } from "@/lib/data/projects";
 import { env } from "@/lib/env";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { latestBuild, recordBuild, reportHash } from "@/lib/ingest/ingest";
-import type { IngestMeta } from "@/lib/ingest/request";
+import { normalizePlatform, type IngestMeta } from "@/lib/ingest/request";
 import { kvGet, kvSet } from "@/lib/kv";
 import { publish } from "@/lib/notify/publish";
 import { adminPb, isNotFound, toPbDate } from "@/lib/pb/admin";
@@ -52,7 +52,7 @@ async function selfProject(): Promise<ProjectRecord> {
 }
 
 /**
- * Observator reports the Node version it actually runs on and its own packages, straight into
+ * Observator reports the runtime it actually runs on (Node) and its own packages, straight into
  * its database. Runs at every start and daily; records a build only when something changed,
  * otherwise it just marks the project as seen so it never counts as stale while running.
  */
@@ -63,11 +63,11 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
   const packageJson = readFileSync(join(dir, "package.json"), "utf8");
   const lockfile = readFileSync(join(dir, "package-lock.json"), "utf8");
   const meta: IngestMeta = {
-    nodeVersion: process.version.replace(/^v/, ""),
-    platform: process.platform,
-    arch: process.arch,
+    runtimes: [{ name: "node", version: process.versions.node }],
+    invalidRuntimes: [],
+    ...normalizePlatform(`${process.platform}/${process.arch}`),
     os: osId(),
-    failOn: { severity: null, node: false },
+    failOn: { severity: null, runtimes: [] },
     // Observator's own project: labels only by hand.
     labels: null,
   };
@@ -76,7 +76,7 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
   const latest = await latestBuild(project.id);
   const unchanged =
     latest &&
-    latest.nodeVersion === meta.nodeVersion &&
+    JSON.stringify(latest.runtimes ?? []) === JSON.stringify(meta.runtimes) &&
     latest.os === meta.os &&
     latest.arch === meta.arch &&
     latest.lockfileHash === reportHash(packageJson, "package-lock.json", lockfile);

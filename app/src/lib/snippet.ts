@@ -1,54 +1,57 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-export type SnippetVariant = "alpine" | "node" | "curl";
+const MANIFESTS = "package.json package-lock.json yarn.lock pnpm-lock.yaml";
 
-export const SNIPPET_VARIANTS: { id: SnippetVariant; label: string; hint: string }[] = [
-  { id: "alpine", label: "Alpine", hint: "node:*-alpine, uses BusyBox wget" },
-  { id: "node", label: "Debian slim", hint: "node:*-slim has no wget or curl; posts with Node's fetch" },
-  { id: "curl", label: "curl", hint: "Images that ship curl, such as node:22 (full Debian)" },
+/**
+ * Runtimes the snippet looks for, each with a command that prints only its version. Absent
+ * ones fail silently; what is found goes into X-Runtime as name/version.
+ */
+const RUNTIMES: [name: string, command: string][] = [
+  ["node", "node -v"],
+  ["bun", "bun --version"],
+  ["deno", "deno eval 'console.log(Deno.version.deno)'"],
+  ["python", "python3 -c 'import platform;print(platform.python_version())'"],
+  ["php", "php -r 'echo PHP_VERSION;'"],
+  ["ruby", "ruby -e 'print RUBY_VERSION'"],
 ];
 
-const LOCKFILES = "$(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null)";
+/** The headers every client sends; the values come from the shell variables set before. */
+const HEADERS: [header: string, value: string][] = [
+  ["Authorization", "Bearer $key"],
+  ["X-Runtime", "$OBS_RUNTIME"],
+  ["X-Platform", "$OBS_PLATFORM"],
+  ["X-Os", "$OBS_OS"],
+  ["X-Fail-On", "$OBSERVATOR_FAIL_ON"],
+  ["X-Project", "$OBSERVATOR_PROJECT"],
+  ["X-Labels", "$OBSERVATOR_LABELS"],
+];
 
-const POST: Record<SnippetVariant, string[]> = {
-  alpine: [
-    // BusyBox wget sends --post-file as a C string and stops at the first NUL byte, so the
-    // gzip is base64-encoded first; the server accepts both forms.
-    `      && base64 /tmp/obs.tgz > /tmp/obs.b64 \\`,
-    `      && wget -q -O /tmp/obs.txt -T 30 \\`,
-    `           --header "Authorization: Bearer $key" \\`,
-    `           --header "X-Node-Version: $(node -v)" \\`,
-    `           --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
-    `           --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
-    `           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
-    `           --header "X-Project: $OBSERVATOR_PROJECT" \\`,
-    `           --header "X-Labels: $OBSERVATOR_LABELS" \\`,
-    `           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \\`,
-  ],
-  curl: [
-    `      && curl -fsS -m 30 -o /tmp/obs.txt \\`,
-    `           -H "Authorization: Bearer $key" \\`,
-    `           -H "X-Node-Version: $(node -v)" \\`,
-    `           -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \\`,
-    `           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \\`,
-    `           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \\`,
-    `           -H "X-Project: $OBSERVATOR_PROJECT" \\`,
-    `           -H "X-Labels: $OBSERVATOR_LABELS" \\`,
-    `           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \\`,
-  ],
-  node: [
-    `      && node -e ' \\`,
-    `           const fs = require("fs"), env = process.env; \\`,
-    `           const os = ((fs.existsSync("/etc/os-release") ? fs.readFileSync("/etc/os-release", "utf8") : "").match(/^ID="?([a-z0-9._-]+)/m) || [])[1] || ""; \\`,
-    `           fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \\`,
-    `             signal: AbortSignal.timeout(30000), headers: { \\`,
-    `               "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \\`,
-    `               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \\`,
-    `               "X-Project": env.OBSERVATOR_PROJECT || "", "X-Labels": env.OBSERVATOR_LABELS || "" } }) \\`,
-    `           .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \\`,
-    `             fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \\`,
-  ],
-};
+// node and python3 read the same values from the environment (OBS_KEY instead of $key).
+const envName = (value: string) => value.replace(/^Bearer \$key$/, "OBS_KEY").replace(/^\$/, "");
+
+const NODE_POST = [
+  'const fs = require("fs"), e = process.env;',
+  'fetch(e.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"),',
+  "signal: AbortSignal.timeout(30000), headers: {",
+  HEADERS.map(([h, v]) =>
+    h === "Authorization" ? `"${h}": "Bearer " + e.OBS_KEY` : `"${h}": e.${envName(v)} || ""`,
+  ).join(", "),
+  "} }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); }",
+  'fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); })',
+];
+
+const PYTHON_POST = [
+  "import os, urllib.request as u; e = os.environ;",
+  `h = {k: e.get(v, "") for k, v in [${HEADERS.filter(([h]) => h !== "Authorization")
+    .map(([h, v]) => `("${h}", "${envName(v)}")`)
+    .join(", ")}]};`,
+  'h["Authorization"] = "Bearer " + e["OBS_KEY"];',
+  'r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30);',
+  'open("/tmp/obs.txt", "wb").write(r.read())',
+];
+
+/** Continuation lines of the RUN, indented under it. */
+const lines = (indent: number, parts: string[]) => parts.map((p) => `${" ".repeat(indent)}${p} \\`);
 
 /**
  * The name of the user's final stage, as typed. BuildKit wants stage names lowercase; anything
@@ -89,8 +92,7 @@ export function copyLockfileLines({ stage, dir }: LockfileSource): string[] {
 /**
  * The Dockerfile addition. It reports from a separate stage so the key never lands in the
  * final image or its history; the COPY forces BuildKit to run that stage. The key is passed
- * as a build argument (unless the `key` option writes it into the Dockerfile), and it is read
- * via node so BuildKit's log output does not show it either.
+ * as a build argument (unless the `key` option writes it into the Dockerfile).
  */
 export interface SnippetOptions {
   /** The name of the user's last stage. */
@@ -114,12 +116,13 @@ export interface SnippetOptions {
 const argValue = (v: string | undefined) => (v ?? "").replace(/["\\$`\r\n]/g, "").trim();
 
 export function dockerSnippet(
-  variant: SnippetVariant,
   url: string,
   { stage = "app", lockfileFrom, keyless = false, key, project, labels }: SnippetOptions = {},
 ): string {
+  const curlHeaders = HEADERS.map(([h, v]) => `-H "${h}: ${v}"`);
+  const wgetHeaders = HEADERS.map(([h, v]) => `--header "${h}: ${v}"`);
   return [
-    "# --- Observator: reports Node version + lockfile; does not end up in the final image ---",
+    "# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---",
     `FROM ${stage} AS observator`,
     ...(lockfileFrom ? copyLockfileLines(lockfileFrom) : []),
     `ARG OBSERVATOR_URL=${url}`,
@@ -127,11 +130,43 @@ export function dockerSnippet(
     `ARG OBSERVATOR_FAIL_ON=""`,
     `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
     `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
-    // Read through node instead of $OBSERVATOR_KEY: BuildKit prints RUN commands with build
-    // args substituted, which would put the key in the build log. (printenv is not in BusyBox.)
-    `RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; ${keyless ? "" : '[ -z "$key" ] || '}{ \\`,
-    `      tar czf /tmp/obs.tgz package.json ${LOCKFILES} \\`,
-    ...POST[variant],
+    // The key is read from the environment, never as $OBSERVATOR_KEY: BuildKit prints RUN lines
+    // with build args filled in, which would put it in the build log. Plain sh throughout, so
+    // any image with a shell works, whatever runtime it has.
+    `RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; ${keyless ? "" : '[ -z "$key" ] || '}{ \\`,
+    `      rt=""; \\`,
+    ...RUNTIMES.map(
+      ([name, command]) => `      v="$(${command} 2>/dev/null)" && rt="$rt,${name}/\${v#v}"; \\`,
+    ),
+    `      export OBS_KEY="$key" OBS_RUNTIME="\${rt#,}" OBS_PLATFORM="$(uname -s)/$(uname -m)" \\`,
+    `        OBS_OS="$(. /etc/os-release 2>/dev/null; echo "$ID")"; \\`,
+    `      files="$(ls ${MANIFESTS} 2>/dev/null)"; \\`,
+    `      if [ -n "$files" ]; then tar czf /tmp/obs.tgz $files; else : > /tmp/obs.tgz; fi; \\`,
+    `      if command -v curl >/dev/null; then \\`,
+    ...lines(8, [
+      "curl -fsS -m 30 -o /tmp/obs.txt",
+      ...curlHeaders,
+      '--data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest";',
+    ]),
+    // BusyBox wget sends --post-file as a C string and stops at the first NUL byte, so the
+    // archive goes base64-encoded; the server accepts both forms.
+    `      elif command -v wget >/dev/null; then \\`,
+    ...lines(8, [
+      "base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30",
+      ...wgetHeaders,
+      '--post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest";',
+    ]),
+    `      elif command -v node >/dev/null; then \\`,
+    // The code starts right after the quote: Docker joins these lines into one, and Python
+    // refuses code that starts with whitespace.
+    `        node -e '${NODE_POST[0]} \\`,
+    ...lines(10, NODE_POST.slice(1)),
+    `        '; \\`,
+    `      elif command -v python3 >/dev/null; then \\`,
+    `        python3 -c '${PYTHON_POST[0]} \\`,
+    ...lines(10, PYTHON_POST.slice(1)),
+    `        ' 2>/dev/null; \\`,
+    `      else echo "Observator: no curl, wget, node or python3 in this image"; false; fi \\`,
     `      && cat /tmp/obs.txt \\`,
     `      || echo "Observator: report failed, continuing"; \\`,
     `    }; \\`,

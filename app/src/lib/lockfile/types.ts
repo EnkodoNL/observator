@@ -17,6 +17,7 @@ export interface ParseResult {
 
 export interface PackageJson {
   name?: string;
+  version?: string;
   packageManager?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
