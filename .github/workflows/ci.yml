@@ -51,7 +51,7 @@ jobs:
         run: docker compose up -d --build --wait --wait-timeout 180
       - name: Health
         run: curl -fsS http://localhost:3000/api/health
-      - name: Build the example app with every snippet variant
+      - name: Build the example apps, one per way of sending
         run: |
           seed=$(docker compose exec -T web node --input-type=module - < scripts/e2e-seed.mjs)
           key=${seed% *}

@@ -2,7 +2,15 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { diffComponents } from "./changes";
-import { extractFiles, IngestError, parseFailOn, parseMeta, readBody } from "./request";
+import {
+  extractFiles,
+  IngestError,
+  normalizePlatform,
+  parseFailOn,
+  parseMeta,
+  parseRuntimes,
+  readBody,
+} from "./request";
 import { renderReport, type ReportInput } from "./report";
 import { RateLimiter } from "@/lib/rate-limit";
 
@@ -66,15 +74,20 @@ describe("extractFiles", () => {
     expect(extractFiles(body)).toEqual({ packageJson: "{}", lockfiles: { "yarn.lock": "x" } });
   });
 
-  it("accepts base64-encoded gzip, as sent by the Alpine snippet", () => {
+  it("accepts base64-encoded gzip, as sent through BusyBox wget", () => {
     const b64 = gzipSync(tarOf({ "package.json": "{}" }))
       .toString("base64")
       .replace(/(.{76})/g, "$1\n");
     expect(extractFiles(Buffer.from(b64 + "\n")).packageJson).toBe("{}");
   });
 
-  it("requires package.json and rejects non-gzip bodies", () => {
-    expect(() => extractFiles(gzipSync(tarOf({ "yarn.lock": "x" })))).toThrow(/package.json missing/);
+  it("accepts an image without package.json, but not a body that is not gzip", () => {
+    // The snippet sends an empty body when it finds no manifests at all.
+    expect(extractFiles(Buffer.alloc(0))).toEqual({ packageJson: null, lockfiles: {} });
+    expect(extractFiles(gzipSync(tarOf({ "yarn.lock": "x" })))).toEqual({
+      packageJson: null,
+      lockfiles: { "yarn.lock": "x" },
+    });
     expect(() => extractFiles(Buffer.from("plain"))).toThrow(IngestError);
   });
 });
@@ -85,6 +98,7 @@ describe("readBody", () => {
     await expect(readBody(request, 1024)).rejects.toMatchObject({ status: 413 });
     const ok = new Request("http://x", { method: "POST", body: new Uint8Array(10) });
     expect((await readBody(ok, 1024)).length).toBe(10);
+    expect((await readBody(new Request("http://x", { method: "POST" }), 1024)).length).toBe(0);
   });
 });
 
@@ -92,62 +106,114 @@ describe("headers", () => {
   it("parses the snippet's metadata", () => {
     const meta = parseMeta(
       new Headers({
-        "x-node-version": "v22.11.0",
-        "x-platform": "linux/arm64",
+        "x-runtime": "node/v22.11.0,python/3.12.4",
+        "x-platform": "Linux/aarch64",
         "x-os": "Alpine",
         "x-fail-on": "",
       }),
     );
     expect(meta).toEqual({
-      nodeVersion: "22.11.0",
+      runtimes: [
+        { name: "node", version: "22.11.0" },
+        { name: "python", version: "3.12.4" },
+      ],
+      invalidRuntimes: [],
       platform: "linux",
       arch: "arm64",
       os: "alpine",
-      failOn: { severity: null, node: false },
+      failOn: { severity: null, runtimes: [] },
       labels: null,
     });
-    // An empty header clears the build labels; a missing one (older snippets) leaves them.
-    const base = { "x-node-version": "v22.11.0" };
+    // An empty header clears the build labels; a missing one leaves them.
+    const base = { "x-runtime": "node/22.11.0" };
     expect(parseMeta(new Headers({ ...base, "x-labels": "" })).labels).toEqual({ labels: [], invalid: [] });
     expect(parseMeta(new Headers({ ...base, "x-labels": "App:Heatwave, role:web, bad!" })).labels).toEqual({
       labels: ["app:heatwave", "role:web"],
       invalid: ["bad!"],
     });
-    expect(() => parseMeta(new Headers())).toThrow(IngestError);
     expect(
-      parseMeta(new Headers({ "x-node-version": "22.1.0", "x-platform": "../etc", "x-os": "a b" })),
+      parseMeta(new Headers({ "x-runtime": "node/22.1.0", "x-platform": "../etc", "x-os": "a b" })),
     ).toMatchObject({
       platform: "",
       os: "",
     });
   });
 
+  it("records an image without a known runtime", () => {
+    expect(parseMeta(new Headers({ "x-runtime": "" })).runtimes).toEqual([]);
+  });
+
+  it("tells an outdated snippet apart from a request without the header", () => {
+    expect(() => parseMeta(new Headers())).toThrow(/missing X-Runtime/);
+    expect(() => parseMeta(new Headers({ "x-node-version": "v22.11.0" }))).toThrow(/snippet is outdated/);
+  });
+
+  it("parses runtimes leniently, skipping what it cannot read", () => {
+    expect(parseRuntimes(" Node/22.11.0 , bun/1.2.3, node/20.0.0, php, ruby/3.3 x, /1.0, deno/")).toEqual({
+      runtimes: [
+        { name: "node", version: "22.11.0" },
+        { name: "bun", version: "1.2.3" },
+      ],
+      invalid: ["php", "ruby/3.3 x", "/1.0", "deno/"],
+    });
+    const many = Array.from({ length: 10 }, (_, i) => `r${String.fromCharCode(97 + i)}/1.0`).join(",");
+    const parsed = parseRuntimes(many);
+    expect(parsed.runtimes).toHaveLength(8);
+    expect(parsed.invalid).toEqual(["ri/1.0", "rj/1.0"]);
+    // Only a leading v before a digit is dropped.
+    expect(parseRuntimes("x/vnext").runtimes).toEqual([{ name: "x", version: "vnext" }]);
+  });
+
+  it.each([
+    ["linux/x86_64", "amd64"],
+    ["linux/x64", "amd64"],
+    ["linux/aarch64", "arm64"],
+    ["linux/armv7l", "arm"],
+    ["linux/i686", "386"],
+    ["linux/riscv64", "riscv64"],
+  ])("normalizes %s to %s", (header, arch) => {
+    expect(normalizePlatform(header)).toEqual({ platform: "linux", arch });
+  });
+
   it("parses the build gate", () => {
-    expect(parseFailOn("high,node")).toEqual({ severity: "high", node: true });
-    expect(parseFailOn(" medium ")).toEqual({ severity: "moderate", node: false });
-    expect(parseFailOn("bogus")).toEqual({ severity: null, node: false });
+    expect(parseFailOn("high,node")).toEqual({ severity: "high", runtimes: ["node"] });
+    expect(parseFailOn("critical runtime")).toEqual({ severity: "critical", runtimes: ["*"] });
+    expect(parseFailOn(" medium ")).toEqual({ severity: "moderate", runtimes: [] });
+    expect(parseFailOn("bogus")).toEqual({ severity: null, runtimes: [] });
   });
 });
 
 describe("renderReport", () => {
+  const base: ReportInput = {
+    projectName: "api",
+    projectUrl: "https://obs/projects/api",
+    runtimes: [{ name: "node", version: "22.11.0" }],
+    platform: "linux/amd64",
+    lockfileType: "npm",
+    packageCount: 3,
+    lockfileChanged: true,
+    warnings: [],
+    packagesPending: false,
+    gate: null,
+  };
+
   it("prints a gate line only when the gate is enabled", () => {
-    const base: ReportInput = {
-      projectName: "api",
-      projectUrl: "https://obs/projects/api",
-      nodeVersion: "22.11.0",
-      platform: "linux/x64",
-      lockfileType: "npm",
-      packageCount: 3,
-      lockfileChanged: true,
-      warnings: [],
-      packagesPending: false,
-      gate: null,
-    };
     expect(renderReport(base)).toBe(
-      "Observator: recorded build for api (node v22.11.0, linux/x64, npm, 3 packages)\n",
+      "Observator: recorded build for api (node 22.11.0, linux/amd64, npm, 3 packages)\n",
     );
     expect(renderReport({ ...base, gate: "fail", gateReason: "1 critical" })).toContain(
       "OBSERVATOR_GATE=fail (1 critical)",
+    );
+  });
+
+  it("says what is tracked without a lockfile", () => {
+    const python = { ...base, runtimes: [{ name: "python", version: "3.12.4" }], lockfileType: "none" };
+    expect(renderReport(python)).toBe(
+      "Observator: recorded build for api (python 3.12.4, linux/amd64, no lockfile)\n" +
+        "Observator: no lockfile found; only the runtime versions are tracked\n",
+    );
+    expect(renderReport({ ...python, runtimes: [] })).toContain(
+      "(no runtime detected, linux/amd64, no lockfile)\nObservator: no runtime and no lockfile found; nothing to check",
     );
   });
 });

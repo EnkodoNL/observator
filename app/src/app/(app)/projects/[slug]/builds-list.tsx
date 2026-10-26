@@ -4,6 +4,7 @@ import { changeDirection } from "@/lib/ingest/direction";
 import { pbDate } from "@/lib/pb/admin";
 import type { BuildRecord } from "@/lib/pb/types";
 import { formatDateTime, timeAgo } from "@/lib/time";
+import { runtimeLabel } from "@/lib/runtimes/labels";
 
 function ChangeSummary({ build }: { build: BuildRecord }) {
   const c = build.changes;
@@ -97,28 +98,47 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
     <ol className="divide-y rounded-xl border">
       {builds.map((b, i) => {
         const date = pbDate(b.created);
-        const nodeChange = b.changes?.node;
+        const runtimeChanges = (b.changes?.runtimes ?? []).filter((c) => c.from && c.to);
+        const appChange = b.changes?.app;
         const isFirst = i === builds.length - 1;
         return (
           <li key={b.id} className="px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-mono text-sm">
-                  {nodeChange ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="text-muted-foreground">{nodeChange.from}</span>
-                      <ArrowRightIcon className="size-3.5 text-muted-foreground" />
-                      <span className="font-medium">{nodeChange.to}</span>
-                    </span>
-                  ) : (
-                    b.nodeVersion
+                <span className="inline-flex flex-wrap items-center gap-x-3 font-mono text-sm">
+                  {(b.runtimes ?? []).length === 0 && (
+                    <span className="text-muted-foreground">no runtime</span>
                   )}
+                  {(b.runtimes ?? []).map((r) => {
+                    const change = runtimeChanges.find((c) => c.name === r.name);
+                    return change ? (
+                      <span key={r.name} className="inline-flex items-center gap-1.5">
+                        <span className="text-muted-foreground">
+                          {r.name} {change.from}
+                        </span>
+                        <ArrowRightIcon className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium">{change.to}</span>
+                      </span>
+                    ) : (
+                      <span key={r.name}>
+                        <span className="text-muted-foreground">{r.name}</span> {r.version}
+                      </span>
+                    );
+                  })}
                 </span>
-                {nodeChange && (
-                  <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">Node changed</span>
+                {runtimeChanges.length > 0 && (
+                  <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
+                    {runtimeChanges.map((c) => runtimeLabel(c.name)).join(", ")} changed
+                  </span>
+                )}
+                {appChange && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                    {appChange.from} → {appChange.to}
+                  </span>
                 )}
                 <span className="text-xs text-muted-foreground">
                   {[
+                    b.appVersion && !appChange && `v${b.appVersion.replace(/^v/, "")}`,
                     b.lockfileType !== "none" && b.lockfileType,
                     `${b.packageCount} packages`,
                     b.os,

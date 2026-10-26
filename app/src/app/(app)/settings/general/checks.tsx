@@ -18,7 +18,7 @@ export function CheckButtons() {
         onClick={() =>
           startCheck(async () => {
             const res = await runChecksAction();
-            if (res.ok) toast.success("Node releases and package advisories checked");
+            if (res.ok) toast.success("Runtime releases and package advisories checked");
             else toast.error(res.error ?? "Check failed");
           })
         }

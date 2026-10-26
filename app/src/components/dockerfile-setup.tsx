@@ -3,7 +3,7 @@
 
 import { useId, useState } from "react";
 import { DockerfileCheck } from "@/components/dockerfile-check";
-import { SnippetTabs } from "@/components/snippet-tabs";
+import { SnippetBlock } from "@/components/snippet-block";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -194,7 +194,7 @@ function StepByStep({ url, keyless }: { url: string; keyless: boolean }) {
         )}
       </div>
 
-      <SnippetTabs url={url} stage={stage} lockfileFrom={lockfileFrom} keyless={keyless} />
+      <SnippetBlock url={url} stage={stage} lockfileFrom={lockfileFrom} keyless={keyless} />
     </div>
   );
 }

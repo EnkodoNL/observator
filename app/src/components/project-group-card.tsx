@@ -5,6 +5,7 @@ import { LabelChips } from "@/components/label-chips";
 import { StatusBadge } from "@/components/status";
 import type { ProjectSummary } from "@/lib/data/views";
 import { effectiveLabels } from "@/lib/labels";
+import { primaryRuntime } from "@/lib/runtimes/labels";
 import { isStale, worstStatus } from "@/lib/status";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,15 @@ export function ProjectGroupCard({
   const shared = items
     .map((i) => effectiveLabels(i.project))
     .reduce((acc, l) => acc.filter((x) => l.includes(x)));
-  const versions = [...new Set(items.map((i) => i.latest?.nodeVersion).filter(Boolean))];
+  const leadOf = (i: ProjectSummary) => primaryRuntime(i.latest?.runtimes);
+  const versions = [
+    ...new Set(
+      items
+        .map((i) => leadOf(i))
+        .filter(Boolean)
+        .map((r) => `${r!.name} ${r!.version}`),
+    ),
+  ];
   const lastBuild = items.reduce<Date | null>(
     (a, i) => (i.lastBuildAt && (!a || i.lastBuildAt > a) ? i.lastBuildAt : a),
     null,
@@ -46,7 +55,7 @@ export function ProjectGroupCard({
           <h3 className="truncate font-medium">{name}</h3>
           <p className="text-xs text-muted-foreground">
             {items.length} servers ·{" "}
-            {versions.length === 1 ? `Node ${versions[0]}` : `${versions.length} Node versions`}
+            {versions.length === 1 ? versions[0] : `${versions.length} runtime versions`}
           </p>
         </div>
         <StatusBadge status={status} />
@@ -64,7 +73,7 @@ export function ProjectGroupCard({
                 {i.project.instance || i.project.name}
               </span>
               <span className="font-mono text-xs text-muted-foreground">
-                {i.latest?.nodeVersion ?? "no build"}
+                {i.latest ? (leadOf(i)?.version ?? "no runtime") : "no build"}
               </span>
               <StatusBadge status={i.summary.status} className="h-5 px-2 text-[11px]" />
             </Link>

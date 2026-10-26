@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Regenerates examples/express-app/Dockerfile*: node --no-warnings app/scripts/write-examples.ts
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { EXAMPLE_DOCKERFILES, exampleDockerfile } from "../src/lib/snippet-examples.ts";
+// Regenerates the Dockerfiles in examples/: node --no-warnings app/scripts/write-examples.ts
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { EXAMPLE_DOCKERFILES } from "../src/lib/snippet-examples.ts";
 
-const dir = join(import.meta.dirname, "..", "..", "examples", "express-app");
-for (const { file, variant, image, note } of EXAMPLE_DOCKERFILES) {
-  writeFileSync(join(dir, file), exampleDockerfile(variant, image, note));
-  console.log(`wrote examples/express-app/${file}`);
+const root = join(import.meta.dirname, "..", "..", "examples");
+for (const { path, content } of EXAMPLE_DOCKERFILES) {
+  mkdirSync(dirname(join(root, path)), { recursive: true });
+  writeFileSync(join(root, path), content());
+  console.log(`wrote examples/${path}`);
 }

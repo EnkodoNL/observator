@@ -20,7 +20,7 @@ import { packageHref } from "@/lib/package-href";
 
 const PAGES = [
   { label: "Overview", href: "/" },
-  { label: "Node versions", href: "/node" },
+  { label: "Runtimes", href: "/runtimes" },
   { label: "Packages", href: "/packages" },
   { label: "Settings: General", href: "/settings/general" },
   { label: "Settings: Projects", href: "/settings/projects" },

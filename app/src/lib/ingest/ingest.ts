@@ -11,8 +11,7 @@ import {
   type LockfileName,
 } from "@/lib/lockfile";
 import type { BuildChanges, BuildRecord, LockfileType, ProjectRecord } from "@/lib/pb/types";
-import type { Runtime } from "@/lib/runtimes/types";
-import { diffComponents } from "./changes";
+import { diffComponents, diffRuntimes } from "./changes";
 import type { IngestFiles, IngestMeta } from "./request";
 
 export interface IngestOutcome {
@@ -35,22 +34,6 @@ const LOCKFILE_TYPE: Record<LockfileName, (text: string) => LockfileType> = {
 /** Identifies a package.json + lockfile pair; a build with the same hash changes no packages. */
 export function reportHash(packageJson: string, lockfileName: string | null, lockfileText: string): string {
   return sha256(`${packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
-}
-
-/** Runtimes whose version changed between two builds, plus ones that appeared or disappeared. */
-export function diffRuntimes(
-  before: readonly Runtime[],
-  after: readonly Runtime[],
-): NonNullable<BuildChanges["runtimes"]> {
-  const out: NonNullable<BuildChanges["runtimes"]> = [];
-  for (const a of after) {
-    const b = before.find((r) => r.name === a.name);
-    if (!b) out.push({ name: a.name, from: null, to: a.version });
-    else if (b.version !== a.version) out.push({ name: a.name, from: b.version, to: a.version });
-  }
-  for (const b of before)
-    if (!after.some((r) => r.name === b.name)) out.push({ name: b.name, from: b.version, to: null });
-  return out;
 }
 
 export async function latestBuild(projectId: string): Promise<BuildRecord | null> {

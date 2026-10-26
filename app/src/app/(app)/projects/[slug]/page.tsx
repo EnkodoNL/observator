@@ -10,8 +10,7 @@ import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
 import { lastRedeploy, maskUrl } from "@/lib/deploy";
 import { latestVersions, outdatedLevel } from "@/lib/npm-latest";
-import { evaluateNode } from "@/lib/node/evaluate";
-import { getNodeData } from "@/lib/node/releases";
+import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
 import { env } from "@/lib/env";
 import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import type { Severity } from "@/lib/pb/types";
@@ -19,7 +18,7 @@ import { severityRank } from "@/lib/severity";
 import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
 import { BuildsList } from "./builds-list";
-import { NodePanel } from "./node-panel";
+import { RuntimePanel } from "./runtime-panel";
 import { ProjectSettings } from "./project-settings";
 import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
@@ -44,16 +43,18 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";
-  const [view, nodeData, latestByName] = await Promise.all([
+  const [view, evaluators, latestByName] = await Promise.all([
     getProjectView(slug),
-    getNodeData(),
+    loadEvaluators(),
     latestVersions(),
   ]);
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
   const appUrl = env().APP_URL;
-  const evaluation = latest && nodeData ? evaluateNode(latest.nodeVersion, nodeData) : null;
+  const evaluations = new Map(
+    evaluateRuntimes(latest?.runtimes ?? [], evaluators).map((e) => [e.runtime, e] as const),
+  );
   const redeploy = project.deployWebhookUrl ? await lastRedeploy(project.id) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
@@ -151,7 +152,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
 
       {tab === "overview" && (
         <div className="space-y-6">
-          <NodePanel latest={latest} summary={summary} evaluation={evaluation} />
+          <RuntimePanel latest={latest} summary={summary} evaluations={evaluations} />
           <section className="space-y-3">
             <h2 className="font-medium">
               Vulnerabilities{" "}
@@ -239,7 +240,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               </p>
             ) : project.apiKeyPrefix === "self" ? (
               <p className="text-sm text-muted-foreground">
-                This is Observator itself. It reports the Node version and packages it runs with at startup
+                This is Observator itself. It reports the Node.js version and packages it runs with at startup
                 and once a day, without a key. Set{" "}
                 <code className="font-mono text-foreground">OBSERVATOR_SELF=off</code> to stop.
               </p>
@@ -299,10 +300,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <p className="text-sm text-muted-foreground">
               Set <code className="font-mono text-foreground">OBSERVATOR_FAIL_ON</code> to{" "}
               <code className="font-mono text-foreground">critical</code>,{" "}
-              <code className="font-mono text-foreground">high</code>, or add{" "}
+              <code className="font-mono text-foreground">high</code>, and add{" "}
+              <code className="font-mono text-foreground">runtime</code> or a runtime name such as{" "}
               <code className="font-mono text-foreground">node</code> (for example{" "}
               <code className="font-mono text-foreground">high,node</code>) to fail the build when Observator
-              knows about such a problem. Unset, a build never fails because of Observator.
+              knows about such a problem: an advisory at that level, or a runtime security update. Unset, a
+              build never fails because of Observator.
             </p>
           </section>
         </div>

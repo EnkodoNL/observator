@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { BuildChanges } from "@/lib/pb/types";
+import type { Runtime } from "@/lib/runtimes/types";
 
 const LIMIT = 500;
 
@@ -17,7 +18,7 @@ function byName(list: Pkg[]): Map<string, string[]> {
 }
 
 /** Package-level diff between two component sets, capped so a first build stays small. */
-export function diffComponents(before: Pkg[], after: Pkg[]): Omit<BuildChanges, "node"> {
+export function diffComponents(before: Pkg[], after: Pkg[]): Omit<BuildChanges, "app" | "runtimes"> {
   const old = byName(before);
   const next = byName(after);
   const added: Pkg[] = [];
@@ -42,4 +43,20 @@ export function diffComponents(before: Pkg[], after: Pkg[]): Omit<BuildChanges, 
     changed: changed.sort(sort).slice(0, LIMIT),
     ...(truncated ? { truncated } : {}),
   };
+}
+
+/** Runtimes whose version changed between two builds, plus ones that appeared or disappeared. */
+export function diffRuntimes(
+  before: readonly Runtime[],
+  after: readonly Runtime[],
+): NonNullable<BuildChanges["runtimes"]> {
+  const out: NonNullable<BuildChanges["runtimes"]> = [];
+  for (const a of after) {
+    const b = before.find((r) => r.name === a.name);
+    if (!b) out.push({ name: a.name, from: null, to: a.version });
+    else if (b.version !== a.version) out.push({ name: a.name, from: b.version, to: a.version });
+  }
+  for (const b of before)
+    if (!after.some((r) => r.name === b.name)) out.push({ name: b.name, from: b.version, to: null });
+  return out;
 }

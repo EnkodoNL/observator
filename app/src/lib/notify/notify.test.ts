@@ -60,26 +60,42 @@ describe("renderEvents", () => {
     expect(toPlainText(msg)).toContain("...and 4 more");
   });
 
-  it("groups one Node security release across projects", () => {
-    const node = (projectId: string): IssueEvent => ({
-      type: "node.security_update",
-      projectId,
-      kind: "node_security",
-      key: "node_security:22",
-      revision: "22.23.4",
-      severity: "high",
-      title: "",
-      occurredAt: "2026-10-25T00:00:00.000Z",
-      data: { running: "22.11.0", target: "22.23.4", major: 22, securityReleases: ["22.23.4"], os: "alpine" },
-    });
-    const msg = renderEvents("node.security_update", [node("p1"), node("p2")], ctx);
-    expect(msg.title).toBe("Node security update for 2 projects");
+  const runtimeEvent = (projectId: string, runtime = "node"): IssueEvent => ({
+    type: "runtime.security_update",
+    projectId,
+    kind: "runtime_security",
+    key: `runtime_security:${runtime}:22`,
+    revision: "22.23.4",
+    severity: "high",
+    title: "",
+    occurredAt: "2026-10-25T00:00:00.000Z",
+    data: {
+      runtime,
+      running: "22.11.0",
+      target: "22.23.4",
+      line: "22",
+      securityReleases: ["22.23.4"],
+      os: "alpine",
+    },
+  });
+
+  it("groups one runtime security release across projects", () => {
+    const msg = renderEvents("runtime.security_update", [runtimeEvent("p1"), runtimeEvent("p2")], ctx);
+    expect(msg.title).toBe("Node.js security update for 2 projects");
     expect(msg.items.map((i) => i.detail)).toEqual([
-      "runs 22.11.0; pin node:22.23.4-alpine and redeploy",
-      "runs 22.11.0; pin node:22.23.4-alpine and redeploy",
+      "runs Node.js 22.11.0; pin node:22.23.4-alpine and redeploy",
+      "runs Node.js 22.11.0; pin node:22.23.4-alpine and redeploy",
     ]);
-    const single = renderEvents("node.security_update", [node("p1")], ctx);
+    expect(msg.actions).toEqual([{ label: "Runtimes overview", url: "https://obs.example.com/runtimes" }]);
+    const single = renderEvents("runtime.security_update", [runtimeEvent("p1")], ctx);
+    expect(single.title).toBe("Node.js security update for api: 22.23.4");
     expect(single.summary).toContain("Pin node:22.23.4-alpine and redeploy.");
+  });
+
+  it("advises a version where it knows no image to pin", () => {
+    const single = renderEvents("runtime.security_update", [runtimeEvent("p1", "deno")], ctx);
+    expect(single.summary).toContain("api runs Deno 22.11.0.");
+    expect(single.summary).toContain("Move to 22.23.4 and redeploy.");
   });
 
   it("escapes markdown in user-controlled text", () => {

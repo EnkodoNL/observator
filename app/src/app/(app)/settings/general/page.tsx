@@ -29,7 +29,7 @@ export default async function GeneralSettingsPage() {
       <section>
         <PageHeader
           title="Background checks"
-          description="Run inside the web process. Node releases are checked hourly, package advisories daily."
+          description="Run inside the web process. Runtime releases are checked hourly, package advisories daily."
           actions={<CheckButtons />}
         />
         <div className="overflow-x-auto rounded-xl border">

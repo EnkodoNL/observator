@@ -154,9 +154,9 @@ export async function POST(request: Request) {
           parseError: outcome.parseError,
           warnings: [
             ...(meta.invalidRuntimes.length
-            ? [`runtimes ignored: ${meta.invalidRuntimes.join(", ")} (expected name/version)`]
-            : []),
-          ...(meta.labels?.invalid.length
+              ? [`runtimes ignored: ${meta.invalidRuntimes.join(", ")} (expected name/version)`]
+              : []),
+            ...(meta.labels?.invalid.length
               ? [
                   `labels ignored: ${meta.labels.invalid.join(", ")} (use word or key:value, lowercase a-z 0-9 . _ - /)`,
                 ]

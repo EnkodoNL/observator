@@ -1,20 +1,74 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { copyLockfileLines, dockerSnippet, SNIPPET_VARIANTS, sourceDir, stageName } from "./snippet";
-import { EXAMPLE_DOCKERFILES, exampleDockerfile } from "./snippet-examples";
+import { copyLockfileLines, dockerSnippet, sourceDir, stageName } from "./snippet";
+import { EXAMPLE_DOCKERFILES } from "./snippet-examples";
+
+const URL = "https://obs.example.com";
+
+/** The RUN command as Docker hands it to sh: continuation lines joined, backslashes gone. */
+function runCommand(snippet: string): string {
+  const all = snippet.split("\n");
+  const run: string[] = [];
+  for (const line of all.slice(all.findIndex((l) => l.startsWith("RUN ")))) {
+    run.push(line);
+    if (!line.endsWith("\\")) break;
+  }
+  return run.join("\n").slice("RUN ".length).replace(/\\\n/g, "");
+}
+
+const inline = (run: string, command: string) => run.match(new RegExp(`${command} '([^']*)'`))?.[1] ?? "";
+
+const hasPython = spawnSync("python3", ["--version"]).status === 0;
 
 describe("dockerSnippet", () => {
-  it.each(SNIPPET_VARIANTS.map((v) => v.id))("%s never names the key variable after RUN", (variant) => {
-    const run = dockerSnippet(variant, "https://obs.example.com").split("RUN ")[1];
+  const run = runCommand(dockerSnippet(URL));
+
+  it("never names the key variable after RUN", () => {
     // BuildKit substitutes build args when it prints RUN commands; $OBSERVATOR_KEY would leak.
     expect(run).not.toMatch(/\$\{?OBSERVATOR_KEY/);
-    expect(run).toContain("process.env.OBSERVATOR_KEY");
+    expect(run).toContain(`key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"`);
+  });
+
+  it("is valid sh once Docker has joined the lines", () => {
+    expect(() => execFileSync("sh", ["-n", "-c", run])).not.toThrow();
+  });
+
+  it("starts the inline code right after the quote", () => {
+    // Joined into one line, Python refuses code that starts with whitespace.
+    expect(run).toContain(`node -e 'const fs`);
+    expect(run).toContain(`python3 -c 'import os`);
+  });
+
+  it("has valid Node code", () => {
+    expect(() => new Function(inline(run, "node -e"))).not.toThrow();
+  });
+
+  it.skipIf(!hasPython)("has valid Python code", () => {
+    const check = "import ast, sys; ast.parse(sys.stdin.read())";
+    expect(() => execFileSync("python3", ["-c", check], { input: inline(run, "python3 -c") })).not.toThrow();
+  });
+
+  it.each(["node", "bun", "deno", "python", "php", "ruby"])("detects %s", (name) => {
+    expect(run).toMatch(new RegExp(`&& rt="\\$rt,${name}/\\$\\{v#v\\}"`));
+  });
+
+  it.each(["Authorization", "X-Runtime", "X-Platform", "X-Os", "X-Fail-On", "X-Project", "X-Labels"])(
+    "sends %s with every client",
+    (header) => {
+      // curl, wget, node and python3.
+      expect(run.split(header).length - 1).toBe(4);
+    },
+  );
+
+  it("sends an empty archive when there is no package.json", () => {
+    expect(run).toContain("else : > /tmp/obs.tgz; fi;");
   });
 
   it("follows the name of the final stage", () => {
-    const snippet = dockerSnippet("alpine", "https://obs.example.com", { stage: "runner" });
+    const snippet = dockerSnippet(URL, { stage: "runner" });
     expect(snippet).toContain("FROM runner AS observator");
     expect(snippet.trimEnd().split("\n").at(-2)).toBe("FROM runner");
   });
@@ -31,7 +85,7 @@ describe("dockerSnippet", () => {
   });
 
   it("copies package.json and the lockfile from another stage when asked", () => {
-    const lines = dockerSnippet("alpine", "https://obs.example.com", {
+    const lines = dockerSnippet(URL, {
       stage: "runner",
       lockfileFrom: { stage: "deps", dir: "/app" },
     }).split("\n");
@@ -59,23 +113,17 @@ describe("dockerSnippet", () => {
     );
   });
 
-  it.each(SNIPPET_VARIANTS.map((v) => v.id))("%s without a key check reports either way", (variant) => {
-    const guarded = dockerSnippet(variant, "https://obs.example.com");
-    const keyless = dockerSnippet(variant, "https://obs.example.com", { keyless: true });
+  it("without a key check reports either way", () => {
+    const guarded = dockerSnippet(URL);
+    const keyless = dockerSnippet(URL, { keyless: true });
     expect(guarded).toContain(`[ -z "$key" ] || { \\`);
     expect(keyless).not.toContain("[ -z");
     // Nothing else differs: same key handling when one is set.
     expect(keyless).toBe(guarded.replace('[ -z "$key" ] || ', ""));
   });
 
-  it.each(SNIPPET_VARIANTS.map((v) => v.id))("%s sends the labels", (variant) => {
-    const snippet = dockerSnippet(variant, "https://obs.example.com");
-    expect(snippet).toContain('ARG OBSERVATOR_LABELS=""');
-    expect(snippet).toMatch(/X-Labels(: \$OBSERVATOR_LABELS|": env\.OBSERVATOR_LABELS)/);
-  });
-
   it("writes key, project and labels in as defaults when asked", () => {
-    const snippet = dockerSnippet("alpine", "https://obs.example.com", {
+    const snippet = dockerSnippet(URL, {
       key: "obss_abc-DEF_123",
       project: 'heat"wave $web',
       labels: "app:heatwave,role:web",
@@ -84,43 +132,30 @@ describe("dockerSnippet", () => {
     // Quotes and variables would be interpreted by Docker, so they are left out.
     expect(snippet).toContain('ARG OBSERVATOR_PROJECT="heatwave web"');
     expect(snippet).toContain('ARG OBSERVATOR_LABELS="app:heatwave,role:web"');
-    // Still read through node, so BuildKit does not print it with the RUN line.
-    expect(snippet.split("RUN ")[1]).not.toContain("obss_abc");
+    // Still read from the environment, so BuildKit does not print it with the RUN line.
+    expect(runCommand(snippet)).not.toContain("obss_abc");
   });
 
   it("fills in the URL", () => {
-    expect(dockerSnippet("alpine", "https://obs.example.com")).toContain(
-      "ARG OBSERVATOR_URL=https://obs.example.com",
-    );
+    expect(dockerSnippet(URL)).toContain(`ARG OBSERVATOR_URL=${URL}`);
   });
 });
 
-describe("examples/express-app", () => {
-  it.each(EXAMPLE_DOCKERFILES)("$file matches the generated snippet", ({ file, variant, image, note }) => {
-    const actual = readFileSync(join(__dirname, "..", "..", "..", "examples", "express-app", file), "utf8");
-    expect(actual, "run `node --no-warnings app/scripts/write-examples.ts`").toBe(
-      exampleDockerfile(variant, image, note),
-    );
+describe("examples/", () => {
+  it.each(EXAMPLE_DOCKERFILES)("$path matches the generated snippet", ({ path, content }) => {
+    const actual = readFileSync(join(__dirname, "..", "..", "..", "examples", path), "utf8");
+    expect(actual, "run `node --no-warnings app/scripts/write-examples.ts`").toBe(content());
   });
 });
 
 describe("README", () => {
   const readme = readFileSync(join(__dirname, "..", "..", "..", "README.md"), "utf8");
 
-  it("shows the current Alpine snippet", () => {
-    expect(readme).toContain(dockerSnippet("alpine", "https://observator.example.com"));
+  it("shows the current snippet", () => {
+    expect(readme).toContain(dockerSnippet("https://observator.example.com"));
   });
 
   it("shows the current lines for copying the lockfile from another stage", () => {
     expect(readme).toContain(copyLockfileLines({ stage: "deps", dir: "/app" }).join("\n"));
-  });
-
-  it.each(["node", "curl"] as const)("shows the current %s upload lines", (variant) => {
-    const snippet = dockerSnippet(variant, "https://observator.example.com");
-    const upload = snippet.slice(
-      snippet.indexOf("      && ", snippet.indexOf("tar czf")),
-      snippet.indexOf("      && cat /tmp/obs.txt"),
-    );
-    expect(readme).toContain(upload);
   });
 });

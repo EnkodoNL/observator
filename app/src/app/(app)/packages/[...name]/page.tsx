@@ -37,14 +37,16 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
         </Link>
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h1 className="font-mono text-xl font-semibold tracking-tight break-all">{pkg.name}</h1>
-          <a
-            href={`https://www.npmjs.com/package/${pkg.name}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            npm <ExternalLinkIcon className="size-3.5" />
-          </a>
+          {pkg.ecosystem === "npm" && (
+            <a
+              href={`https://www.npmjs.com/package/${pkg.name}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              npm <ExternalLinkIcon className="size-3.5" />
+            </a>
+          )}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Used by {projects} project{projects === 1 ? "" : "s"} in {pkg.versions.length} version

@@ -56,14 +56,32 @@ describe("osvSeverity", () => {
 
 describe("fixedIn", () => {
   it("picks the fix of the range that contains the installed version", () => {
-    expect(fixedIn(load("GHSA-qw6h-vgh9-j6wx"), "express", "4.17.1")).toBe("4.20.0");
-    expect(fixedIn(load("GHSA-qw6h-vgh9-j6wx"), "express", "5.0.0-beta.1")).toBe("5.0.0");
-    expect(fixedIn(load("GHSA-xvch-5gv4-984h"), "minimist", "1.2.5")).toBe("1.2.6");
-    expect(fixedIn(load("GHSA-xvch-5gv4-984h"), "minimist", "0.0.8")).toBe("0.2.4");
-    expect(fixedIn(load("GHSA-35jh-r3h4-6jhm"), "lodash", "4.17.20")).toBe("4.17.21");
+    expect(
+      fixedIn(load("GHSA-qw6h-vgh9-j6wx"), { ecosystem: "npm", name: "express", version: "4.17.1" }),
+    ).toBe("4.20.0");
+    expect(
+      fixedIn(load("GHSA-qw6h-vgh9-j6wx"), { ecosystem: "npm", name: "express", version: "5.0.0-beta.1" }),
+    ).toBe("5.0.0");
+    expect(
+      fixedIn(load("GHSA-xvch-5gv4-984h"), { ecosystem: "npm", name: "minimist", version: "1.2.5" }),
+    ).toBe("1.2.6");
+    expect(
+      fixedIn(load("GHSA-xvch-5gv4-984h"), { ecosystem: "npm", name: "minimist", version: "0.0.8" }),
+    ).toBe("0.2.4");
+    expect(
+      fixedIn(load("GHSA-35jh-r3h4-6jhm"), { ecosystem: "npm", name: "lodash", version: "4.17.20" }),
+    ).toBe("4.17.21");
+  });
+
+  it("only uses ranges for the package's own ecosystem", () => {
+    expect(
+      fixedIn(load("GHSA-35jh-r3h4-6jhm"), { ecosystem: "PyPI", name: "lodash", version: "4.17.20" }),
+    ).toBe("");
   });
 
   it("returns nothing when only last_affected is known", () => {
-    expect(fixedIn(load("GHSA-35jh-r3h4-6jhm"), "lodash.template", "4.5.0")).toBe("");
+    expect(
+      fixedIn(load("GHSA-35jh-r3h4-6jhm"), { ecosystem: "npm", name: "lodash.template", version: "4.5.0" }),
+    ).toBe("");
   });
 });

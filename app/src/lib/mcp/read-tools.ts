@@ -337,7 +337,7 @@ export const readTools: Record<string, Tool> = {
   analyze_dockerfile: defineTool({
     title: "Check a Dockerfile",
     description:
-      "Reads a Dockerfile and returns it with the Observator snippet added, without a key, plus a note per decision (stage name, variant for the base image, where the lockfile comes from). setup_dockerfile does the same and can also create a project and fill in its key.",
+      "Reads a Dockerfile and returns it with the Observator snippet added, without a key, plus a note per decision (stage name, whether the base image can run it, where the lockfile comes from). setup_dockerfile does the same and can also create a project and fill in its key.",
     input: z.object({
       dockerfile: z.string().min(1).max(200_000),
       keyless: z
@@ -350,7 +350,6 @@ export const readTools: Record<string, Tool> = {
       if (!a.ok) throw new ToolError(a.error);
       return {
         stage: a.stage,
-        variant: a.variant,
         lockfileFrom: a.lockfileFrom ?? null,
         notes: a.notes,
         dockerfile: `${a.lines.map((l) => l.text).join("\n")}\n`,

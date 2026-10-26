@@ -1,7 +1,7 @@
 # Observator
 
-Self-hosted overview of the Node.js versions and npm packages inside your containers, with a
-message on Slack, Telegram, e-mail or your own push service the moment one of them needs attention.
+Self-hosted overview of the runtimes and npm packages inside your containers, with a message on
+Slack, Telegram, e-mail or your own push service the moment one of them needs attention.
 
 <!-- Screenshot: docs/screenshot.png (dashboard, dark mode) -->
 
@@ -10,8 +10,9 @@ built three months ago still runs 22.11.0, and a rebuild often reuses the cached
 Observator records what every build really contains, checks it against the Node.js release
 schedule and OSV.dev, and stays quiet until there is something to do.
 
-- **Node:** the exact version per app, its release line (current, LTS, maintenance, end-of-life), and
-  "Security update available: 22.23.4" with the image tag to pin.
+- **Runtimes:** the exact Node.js version per app, its release line (current, LTS, maintenance,
+  end-of-life), and "Security update available: 22.23.4" with the image tag to pin. Bun, Deno,
+  Python, PHP and Ruby are detected and shown as well, without release checks so far.
 - **Packages:** every npm package from `package-lock.json`, `yarn.lock` (v1 and Berry) or
   `pnpm-lock.yaml`, checked against OSV.dev, with severity, the fixed version and whether it is a
   direct or transitive dependency.
@@ -24,16 +25,16 @@ schedule and OSV.dev, and stays quiet until there is something to do.
 
 And for the days you do open it:
 
-- **Node overview:** all projects grouped by Node version. "These four apps need 22.23.4", with the
-  `FROM` line to pin.
+- **Runtimes overview:** all projects grouped by runtime and version. "These four apps need Node.js
+  22.23.4", with the `FROM` line to pin.
 - **Fix advice:** per advisory, the command or override that fixes it in your package manager
   (`npm install`, `yarn add`, `pnpm add`, `overrides`, `resolutions`), and whether it is a major upgrade.
 - **Redeploy:** with a deploy webhook (Coolify, Dokploy, Portainer, ...), a Redeploy button on the
   project and in notifications, always with a confirmation.
 - **Ignore with a reason:** accept an advisory for one project or all of them, optionally until a
   date. It stays visible as *ignored* and comes back when the ignore expires.
-- **Build history and diffs:** when the Node version changed, and which packages were added, removed,
-  upgraded or downgraded.
+- **Build history and diffs:** when a runtime or the app's own version changed, and which packages
+  were added, removed, upgraded or downgraded.
 - **Outdated direct dependencies:** the latest version from the npm registry, labelled major, minor or
   patch. Display only.
 - **Packages:** every package across all projects, vulnerable ones first. Per package: which projects
@@ -44,8 +45,8 @@ And for the days you do open it:
   repository's Dockerfiles in one go. It can create and change, never delete.
 - **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
   users.
-- **It watches itself:** Observator reports the Node version it runs on and its own packages at every
-  start and daily, as the *Observator* project. No key or snippet involved.
+- **It watches itself:** Observator reports the Node.js version it runs on and its own packages at
+  every start and daily, as the *Observator* project. No key or snippet involved.
 
 ## Quickstart
 
@@ -70,8 +71,8 @@ Two changes to your Dockerfile:
    `FROM app` again, so the image you build and deploy is still your app.
 
 Or let Observator do it: paste your Dockerfile under *Setup → From your Dockerfile* (beta). It comes
-back with the snippet in place and a note per decision: the stage name, the variant for your base
-image, and whether the lockfile has to come from an earlier stage. The Dockerfile is read in the
+back with the snippet in place and a note per decision: the stage name, whether the base image has a
+shell, and whether the lockfile has to come from an earlier stage. The Dockerfile is read in the
 browser and not sent anywhere.
 
 ```dockerfile
@@ -84,25 +85,74 @@ FROM node:22-alpine AS app
 
 # 2. everything below goes at the very bottom
 
-# --- Observator: reports Node version + lockfile; does not end up in the final image ---
+# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
 FROM app AS observator
 ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
-RUN key="$(node -p 'process.env.OBSERVATOR_KEY || ""')"; [ -z "$key" ] || { \
-      tar czf /tmp/obs.tgz package.json $(ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null) \
-      && base64 /tmp/obs.tgz > /tmp/obs.b64 \
-      && wget -q -O /tmp/obs.txt -T 30 \
-           --header "Authorization: Bearer $key" \
-           --header "X-Node-Version: $(node -v)" \
-           --header "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
-           --header "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
-           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
-           --header "X-Project: $OBSERVATOR_PROJECT" \
-           --header "X-Labels: $OBSERVATOR_LABELS" \
-           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest" \
+RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
+      rt=""; \
+      v="$(node -v 2>/dev/null)" && rt="$rt,node/${v#v}"; \
+      v="$(bun --version 2>/dev/null)" && rt="$rt,bun/${v#v}"; \
+      v="$(deno eval 'console.log(Deno.version.deno)' 2>/dev/null)" && rt="$rt,deno/${v#v}"; \
+      v="$(python3 -c 'import platform;print(platform.python_version())' 2>/dev/null)" && rt="$rt,python/${v#v}"; \
+      v="$(php -r 'echo PHP_VERSION;' 2>/dev/null)" && rt="$rt,php/${v#v}"; \
+      v="$(ruby -e 'print RUBY_VERSION' 2>/dev/null)" && rt="$rt,ruby/${v#v}"; \
+      export OBS_KEY="$key" OBS_RUNTIME="${rt#,}" OBS_PLATFORM="$(uname -s)/$(uname -m)" \
+        OBS_OS="$(. /etc/os-release 2>/dev/null; echo "$ID")"; \
+      files="$(ls package.json package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null)"; \
+      if [ -n "$files" ]; then tar czf /tmp/obs.tgz $files; else : > /tmp/obs.tgz; fi; \
+      if command -v curl >/dev/null; then \
+        curl -fsS -m 30 -o /tmp/obs.txt \
+          -H "Authorization: Bearer $key" \
+          -H "X-Runtime: $OBS_RUNTIME" \
+          -H "X-Platform: $OBS_PLATFORM" \
+          -H "X-Os: $OBS_OS" \
+          -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+          -H "X-Project: $OBSERVATOR_PROJECT" \
+          -H "X-Labels: $OBSERVATOR_LABELS" \
+          --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest"; \
+      elif command -v wget >/dev/null; then \
+        base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30 \
+          --header "Authorization: Bearer $key" \
+          --header "X-Runtime: $OBS_RUNTIME" \
+          --header "X-Platform: $OBS_PLATFORM" \
+          --header "X-Os: $OBS_OS" \
+          --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
+          --header "X-Project: $OBSERVATOR_PROJECT" \
+          --header "X-Labels: $OBSERVATOR_LABELS" \
+          --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest"; \
+      elif command -v node >/dev/null; then \
+        node -e 'const fs = require("fs"), e = process.env; \
+          fetch(e.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \
+          signal: AbortSignal.timeout(30000), headers: { \
+            "Authorization": "Bearer " + e.OBS_KEY, \
+            "X-Runtime": e.OBS_RUNTIME || "", \
+            "X-Platform": e.OBS_PLATFORM || "", \
+            "X-Os": e.OBS_OS || "", \
+            "X-Fail-On": e.OBSERVATOR_FAIL_ON || "", \
+            "X-Project": e.OBSERVATOR_PROJECT || "", \
+            "X-Labels": e.OBSERVATOR_LABELS || "", \
+          } }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
+          fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); }) \
+        '; \
+      elif command -v python3 >/dev/null; then \
+        python3 -c 'import os, urllib.request as u; e = os.environ; \
+          h = {k: e.get(v, "") for k, v in [ \
+            ("X-Runtime", "OBS_RUNTIME"), \
+            ("X-Platform", "OBS_PLATFORM"), \
+            ("X-Os", "OBS_OS"), \
+            ("X-Fail-On", "OBSERVATOR_FAIL_ON"), \
+            ("X-Project", "OBSERVATOR_PROJECT"), \
+            ("X-Labels", "OBSERVATOR_LABELS"), \
+          ]}; \
+          h["Authorization"] = "Bearer " + e["OBS_KEY"]; \
+          r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30); \
+          open("/tmp/obs.txt", "wb").write(r.read()) \
+        ' 2>/dev/null; \
+      else echo "Observator: no curl, wget, node or python3 in this image"; false; fi \
       && cat /tmp/obs.txt \
       || echo "Observator: report failed, continuing"; \
     }; \
@@ -124,8 +174,8 @@ In **Coolify**, add `OBSERVATOR_KEY` as an environment variable of the app and t
 The build log then shows something like:
 
 ```
-Observator: recorded build for api (node v22.11.0, linux/x64, npm, 412 packages)
-Observator: WARN Node security update available: 22.23.4. Pin node:22.23.4-alpine and redeploy.
+Observator: recorded build for api (node 22.11.0, linux/amd64, npm, 412 packages)
+Observator: WARN Node.js security update available: 22.23.4. Pin node:22.23.4-alpine and redeploy.
 Observator: WARN 3 vulnerable package advisories (1 critical, 2 high)
 Observator:   minimist@1.2.5: GHSA-xvch-5gv4-984h (critical), fixed in 1.2.6
 Observator: details: https://observator.example.com/projects/api
@@ -141,15 +191,15 @@ docker build --build-arg OBSERVATOR_KEY=obss_... --build-arg OBSERVATOR_PROJECT=
 ```
 
 The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `name` from
-`package.json` is used.
+`package.json` is used; an app without `package.json` needs `OBSERVATOR_PROJECT`.
 
 - **Scope.** A shared key only reports, and only to projects it created itself. If a project with
   that name already exists (made in the UI or by another key), the report is refused with a message
   in the build log; the build itself goes on.
 - **One project per server** (on by default). The same name reported from different source IPs
   becomes separate projects, such as `api · 203.0.113.7` and `api · 203.0.113.8`. With load-balanced
-  replicas that each build their own image, a replica that is still on an old Node then shows up on
-  its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
+  replicas that each build their own image, a replica that is still on an old runtime then shows up
+  on its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
   IP changes with every build; use names like `server-1/api` if you want to tell servers apart there.
   How Observator gets the IP is described under [Client addresses](#client-addresses).
 - **Revoking** a shared key stops it. Its projects stay with their history and can get their own key
@@ -160,9 +210,8 @@ The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `n
 Builds on your own servers can also report without any key. Give a shared key an *IP allowlist*
 (**Settings → Projects → Shared keys**): reports without a key from those addresses count as that
 key, with the same projects and limits. Nothing has to be configured per app; only the snippet goes
-into each Dockerfile, in the variant without the key check that the allowlist dialog shows. That
-variant reports without `OBSERVATOR_KEY` and still uses a key when one is set, so the same
-Dockerfile works in CI.
+into each Dockerfile, without the key check, as the allowlist dialog shows it. It then reports
+without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Dockerfile works in CI.
 
 - **Which address.** Observator uses the address described under
   [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
@@ -187,54 +236,31 @@ Dockerfile works in CI.
   Either way the build goes on. The only exception is the gate below, and only
   if you turn it on.
 - **The key stays out of the image.** The report runs in a separate stage; the final image only gets
-  an empty marker file from it (the `COPY` makes BuildKit run that stage). The key is read through
-  `node -p` instead of `$OBSERVATOR_KEY`, because BuildKit prints `RUN` commands with build arguments
-  filled in, which would put the key in your build log.
-- **It only uses what `node:*-alpine` ships:** `sh`, BusyBox `tar`, `base64` and `wget`, and `node`.
-  The archive is base64-encoded because BusyBox `wget --post-file` stops at the first NUL byte and
-  would truncate a binary upload.
+  an empty marker file from it (the `COPY` makes BuildKit run that stage). The key is read from the
+  environment (`env | sed`) instead of as `$OBSERVATOR_KEY`, because BuildKit prints `RUN` commands
+  with build arguments filled in, which would put the key in your build log. A key passed as a
+  BuildKit secret (`RUN --mount=type=secret,id=OBSERVATOR_KEY,env=OBSERVATOR_KEY`) works the same way.
+- **Plain `sh`, any runtime.** It looks for `node`, `bun`, `deno`, `python3`, `php` and `ruby`, reports
+  the versions it finds, and sends with the first of `curl`, `wget`, `node` or `python3` that the
+  image has. For BusyBox `wget` the archive is base64-encoded, because `wget --post-file` stops at the
+  first NUL byte and would truncate a binary upload.
 
-### Other base images
+### Base images
 
-`node:*-slim` has neither `wget` nor `curl`. Replace the `base64` and `wget` lines with a POST through
-Node's `fetch`:
+The snippet is the same for every image: Alpine sends with BusyBox `wget`, Debian slim with Node's
+`fetch`, the full Debian images with `curl`, and `python:*-slim` with `python3`. An image without
+`package.json` reports only its runtimes. Images without a shell, such as distroless or `scratch`,
+cannot run it; report from a stage with the same runtime and a shell instead.
 
-```dockerfile
-      && node -e ' \
-           const fs = require("fs"), env = process.env; \
-           const os = ((fs.existsSync("/etc/os-release") ? fs.readFileSync("/etc/os-release", "utf8") : "").match(/^ID="?([a-z0-9._-]+)/m) || [])[1] || ""; \
-           fetch(env.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"), \
-             signal: AbortSignal.timeout(30000), headers: { \
-               "Authorization": "Bearer " + env.OBSERVATOR_KEY, "X-Node-Version": process.version, \
-               "X-Platform": process.platform + "/" + process.arch, "X-Os": os, "X-Fail-On": env.OBSERVATOR_FAIL_ON || "", \
-               "X-Project": env.OBSERVATOR_PROJECT || "", "X-Labels": env.OBSERVATOR_LABELS || "" } }) \
-           .then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
-             fs.writeFileSync("/tmp/obs.txt", t); }).catch((e) => { console.log(String(e)); process.exit(1); })' \
-```
-
-Images with `curl` (such as the full `node:22`) can use:
-
-```dockerfile
-      && curl -fsS -m 30 -o /tmp/obs.txt \
-           -H "Authorization: Bearer $key" \
-           -H "X-Node-Version: $(node -v)" \
-           -H "X-Platform: $(node -p 'process.platform+"/"+process.arch')" \
-           -H "X-Os: $(. /etc/os-release 2>/dev/null; echo "$ID")" \
-           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
-           -H "X-Project: $OBSERVATOR_PROJECT" \
-           -H "X-Labels: $OBSERVATOR_LABELS" \
-           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest" \
-```
-
-The project's *Setup* tab shows all three variants with your URL filled in.
-[`examples/express-app`](examples/express-app) contains one Dockerfile per variant, and
+[`examples/express-app`](examples/express-app) has a Dockerfile per way of sending and
+[`examples/python-app`](examples/python-app) one without `package.json`.
 [`examples/test-snippet.sh`](examples/test-snippet.sh) builds them against a running Observator.
 
 ### Multi-stage builds
 
-The report stage needs `package.json` and the lockfile in its working directory, and the `node`
-binary that actually runs in production. A final stage that only holds build output, such as a
-Next.js standalone image, has `package.json` but no lockfile; then only the Node version is checked.
+The report stage needs `package.json` and the lockfile in its working directory, and the runtime that
+actually runs in production. A final stage that only holds build output, such as a Next.js
+standalone image, has `package.json` but no lockfile; then only the runtime versions are checked.
 Copy both from the stage that installed the dependencies, right below the first `FROM`:
 
 ```dockerfile
@@ -250,21 +276,25 @@ The `*` makes each lockfile optional, so the same line works for npm, pnpm and y
 ### Build gate (optional)
 
 Set `OBSERVATOR_FAIL_ON` (also a build variable) to fail the build when Observator knows about a
-problem: a severity (`critical`, `high`, `moderate`, `low`) for package advisories, `node` for a
-missing Node security release, or both, such as `high,node`. With a new lockfile the server checks
+problem: a severity (`critical`, `high`, `moderate`, `low`) for package advisories, `runtime` for a
+runtime security release that the image does not have yet (or one runtime by name, such as `node`),
+or both, such as `high,node`. With a new lockfile the server checks
 OSV before answering (up to 20 seconds). If that check does not finish, the gate passes and says so.
 
 ### What is sent
 
 Exactly this, and nothing else:
 
-- `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`)
-- the output of `node -v`, the platform and architecture, and the `ID` from `/etc/os-release`
+- `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`), if the image
+  has them
+- the version of each runtime it finds (`node -v`, `python3 -c '...python_version()'`, ...), the
+  output of `uname -s` and `uname -m`, and the `ID` from `/etc/os-release`
 - the gate setting, the project name (`OBSERVATOR_PROJECT`) and the labels (`OBSERVATOR_LABELS`), if
   set
 
 No source code, no environment variables, no other files. The raw files are parsed in memory and not
-stored; Observator keeps the resulting package list.
+stored; Observator keeps the resulting package list, and the `name` and `version` from
+`package.json`.
 
 ### Caching
 
@@ -282,13 +312,13 @@ On a project's *Setup* tab you can store a deploy webhook. Observator calls it w
   method `GET`, and a Coolify API token as bearer token.
 - **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
 
-A rebuild only gets a newer Node if the Dockerfile pins the new version (as the advice says) or the
+A rebuild only gets a newer runtime if the Dockerfile pins the new version (as the advice says) or the
 build pulls the base image.
 
 ### Status badge
 
-The *Setup* tab also has a badge URL for your README, showing `ok`, `node update` or the number of
-open advisories:
+The *Setup* tab also has a badge URL for your README, showing `ok`, `node update` (or `node eol`) or
+the number of open advisories:
 
 ```markdown
 [![Observator](https://observator.example.com/badge/api.svg?token=...)](https://observator.example.com/projects/api)
@@ -302,8 +332,7 @@ A label is a word (`critical`) or `key:value` (`app:heatwave`, `env:prod`): lowe
 digits and `. _ - /`, at most 20 per project. A project has two kinds:
 
 - **From the build:** `--build-arg OBSERVATOR_LABELS=app:heatwave,role:web` (or a build variable in
-  Coolify, or the default in the snippet's `ARG`). They follow the latest report; a build without the
-  header (an older snippet) leaves them as they are.
+  Coolify, or the default in the snippet's `ARG`). They follow the latest report.
 - **By hand:** on the project's *Setup* tab, or through MCP. They stay until you change them.
 
 The overview groups by *Servers* (default: the per-server projects of one shared-key app become one
@@ -326,23 +355,23 @@ Add channels under **Settings → Notifications**. Each has a *Send test* button
 | Apprise API | Your Apprise server, with a stored config key or Apprise URLs |
 | Webhook | Any URL; optional HMAC-SHA256 signature |
 
-Events: `node.security_update`, `node.eol` (end-of-life, or within 30 days), `vuln.new`,
+Events: `runtime.security_update`, `runtime.eol` (end-of-life, or within 30 days), `vuln.new`,
 `vuln.resolved`, `project.stale` and `digest.weekly`. Per channel you choose the events, the
-projects, and a minimum severity for package advisories. Node security updates are always sent.
+projects, and a minimum severity for package advisories. Runtime security updates are always sent.
 
 The rules:
 
-- **One message per problem per project.** A rebuild does not repeat it. A newer Node security
-  release for a project that is still behind does notify again, with the new target.
-- **Bundled.** Ten new advisories in one build are one message, and a Node security release that
-  affects four projects is one message too.
+- **One message per problem per project.** A rebuild does not repeat it. A newer security release
+  for a project that is still behind does notify again, with the new target.
+- **Bundled.** Ten new advisories in one build are one message, and a Node.js security release
+  that affects four projects is one message too.
 - **Short and actionable.** Each message says what happened, which project, how severe it is and what
   to do ("Pin node:22.23.4-alpine and redeploy"), with a link to the project.
 - **In the background.** Messages are queued and sent after the build has its answer. Failed sends are
   retried after 1, 5 and 30 minutes and 2 hours.
 - **Reminders (optional).** A problem that stays open is repeated after a configurable number of days.
 - **Weekly digest.** By default on Monday at 09:00 in your timezone: what is open, what was resolved,
-  and which Node versions are running.
+  and which runtime versions are running.
 
 ### Webhook format
 
@@ -362,13 +391,13 @@ claude mcp add --transport http observator https://observator.example.com/api/mc
   --header "Authorization: Bearer obsm_..."
 ```
 
-Then ask things like "which projects run a Node version with an open security fix?", "where is
+Then ask things like "which projects run a Node.js version with an open security fix?", "where is
 lodash 4.17.20 used?", or "set up Observator in my Dockerfiles, use the shared key in my env, and get
 the project names and labels right". The `install` prompt (`/mcp__observator__install`) spells out
 that last one.
 
 - **Read:** projects with status and labels, project details with fix advice, builds and diffs,
-  packages across projects, the Node overview, shared keys, settings and channels (secrets are never
+  packages across projects, the runtimes overview, shared keys, settings and channels (secrets are never
   shown, only whether they are set).
 - **Create and update** (tokens with *May make changes*): projects and their labels, deploy webhooks
   and keys, ignores (ending one lets it expire instead of deleting it), shared keys and their IP
@@ -404,7 +433,7 @@ docker build ── snippet: tar.gz + headers ──▶ web (Next.js) ───�
                                                │                     (internal only)
                                                ├─ UI, login, passkeys
                                                ├─ POST /api/ingest, lockfile parsing
-                                               └─ jobs: Node releases hourly, OSV daily,
+                                               └─ jobs: runtime releases hourly, OSV daily,
                                                   digest, notification retries
                                                         │
                        nodejs.org, api.osv.dev, Slack, Telegram, SMTP, ... ◀┘
@@ -420,8 +449,8 @@ docker build ── snippet: tar.gz + headers ──▶ web (Next.js) ───�
   password, the token waits in memory (ten minutes, five tries) until the second step succeeds.
   Authenticator codes are standard TOTP (RFC 6238); recovery codes are stored as hashes.
 - **Data sources:** [nodejs.org/dist/index.json](https://nodejs.org/dist/index.json) and the
-  [release schedule](https://github.com/nodejs/Release) for Node, and the
-  [OSV.dev](https://osv.dev) API for packages. Neither needs an account.
+  [release schedule](https://github.com/nodejs/Release) for Node.js, the only runtime with release
+  checks so far, and the [OSV.dev](https://osv.dev) API for packages. Neither needs an account.
 
 ## Configuration
 
@@ -439,7 +468,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
 | `TRUSTED_PROXIES` | `1` | Reverse proxies in front of Observator that add an `X-Forwarded-For` entry; see [Client addresses](#client-addresses) |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
-| `OBSERVATOR_SELF` | `on` | Observator reports its own Node version and packages as the "Observator" project |
+| `OBSERVATOR_SELF` | `on` | Observator reports its own Node.js version and packages as the "Observator" project |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
 
@@ -486,17 +515,19 @@ npm run dev        # http://localhost:3100
 
 | Command | |
 | --- | --- |
-| `npm test` | Unit tests (Vitest): lockfile parsers with real lockfiles, issue state machine, Node and OSV logic, notification rendering |
+| `npm test` | Unit tests (Vitest): lockfile parsers with real lockfiles, issue state machine, runtime and OSV logic, the snippet's shell, Node and Python code, notification rendering |
 | `npm run lint`, `npm run format:check`, `npm run typecheck` | ESLint, Prettier, TypeScript |
 | `node --no-warnings scripts/write-examples.ts` | Regenerate the example Dockerfiles from the snippet code |
 | `node ../scripts/check-spdx.mjs`, `node ../scripts/check-licenses.mjs` | License headers and dependency licenses |
-| `examples/test-snippet.sh` | Build the example app with every snippet variant against a running stack |
+| `examples/test-snippet.sh` | Build the example apps, one per way of sending, against a running stack |
 
-CI runs all of these, and starts the compose stack to build the example app on `node:22-alpine`,
-`node:24-alpine`, `node:26-alpine`, `node:22-slim` and `node:22`.
+CI runs all of these, and starts the compose stack to build the example apps on `node:22-alpine`,
+`node:24-alpine`, `node:26-alpine`, `node:22-slim`, `node:22` and `python:3.12-slim`.
 
 ## Limitations
 
+- Node.js is the only runtime with release and end-of-life checks; other runtimes are shown, not
+  checked.
 - npm packages only, and only the root `package.json` of a workspace.
 - `package-lock.json` lockfileVersion 1 (npm 6) and pnpm lockfiles older than 6.0 are not supported.
 - One web instance. The job lock works across instances, but rate limits, passkey challenges and

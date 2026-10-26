@@ -33,18 +33,18 @@ const NODE_POST = [
   'const fs = require("fs"), e = process.env;',
   'fetch(e.OBSERVATOR_URL + "/api/ingest", { method: "POST", body: fs.readFileSync("/tmp/obs.tgz"),',
   "signal: AbortSignal.timeout(30000), headers: {",
-  HEADERS.map(([h, v]) =>
-    h === "Authorization" ? `"${h}": "Bearer " + e.OBS_KEY` : `"${h}": e.${envName(v)} || ""`,
-  ).join(", "),
+  ...HEADERS.map(([h, v]) =>
+    h === "Authorization" ? `  "${h}": "Bearer " + e.OBS_KEY,` : `  "${h}": e.${envName(v)} || "",`,
+  ),
   "} }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); }",
   'fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); })',
 ];
 
 const PYTHON_POST = [
   "import os, urllib.request as u; e = os.environ;",
-  `h = {k: e.get(v, "") for k, v in [${HEADERS.filter(([h]) => h !== "Authorization")
-    .map(([h, v]) => `("${h}", "${envName(v)}")`)
-    .join(", ")}]};`,
+  'h = {k: e.get(v, "") for k, v in [',
+  ...HEADERS.filter(([h]) => h !== "Authorization").map(([h, v]) => `  ("${h}", "${envName(v)}"),`),
+  "]};",
   'h["Authorization"] = "Bearer " + e["OBS_KEY"];',
   'r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30);',
   'open("/tmp/obs.txt", "wb").write(r.read())',
@@ -143,19 +143,13 @@ export function dockerSnippet(
     `      files="$(ls ${MANIFESTS} 2>/dev/null)"; \\`,
     `      if [ -n "$files" ]; then tar czf /tmp/obs.tgz $files; else : > /tmp/obs.tgz; fi; \\`,
     `      if command -v curl >/dev/null; then \\`,
-    ...lines(8, [
-      "curl -fsS -m 30 -o /tmp/obs.txt",
-      ...curlHeaders,
-      '--data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest";',
-    ]),
+    ...lines(8, ["curl -fsS -m 30 -o /tmp/obs.txt"]),
+    ...lines(10, [...curlHeaders, '--data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest";']),
     // BusyBox wget sends --post-file as a C string and stops at the first NUL byte, so the
     // archive goes base64-encoded; the server accepts both forms.
     `      elif command -v wget >/dev/null; then \\`,
-    ...lines(8, [
-      "base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30",
-      ...wgetHeaders,
-      '--post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest";',
-    ]),
+    ...lines(8, ["base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30"]),
+    ...lines(10, [...wgetHeaders, '--post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest";']),
     `      elif command -v node >/dev/null; then \\`,
     // The code starts right after the quote: Docker joins these lines into one, and Python
     // refuses code that starts with whitespace.

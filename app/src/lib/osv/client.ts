@@ -5,6 +5,8 @@ const API = "https://api.osv.dev/v1";
 const BATCH = 1000;
 
 export interface OsvQuery {
+  /** OSV's name for the ecosystem, as stored on components: "npm", later "PyPI" and so on. */
+  ecosystem: string;
   name: string;
   version: string;
 }
@@ -35,7 +37,7 @@ export async function queryBatch(
         "/querybatch",
         {
           queries: pending.map(({ q, token }) => ({
-            package: { name: q.name, ecosystem: "npm" },
+            package: { name: q.name, ecosystem: q.ecosystem },
             version: q.version,
             ...(token ? { page_token: token } : {}),
           })),

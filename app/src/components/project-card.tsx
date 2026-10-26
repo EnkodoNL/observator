@@ -4,8 +4,10 @@ import { ShieldAlertIcon } from "lucide-react";
 import { LabelChips } from "@/components/label-chips";
 import { SeverityBadge, StatusBadge } from "@/components/status";
 import type { ProjectSummary } from "@/lib/data/views";
+import type { RuntimeSecurityData } from "@/lib/issues/types";
 import { effectiveLabels } from "@/lib/labels";
 import type { Severity } from "@/lib/pb/types";
+import { primaryRuntime, runtimeLabel } from "@/lib/runtimes/labels";
 import { isStale } from "@/lib/status";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -23,7 +25,9 @@ export function ProjectCard({
 }) {
   const { project, latest, summary, lastBuildAt } = item;
   const stale = isStale(summary, lastBuildAt, staleDays);
-  const target = (summary.nodeSecurity?.data as { target?: string } | null)?.target;
+  const updates = summary.runtimeSecurity.map((i) => i.data as unknown as RuntimeSecurityData);
+  const lead = primaryRuntime(latest?.runtimes);
+  const others = (latest?.runtimes ?? []).filter((r) => r !== lead);
 
   return (
     <Link
@@ -45,12 +49,24 @@ export function ProjectCard({
       {latest ? (
         <div className="space-y-1">
           <p className="font-mono text-2xl tracking-tight">
-            <span className="text-muted-foreground">node </span>
-            {latest.nodeVersion}
+            {lead ? (
+              <>
+                <span className="text-muted-foreground">{lead.name} </span>
+                {lead.version}
+              </>
+            ) : (
+              <span className="text-base text-muted-foreground">no runtime detected</span>
+            )}
           </p>
+          {others.length > 0 && (
+            <p className="font-mono text-xs text-muted-foreground">
+              + {others.map((r) => `${r.name} ${r.version}`).join(", ")}
+            </p>
+          )}
           {line && <p className="text-xs">{line}</p>}
           <p className="text-xs text-muted-foreground">
             {[
+              latest.appVersion && `v${latest.appVersion.replace(/^v/, "")}`,
               latest.platform && `${latest.platform}/${latest.arch}`,
               latest.os,
               latest.lockfileType !== "none" && latest.lockfileType,
@@ -63,13 +79,16 @@ export function ProjectCard({
         <p className="text-sm text-muted-foreground">Waiting for the first build to report.</p>
       )}
 
-      {(target || summary.vulnCount > 0) && (
+      {(updates.length > 0 || summary.vulnCount > 0) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {target && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-warn/12 px-1.5 py-0.5 text-xs font-medium text-warn">
-              <ShieldAlertIcon className="size-3.5" /> Node {target}
+          {updates.map((u) => (
+            <span
+              key={u.runtime}
+              className="inline-flex items-center gap-1 rounded-md bg-warn/12 px-1.5 py-0.5 text-xs font-medium text-warn"
+            >
+              <ShieldAlertIcon className="size-3.5" /> {runtimeLabel(u.runtime)} {u.target}
             </span>
-          )}
+          ))}
           {ORDER.filter((s) => summary.vulnBySeverity[s]).map((s) => (
             <span key={s} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <SeverityBadge severity={s} />×{summary.vulnBySeverity[s]}

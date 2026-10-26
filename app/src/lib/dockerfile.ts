@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { dockerSnippet, type LockfileSource, type SnippetOptions, type SnippetVariant } from "./snippet";
+import { dockerSnippet, type LockfileSource, type SnippetOptions } from "./snippet";
 
 /**
  * Reads a pasted Dockerfile and works out how to add the snippet: which stage is last and
- * whether it needs a name, which variant fits its base image, and whether package.json and
+ * whether it needs a name, whether its base image can run the snippet, and whether package.json and
  * the lockfile are in its working directory or have to come from an earlier stage.
  *
  * It follows FROM chains, WORKDIR and COPY/ADD (also --from, globs and Next.js standalone
@@ -26,7 +26,6 @@ export type DockerfileAnalysis =
   | {
       ok: true;
       stage: string;
-      variant: SnippetVariant;
       lockfileFrom?: LockfileSource;
       notes: DockerfileNote[];
       lines: DockerfileLine[];
@@ -241,40 +240,17 @@ function copy(ins: Instruction, stage: Stage, stages: Stage[]): string | undefin
   return standalone;
 }
 
-function variantFor(base: string): { variant: SnippetVariant; note: DockerfileNote } {
+/** The snippet is plain sh and picks its own client, so only images without a shell are a problem. */
+function baseNote(base: string): DockerfileNote {
   const image = base.toLowerCase();
   if (/distroless/.test(image) || image === "scratch")
     return {
-      variant: "node",
-      note: {
-        level: "warn",
-        text: `The last stage is based on ${base}, which has no shell, so the snippet cannot run in it. Report from a node:*-alpine or node:*-slim runtime stage instead.`,
-      },
-    };
-  if (image.includes("alpine"))
-    return {
-      variant: "alpine",
-      note: { level: "ok", text: `Base image ${base}: the Alpine variant, with BusyBox wget.` },
-    };
-  if (image.includes("slim"))
-    return {
-      variant: "node",
-      note: {
-        level: "ok",
-        text: `Base image ${base}: the Debian slim variant, which posts with Node's fetch.`,
-      },
-    };
-  if (/^(docker\.io\/)?(library\/)?node(:|@|$)/.test(image))
-    return {
-      variant: "curl",
-      note: { level: "ok", text: `Base image ${base}: full Debian, which ships curl.` },
+      level: "warn",
+      text: `The last stage is based on ${base}, which has no shell, so the snippet cannot run in it. Report from a stage with the same runtime and a shell (an alpine or slim image) instead.`,
     };
   return {
-    variant: "node",
-    note: {
-      level: "info",
-      text: `Base image ${base} is not an official node image. The snippet posts with Node's fetch, which works wherever Node 18 or later is installed.`,
-    },
+    level: "ok",
+    text: `Base image ${base}: the snippet sends with curl, wget, node or python3, whichever the image has.`,
   };
 }
 
@@ -379,8 +355,7 @@ export function analyzeDockerfile(
     });
   }
 
-  const { variant, note } = variantFor(last.base);
-  notes.push(note);
+  notes.push(baseNote(last.base));
 
   const here = last.folders.get(last.workdir);
   let lockfileFrom: LockfileSource | undefined;
@@ -403,6 +378,7 @@ export function analyzeDockerfile(
           a.s.index - b.s.index,
       );
     const pick = candidates[0];
+    const anyPackageJson = app.some((s) => [...s.folders.values()].some((f) => f.pkg));
     const why = here?.pkg
       ? standaloneLines.has(last)
         ? `The last stage has package.json from the Next.js standalone output (${standaloneLines.get(last)}), but no lockfile.`
@@ -414,16 +390,22 @@ export function analyzeDockerfile(
         level: "info",
         text: `${why} The snippet copies both from ${pick.s.name ?? `stage ${pick.s.index}`} (${pick.dir}, ${describe(pick.f.lock!)}).`,
       });
+    } else if (!anyPackageJson) {
+      // Most likely an app in another language: its runtime is still reported.
+      notes.push({
+        level: "info",
+        text: "No stage has a package.json, so only the runtime versions are reported (npm is the only package manager Observator reads so far).",
+      });
     } else {
       notes.push({
         level: "warn",
-        text: `${why} No stage copies a lockfile, so only the Node version would be checked. COPY your lockfile in one of the stages.`,
+        text: `${why} No stage copies a lockfile, so only the runtime versions would be checked. COPY your lockfile in one of the stages.`,
       });
     }
   }
 
-  const snippet = dockerSnippet(variant, url, { ...options, stage, lockfileFrom }).split("\n");
+  const snippet = dockerSnippet(url, { ...options, stage, lockfileFrom }).split("\n");
   const result: DockerfileLine[] = lines.map((l, i) => ({ text: l, added: added.has(i) }));
   result.push({ text: "", added: true }, ...snippet.map((text) => ({ text, added: true })));
-  return { ok: true, stage, variant, lockfileFrom, notes, lines: result };
+  return { ok: true, stage, lockfileFrom, notes, lines: result };
 }
