@@ -13,7 +13,7 @@ const INSTRUCTIONS = `Observator tracks the runtimes (Node.js, Python, PHP, ...)
 - A project is one app (or one server of an app, when a shared key splits by IP). Status: ok, update (a runtime security release or end of life), vulnerable (open package advisories), none (no build yet).
 - Start with list_projects; get_project has the details and fix advice in the project's package manager; list_packages and get_package answer "where is X used"; runtime_overview groups projects by runtime version.
 - Labels (word or key:value such as app:heatwave, env:prod) group and filter projects. Builds add their own via OBSERVATOR_LABELS; update_project sets the project's own.
-- To add Observator to a repository, use setup_dockerfile per Dockerfile (the install prompt has the steps) and write the returned Dockerfile back unchanged.
+- To add Observator to a repository, use setup_dockerfile per Dockerfile (the install prompt has the steps) and write the returned Dockerfile back unchanged. It uses the reporter image; pass form: "shell" when the builds cannot pull from the registry.
 - Nothing can be deleted through MCP, and users, tokens and sign-in are out of reach; those stay in the web UI.`;
 
 /** One server per request: tools for writing only exist for tokens that may write. */

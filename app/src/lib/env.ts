@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { z } from "zod";
+import { DEFAULT_REPORTER_IMAGE, reporterImage } from "@/lib/snippet";
 
 const bool = z
   .enum(["on", "off", "true", "false", "1", "0"])
@@ -31,6 +32,8 @@ const schema = z.object({
   TRUSTED_PROXIES: z.coerce.number().int().min(1).max(10).default(1),
   SOURCE_URL: z.url().default("https://github.com/EnkodoNL/observator"),
   TZ: z.string().default("UTC"),
+  /** Where the snippet copies the reporter from; a mirror or fork can point elsewhere. */
+  REPORTER_IMAGE: z.string().trim().default(DEFAULT_REPORTER_IMAGE).transform(reporterImage),
   /** Report Observator's own Node version and packages at startup, as the "Observator" project. */
   OBSERVATOR_SELF: bool.default(true),
 });

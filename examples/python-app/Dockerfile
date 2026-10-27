@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
-# Example app for testing the Observator snippet. Python, no curl, wget or Node: sent with
-# python3. There is no package.json, so only the runtime version is reported.
+# Example app for testing the Observator snippet. Plain sh: no curl, wget or Node, so sent with python3.
+# There is no package.json, so only the runtime version is reported.
 ARG PYTHON_IMAGE=python:3.12-slim
 
 FROM ${PYTHON_IMAGE} AS app

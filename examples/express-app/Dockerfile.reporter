@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. The reporter image.
+ARG NODE_IMAGE=node:26-alpine
+
+FROM ${NODE_IMAGE} AS app
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY index.js ./
+ENV NODE_ENV=production
+CMD ["node", "index.js"]
+
+# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
+FROM ghcr.io/enkodonl/observator-reporter:1 AS observator-reporter
+FROM app AS observator
+COPY --from=observator-reporter /reporter /tmp/observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
+RUN ["/tmp/observator"]
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator

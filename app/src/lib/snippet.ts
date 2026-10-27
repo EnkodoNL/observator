@@ -94,7 +94,24 @@ export function copyLockfileLines({ stage, dir }: LockfileSource): string[] {
  * final image or its history; the COPY forces BuildKit to run that stage. The key is passed
  * as a build argument (unless the `key` option writes it into the Dockerfile).
  */
+/**
+ * "image" copies the reporter binary from its image: a few lines, and it also works without a
+ * shell (distroless). "shell" is the same logic in plain sh, for builds that cannot pull from
+ * a registry.
+ */
+export type SnippetForm = "image" | "shell";
+
+export const DEFAULT_REPORTER_IMAGE = "ghcr.io/enkodonl/observator-reporter:1";
+
+/** An image reference as typed in REPORTER_IMAGE; anything odd falls back to the default. */
+export const reporterImage = (input: string | undefined) =>
+  input && /^[a-z0-9][a-z0-9._/:@-]{0,254}$/i.test(input.trim()) ? input.trim() : DEFAULT_REPORTER_IMAGE;
+
 export interface SnippetOptions {
+  /** "image" (default) or "shell". */
+  form?: SnippetForm;
+  /** The reporter image for the "image" form, such as a mirror. */
+  image?: string;
   /** The name of the user's last stage. */
   stage?: string;
   /** Where package.json and the lockfile are, when the last stage lacks them. */
@@ -115,21 +132,13 @@ export interface SnippetOptions {
 /** A default inside ARG NAME="...": no quotes, escapes or variables that Docker would interpret. */
 const argValue = (v: string | undefined) => (v ?? "").replace(/["\\$`\r\n]/g, "").trim();
 
-export function dockerSnippet(
-  url: string,
-  { stage = "app", lockfileFrom, keyless = false, key, project, labels }: SnippetOptions = {},
-): string {
+/** The reporter in exec form: no shell, and BuildKit prints only this line. */
+const imageRun = (keyless: boolean) => `RUN ["/tmp/observator"${keyless ? ', "--keyless"' : ""}]`;
+
+function shellRun(keyless: boolean): string[] {
   const curlHeaders = HEADERS.map(([h, v]) => `-H "${h}: ${v}"`);
   const wgetHeaders = HEADERS.map(([h, v]) => `--header "${h}: ${v}"`);
   return [
-    "# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---",
-    `FROM ${stage} AS observator`,
-    ...(lockfileFrom ? copyLockfileLines(lockfileFrom) : []),
-    `ARG OBSERVATOR_URL=${url}`,
-    `ARG OBSERVATOR_KEY="${argValue(key)}"`,
-    `ARG OBSERVATOR_FAIL_ON=""`,
-    `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
-    `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
     // The key is read from the environment, never as $OBSERVATOR_KEY: BuildKit prints RUN lines
     // with build args filled in, which would put it in the build log. Plain sh throughout, so
     // any image with a shell works, whatever runtime it has.
@@ -165,6 +174,37 @@ export function dockerSnippet(
     `      || echo "Observator: report failed, continuing"; \\`,
     `    }; \\`,
     `    ! grep -q '^OBSERVATOR_GATE=fail' /tmp/obs.txt 2>/dev/null && touch /tmp/.observator`,
+  ];
+}
+
+export function dockerSnippet(
+  url: string,
+  {
+    form = "image",
+    image,
+    stage = "app",
+    lockfileFrom,
+    keyless = false,
+    key,
+    project,
+    labels,
+  }: SnippetOptions = {},
+): string {
+  const reporter = form === "image";
+  return [
+    "# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---",
+    // COPY --from does not expand variables, so the image gets a stage name of its own. A build
+    // can swap it with --build-context <image>=docker-image://<mirror>.
+    ...(reporter ? [`FROM ${reporterImage(image)} AS observator-reporter`] : []),
+    `FROM ${stage} AS observator`,
+    ...(lockfileFrom ? copyLockfileLines(lockfileFrom) : []),
+    ...(reporter ? ["COPY --from=observator-reporter /reporter /tmp/observator"] : []),
+    `ARG OBSERVATOR_URL=${url}`,
+    `ARG OBSERVATOR_KEY="${argValue(key)}"`,
+    `ARG OBSERVATOR_FAIL_ON=""`,
+    `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
+    `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
+    ...(reporter ? [imageRun(keyless)] : shellRun(keyless)),
     "",
     `FROM ${stage}`,
     "COPY --from=observator /tmp/.observator /tmp/.observator",

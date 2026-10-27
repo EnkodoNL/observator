@@ -86,6 +86,127 @@ FROM node:22-alpine AS app
 # 2. everything below goes at the very bottom
 
 # --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
+FROM ghcr.io/enkodonl/observator-reporter:1 AS observator-reporter
+FROM app AS observator
+COPY --from=observator-reporter /reporter /tmp/observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
+RUN ["/tmp/observator"]
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator
+```
+
+Then pass the key as a build argument:
+
+```sh
+docker build --build-arg OBSERVATOR_KEY=obs_... .
+```
+
+In **Coolify**, add `OBSERVATOR_KEY` as an environment variable of the app and tick
+*Build Variable*. The snippet itself contains no secret and can be committed.
+
+The snippet copies a small static binary, the reporter, from `ghcr.io/enkodonl/observator-reporter:1`
+and runs it. Your Dockerfile then stays the same when the reporter changes: the `:1` tag follows
+fixes and new runtimes. Builds that cannot pull from a registry use the
+[plain sh snippet](#without-a-registry-plain-sh) instead; the *Setup* tab has both.
+
+The build log then shows something like:
+
+```
+Observator: recorded build for api (node 22.11.0, linux/amd64, npm, 412 packages)
+Observator: WARN Node.js security update available: 22.23.4. Pin node:22.23.4-alpine and redeploy.
+Observator: WARN 3 vulnerable package advisories (1 critical, 2 high)
+Observator:   minimist@1.2.5: GHSA-xvch-5gv4-984h (critical), fixed in 1.2.6
+Observator: details: https://observator.example.com/projects/api
+```
+
+### One key for all apps
+
+Creating a project per app is optional. Under **Settings → Projects → Shared keys** you create one
+write-only key and give it to every app, each with its own name:
+
+```sh
+docker build --build-arg OBSERVATOR_KEY=obss_... --build-arg OBSERVATOR_PROJECT=billing-api .
+```
+
+The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `name` from
+`package.json` is used; an app without `package.json` needs `OBSERVATOR_PROJECT`.
+
+- **Scope.** A shared key only reports, and only to projects it created itself. If a project with
+  that name already exists (made in the UI or by another key), the report is refused with a message
+  in the build log; the build itself goes on.
+- **One project per server** (on by default). The same name reported from different source IPs
+  becomes separate projects, such as `api · 203.0.113.7` and `api · 203.0.113.8`. With load-balanced
+  replicas that each build their own image, a replica that is still on an old runtime then shows up
+  on its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
+  IP changes with every build; use names like `server-1/api` if you want to tell servers apart there.
+  How Observator gets the IP is described under [Client addresses](#client-addresses).
+- **Revoking** a shared key stops it. Its projects stay with their history and can get their own key
+  through *Rotate API key*.
+
+### Without a key: IP allowlist
+
+Builds on your own servers can also report without any key. Give a shared key an *IP allowlist*
+(**Settings → Projects → Shared keys**): reports without a key from those addresses count as that
+key, with the same projects and limits. Nothing has to be configured per app; only the snippet goes
+into each Dockerfile, without the key check, as the allowlist dialog shows it. It then reports
+without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Dockerfile works in CI.
+
+- **Which address.** Observator uses the address described under
+  [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
+  on the same server as Observator may arrive from the Docker gateway (such as `172.17.0.1`) instead.
+  Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log, with
+  the address. They are listed under *Not recorded* on the settings page and in the allowlist dialog
+  with an *Add* button, and the web container logs them as `[ingest] not recorded (401) from ...`.
+- **A wrong key** from an allowed address, such as a stale `OBSERVATOR_KEY` or an unresolved
+  `{{team.OBSERVATOR_KEY}}`, does not block the report: it is recorded, with a warning in the build log.
+- **Ranges.** Single addresses or CIDR ranges, at most /8 for IPv4 and /32 for IPv6, each with an
+  optional note. An address belongs to one shared key only. Hosting providers give each server an
+  IPv6 /64, shown as `2a01:4f8:c2c:9793::`; write it as `2a01:4f8:c2c:9793::/64`.
+- **Trade-off.** Any process on an allowed server can report. Since reports only ever write, that is
+  about as safe as a shared key in a private repository; the key-checked snippet remains the
+  default.
+
+### How the snippet behaves
+
+- **It never breaks your build.** No key skips the report. A report Observator does not accept (a
+  wrong key, a rate limit, a name taken by another project) prints `Observator: not recorded: ...` with
+  the reason and the address it came from; an unreachable server prints `report failed, continuing`.
+  Either way the build goes on. The only exception is the gate below, and only
+  if you turn it on.
+- **The key stays out of the image.** The report runs in a separate stage; the final image only gets
+  an empty marker file from it (the `COPY` makes BuildKit run that stage), not the reporter and not
+  the key. The reporter reads the key from its environment, and the `RUN` line BuildKit prints is just
+  `RUN ["/tmp/observator"]`. A key passed as a BuildKit secret works too:
+  `RUN --mount=type=secret,id=OBSERVATOR_KEY,env=OBSERVATOR_KEY ["/tmp/observator"]`.
+- **No shell needed.** The reporter is one static binary (Go, no dependencies, for amd64, arm64 and
+  arm/v7). It runs `node -v`, `bun --version`, `deno`, `python3`, `php` and `ruby` directly when the
+  image has them and reports the versions it finds.
+
+### Base images
+
+Any image works, distroless included (node is found in `/nodejs/bin` there). An image without
+`package.json` reports only its runtimes; `scratch` has no runtime to report, only the lockfile if you
+copy it in.
+
+[`examples/express-app`](examples/express-app) has the reporter on Alpine and distroless plus the
+plain sh snippet per way of sending, and [`examples/python-app`](examples/python-app) both forms
+without `package.json`. [`examples/test-snippet.sh`](examples/test-snippet.sh) builds them all against
+a running Observator.
+
+### Without a registry: plain sh
+
+The same report in plain `sh`, with nothing to pull. It needs a shell and one of `curl`, `wget`,
+`node` or `python3`, and sends with the first one the image has: Alpine with BusyBox `wget`, Debian
+slim with Node's `fetch`, the full Debian images with `curl`, `python:*-slim` with `python3`. Images
+without a shell (distroless, `scratch`) cannot run it.
+
+```dockerfile
+# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
 FROM app AS observator
 ARG OBSERVATOR_URL=https://observator.example.com
 ARG OBSERVATOR_KEY=""
@@ -162,99 +283,11 @@ FROM app
 COPY --from=observator /tmp/.observator /tmp/.observator
 ```
 
-Then pass the key as a build argument:
-
-```sh
-docker build --build-arg OBSERVATOR_KEY=obs_... .
-```
-
-In **Coolify**, add `OBSERVATOR_KEY` as an environment variable of the app and tick
-*Build Variable*. The snippet itself contains no secret and can be committed.
-
-The build log then shows something like:
-
-```
-Observator: recorded build for api (node 22.11.0, linux/amd64, npm, 412 packages)
-Observator: WARN Node.js security update available: 22.23.4. Pin node:22.23.4-alpine and redeploy.
-Observator: WARN 3 vulnerable package advisories (1 critical, 2 high)
-Observator:   minimist@1.2.5: GHSA-xvch-5gv4-984h (critical), fixed in 1.2.6
-Observator: details: https://observator.example.com/projects/api
-```
-
-### One key for all apps
-
-Creating a project per app is optional. Under **Settings → Projects → Shared keys** you create one
-write-only key and give it to every app, each with its own name:
-
-```sh
-docker build --build-arg OBSERVATOR_KEY=obss_... --build-arg OBSERVATOR_PROJECT=billing-api .
-```
-
-The project is created on its first report. Without `OBSERVATOR_PROJECT`, the `name` from
-`package.json` is used; an app without `package.json` needs `OBSERVATOR_PROJECT`.
-
-- **Scope.** A shared key only reports, and only to projects it created itself. If a project with
-  that name already exists (made in the UI or by another key), the report is refused with a message
-  in the build log; the build itself goes on.
-- **One project per server** (on by default). The same name reported from different source IPs
-  becomes separate projects, such as `api · 203.0.113.7` and `api · 203.0.113.8`. With load-balanced
-  replicas that each build their own image, a replica that is still on an old runtime then shows up
-  on its own instead of flipping the project's status back and forth. Turn it off for CI runners, whose
-  IP changes with every build; use names like `server-1/api` if you want to tell servers apart there.
-  How Observator gets the IP is described under [Client addresses](#client-addresses).
-- **Revoking** a shared key stops it. Its projects stay with their history and can get their own key
-  through *Rotate API key*.
-
-### Without a key: IP allowlist
-
-Builds on your own servers can also report without any key. Give a shared key an *IP allowlist*
-(**Settings → Projects → Shared keys**): reports without a key from those addresses count as that
-key, with the same projects and limits. Nothing has to be configured per app; only the snippet goes
-into each Dockerfile, without the key check, as the allowlist dialog shows it. It then reports
-without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Dockerfile works in CI.
-
-- **Which address.** Observator uses the address described under
-  [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
-  on the same server as Observator may arrive from the Docker gateway (such as `172.17.0.1`) instead.
-  Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log, with
-  the address. They are listed under *Not recorded* on the settings page and in the allowlist dialog
-  with an *Add* button, and the web container logs them as `[ingest] not recorded (401) from ...`.
-- **A wrong key** from an allowed address, such as a stale `OBSERVATOR_KEY` or an unresolved
-  `{{team.OBSERVATOR_KEY}}`, does not block the report: it is recorded, with a warning in the build log.
-- **Ranges.** Single addresses or CIDR ranges, at most /8 for IPv4 and /32 for IPv6, each with an
-  optional note. An address belongs to one shared key only. Hosting providers give each server an
-  IPv6 /64, shown as `2a01:4f8:c2c:9793::`; write it as `2a01:4f8:c2c:9793::/64`.
-- **Trade-off.** Any process on an allowed server can report. Since reports only ever write, that is
-  about as safe as a shared key in a private repository; the key-checked snippet remains the
-  default.
-
-### How the snippet behaves
-
-- **It never breaks your build.** No key skips the report. A report Observator does not accept (a
-  wrong key, a rate limit, a name taken by another project) prints `Observator: not recorded: ...` with
-  the reason and the address it came from; an unreachable server prints `report failed, continuing`.
-  Either way the build goes on. The only exception is the gate below, and only
-  if you turn it on.
-- **The key stays out of the image.** The report runs in a separate stage; the final image only gets
-  an empty marker file from it (the `COPY` makes BuildKit run that stage). The key is read from the
-  environment (`env | sed`) instead of as `$OBSERVATOR_KEY`, because BuildKit prints `RUN` commands
-  with build arguments filled in, which would put the key in your build log. A key passed as a
-  BuildKit secret (`RUN --mount=type=secret,id=OBSERVATOR_KEY,env=OBSERVATOR_KEY`) works the same way.
-- **Plain `sh`, any runtime.** It looks for `node`, `bun`, `deno`, `python3`, `php` and `ruby`, reports
-  the versions it finds, and sends with the first of `curl`, `wget`, `node` or `python3` that the
-  image has. For BusyBox `wget` the archive is base64-encoded, because `wget --post-file` stops at the
-  first NUL byte and would truncate a binary upload.
-
-### Base images
-
-The snippet is the same for every image: Alpine sends with BusyBox `wget`, Debian slim with Node's
-`fetch`, the full Debian images with `curl`, and `python:*-slim` with `python3`. An image without
-`package.json` reports only its runtimes. Images without a shell, such as distroless or `scratch`,
-cannot run it; report from a stage with the same runtime and a shell instead.
-
-[`examples/express-app`](examples/express-app) has a Dockerfile per way of sending and
-[`examples/python-app`](examples/python-app) one without `package.json`.
-[`examples/test-snippet.sh`](examples/test-snippet.sh) builds them against a running Observator.
+The key is read from the environment (`env | sed`) instead of as `$OBSERVATOR_KEY`, because BuildKit
+prints `RUN` commands with build arguments filled in, which would put the key in your build log. For
+BusyBox `wget` the archive is base64-encoded, because `wget --post-file` stops at the first NUL byte
+and would truncate a binary upload. Over MCP, `setup_dockerfile` gives this form with
+`form: "shell"`.
 
 ### Multi-stage builds
 
@@ -288,7 +321,8 @@ Exactly this, and nothing else:
 - `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`), if the image
   has them
 - the version of each runtime it finds (`node -v`, `python3 -c '...python_version()'`, ...), the
-  output of `uname -s` and `uname -m`, and the `ID` from `/etc/os-release`
+  platform (`linux/arm64`), and the `ID` from `/etc/os-release`
+- the reporter's version (`X-Reporter: observator-reporter/1.0.0`), for the reporter image
 - the gate setting, the project name (`OBSERVATOR_PROJECT`) and the labels (`OBSERVATOR_LABELS`), if
   set
 
@@ -467,6 +501,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `INGEST_MAX_BYTES` | `10485760` | Maximum report size |
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
 | `TRUSTED_PROXIES` | `1` | Reverse proxies in front of Observator that add an `X-Forwarded-For` entry; see [Client addresses](#client-addresses) |
+| `REPORTER_IMAGE` | `ghcr.io/enkodonl/observator-reporter:1` | Where the snippet copies the reporter from, such as your own mirror |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
 | `OBSERVATOR_SELF` | `on` | Observator reports its own Node.js version and packages as the "Observator" project |
 
@@ -517,12 +552,19 @@ npm run dev        # http://localhost:3100
 | --- | --- |
 | `npm test` | Unit tests (Vitest): lockfile parsers with real lockfiles, issue state machine, runtime and OSV logic, the snippet's shell, Node and Python code, notification rendering |
 | `npm run lint`, `npm run format:check`, `npm run typecheck` | ESLint, Prettier, TypeScript |
+| `cd ../reporter && go vet ./... && go test ./...` | The reporter (Go 1.27, standard library only) |
 | `node --no-warnings scripts/write-examples.ts` | Regenerate the example Dockerfiles from the snippet code |
 | `node ../scripts/check-spdx.mjs`, `node ../scripts/check-licenses.mjs` | License headers and dependency licenses |
-| `examples/test-snippet.sh` | Build the example apps, one per way of sending, against a running stack |
+| `examples/test-snippet.sh` | Build the example apps with the reporter (built from `reporter/`) and the plain sh snippet against a running stack |
 
-CI runs all of these, and starts the compose stack to build the example apps on `node:22-alpine`,
+CI runs all of these, and starts the compose stack to build the example apps: the reporter on Alpine,
+Debian slim, distroless and `python:3.12-slim`, and the plain sh snippet on `node:22-alpine`,
 `node:24-alpine`, `node:26-alpine`, `node:22-slim`, `node:22` and `python:3.12-slim`.
+
+**Releasing the reporter:** push a tag `reporter-v1.2.3`. The *Reporter image* workflow tests it and
+publishes `ghcr.io/enkodonl/observator-reporter` as `1.2.3`, `1.2`, `1` and `latest` for amd64, arm64
+and arm/v7. After the very first release, set the package to *Public* (package settings on GitHub),
+so builds can pull it without logging in. Running the workflow by hand builds without publishing.
 
 ## Limitations
 
@@ -545,5 +587,6 @@ CI runs all of these, and starts the compose stack to build the example apps on 
 - **Two years later:** each version also becomes available under Apache-2.0, two years after it was
   released.
 
-Components in `app/src/components/ui` come from [shadcn/ui](https://ui.shadcn.com) and
+The reporter in [`reporter/`](reporter) is [Apache-2.0](reporter/LICENSE), so it can go into any
+build pipeline. Components in `app/src/components/ui` come from [shadcn/ui](https://ui.shadcn.com) and
 keep their MIT license.

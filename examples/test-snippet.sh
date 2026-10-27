@@ -1,10 +1,11 @@
 #!/bin/sh
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# Builds the example apps against a running Observator, one image per way the snippet sends
-# (wget, node, curl, python3), and checks that: the report arrives with the right runtimes, the
-# key never ends up in the build log or the image, and a missing key, a wrong key or an
-# unreachable server never breaks the build.
+# Builds the example apps against a running Observator: the reporter image (built here from
+# reporter/ and swapped in for the published one) and the plain sh snippet, one image per way it
+# sends (wget, node, curl, python3). Checks that: the report arrives with the right runtimes, the
+# key never ends up in the build log or the image, a missing key, a wrong key or an unreachable
+# server never breaks the build, and the gate does.
 #
 # Usage:
 #   OBSERVATOR_URL=http://host.docker.internal:3000 OBSERVATOR_KEY=obs_... examples/test-snippet.sh
@@ -18,6 +19,7 @@ set -eu
 : "${OBSERVATOR_URL:?set OBSERVATOR_URL}"
 : "${OBSERVATOR_KEY:?set OBSERVATOR_KEY}"
 IMAGES_ALPINE=${IMAGES_ALPINE:-"node:22-alpine node:24-alpine node:26-alpine"}
+REPORTER=ghcr.io/enkodonl/observator-reporter:1
 
 cd "$(dirname "$0")"
 LOG=$(mktemp)
@@ -34,11 +36,13 @@ fail() {
   FAILED=1
 }
 
-# build <tag> <dockerfile> <ARG=image> <url> <key> [project]
+# build <tag> <dockerfile> <ARG=image> <url> <key> [project]; $EXTRA adds build arguments.
 build() {
   echo "==> $1 ($3, $2)"
+  # shellcheck disable=SC2086
   if ! docker build --progress=plain --no-cache-filter observator \
     --add-host=host.docker.internal:host-gateway \
+    --build-context "$REPORTER=docker-image://observator-reporter:test" ${EXTRA:-} \
     -f "$2" -t "observator-example:$1" \
     --build-arg "$3" \
     --build-arg "OBSERVATOR_URL=$4" \
@@ -69,6 +73,40 @@ expect_report() {
 
 EXPRESS=express-app/Dockerfile
 PYTHON=python-app/Dockerfile
+
+echo "==> reporter image (reporter/)"
+docker build -q -t observator-reporter:test ../reporter >/dev/null || { echo "  FAIL: reporter image"; exit 1; }
+
+# The reporter image: no shell needed, so distroless reports too.
+build v2-alpine "$EXPRESS.reporter" NODE_IMAGE=node:26-alpine "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-alpine 'node 26\.[0-9.]+, linux/[a-z0-9]+, npm, [0-9]+ packages'
+build v2-slim "$EXPRESS.reporter" NODE_IMAGE=node:22-slim "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-slim 'node 22\.[0-9.]+, linux/[a-z0-9]+, npm, [0-9]+ packages'
+build v2-distroless "$EXPRESS.distroless" NODE_IMAGE=node:26-slim "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-distroless 'node 26\.[0-9.]+, linux/[a-z0-9]+, npm, [0-9]+ packages'
+build v2-python "$PYTHON.reporter" PYTHON_IMAGE=python:3.12-slim "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-python 'python 3\.12\.[0-9]+, linux/[a-z0-9]+, no lockfile\)'
+build v2-no-key "$EXPRESS.reporter" NODE_IMAGE=node:26-alpine "$OBSERVATOR_URL" "" &&
+  { ! output | grep -q 'Observator:' || fail "v2 reported without a key"; }
+build v2-unreachable "$EXPRESS.distroless" NODE_IMAGE=node:26-slim "http://127.0.0.1:9" "$OBSERVATOR_KEY" &&
+  { output | grep -q 'report failed, continuing' || fail "v2 unreachable server did not fall back"; }
+
+# The gate is the one thing that may fail a build: the example has a critical advisory.
+for gated in "v2 $EXPRESS.reporter" "sh $EXPRESS"; do
+  set -- $gated
+  echo "==> gate-$1 (OBSERVATOR_FAIL_ON=critical)"
+  if docker build --progress=plain --no-cache-filter observator --add-host=host.docker.internal:host-gateway \
+    --build-context "$REPORTER=docker-image://observator-reporter:test" -f "$2" \
+    --build-arg "OBSERVATOR_URL=$OBSERVATOR_URL" --build-arg "OBSERVATOR_KEY=$OBSERVATOR_KEY" \
+    --build-arg OBSERVATOR_FAIL_ON=critical "$(dirname "$2")" >"$LOG" 2>&1; then
+    fail "gate did not fail the build ($1)"
+  else
+    output | grep -q '^OBSERVATOR_GATE=fail' || fail "build failed without the gate saying so ($1)"
+    output | grep '^OBSERVATOR_GATE' | sed 's/^/    /'
+  fi
+done
+
+# The plain sh snippet, one image per client.
 
 # wget (BusyBox)
 for image in $IMAGES_ALPINE; do

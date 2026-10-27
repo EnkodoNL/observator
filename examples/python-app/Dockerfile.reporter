@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. The reporter image.
+# There is no package.json, so only the runtime version is reported.
+ARG PYTHON_IMAGE=python:3.12-slim
+
+FROM ${PYTHON_IMAGE} AS app
+WORKDIR /app
+COPY main.py ./
+CMD ["python3", "main.py"]
+
+# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
+FROM ghcr.io/enkodonl/observator-reporter:1 AS observator-reporter
+FROM app AS observator
+COPY --from=observator-reporter /reporter /tmp/observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
+RUN ["/tmp/observator"]
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator

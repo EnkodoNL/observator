@@ -2,9 +2,10 @@
 "use client";
 
 import { CodeBlock } from "@/components/code-block";
+import { SnippetFormToggle, useSnippetForm } from "@/components/snippet-form";
 import { dockerSnippet, type LockfileSource } from "@/lib/snippet";
 
-/** The snippet as it goes at the bottom of the Dockerfile; one for every base image. */
+/** The snippet as it goes at the bottom of the Dockerfile, in the chosen form. */
 export function SnippetBlock({
   url,
   stage,
@@ -16,14 +17,12 @@ export function SnippetBlock({
   lockfileFrom?: LockfileSource;
   keyless?: boolean;
 }) {
+  const { form, image } = useSnippetForm();
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted-foreground">
-        Works on any image with a shell: it finds the runtimes (Node.js, Bun, Deno, Python, PHP, Ruby) and
-        sends with curl, wget, node or python3, whichever the image has.
-      </p>
+    <div className="space-y-3">
+      <SnippetFormToggle />
       <CodeBlock
-        code={dockerSnippet(url, { stage, lockfileFrom, keyless })}
+        code={dockerSnippet(url, { form, image, stage, lockfileFrom, keyless })}
         label="Dockerfile, at the very bottom"
       />
     </div>

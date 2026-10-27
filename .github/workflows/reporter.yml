@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Publishes the reporter image that the Dockerfile snippet copies from:
+#   git tag reporter-v1.2.3 && git push origin reporter-v1.2.3
+# gives ghcr.io/enkodonl/observator-reporter:1.2.3, :1.2, :1 and :latest. Run it by hand
+# (workflow_dispatch) to build every platform without pushing.
+name: Reporter image
+
+on:
+  push:
+    tags: ["reporter-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: reporter/go.mod
+      - name: Test
+        working-directory: reporter
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+      - name: Version
+        id: version
+        run: |
+          case "$GITHUB_REF_NAME" in
+            reporter-v*) echo "value=${GITHUB_REF_NAME#reporter-v}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "value=0.0.0-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/enkodonl/observator-reporter
+          tags: |
+            type=match,pattern=reporter-v(\d+\.\d+\.\d+),group=1
+            type=match,pattern=reporter-v(\d+\.\d+)\.\d+,group=1
+            type=match,pattern=reporter-v(\d+)\.\d+\.\d+,group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/reporter-v') }}
+          labels: |
+            org.opencontainers.image.title=observator-reporter
+            org.opencontainers.image.description=Reports runtime versions and the lockfile of a Docker build to Observator
+            org.opencontainers.image.licenses=Apache-2.0
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: startsWith(github.ref, 'refs/tags/reporter-v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Cross-compiled by Go in the Dockerfile, so no QEMU.
+      - uses: docker/build-push-action@v7
+        with:
+          context: reporter
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          push: ${{ startsWith(github.ref, 'refs/tags/reporter-v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
