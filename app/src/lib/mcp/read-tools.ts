@@ -344,11 +344,18 @@ export const readTools: Record<string, Tool> = {
         .boolean()
         .optional()
         .describe("The snippet without the key check, for servers on an IP allowlist"),
+      form: z
+        .enum(["image", "shell"])
+        .default("image")
+        .describe(
+          "image (default): a few lines that copy the reporter from its image, also for images without a shell. shell: plain sh, nothing to pull, for builds that cannot reach the registry.",
+        ),
     }),
-    run: async ({ dockerfile, keyless }) => {
-      const a = analyzeDockerfile(dockerfile, env().APP_URL, { keyless });
+    run: async ({ dockerfile, keyless, form }) => {
+      const a = analyzeDockerfile(dockerfile, env().APP_URL, { keyless, form, image: env().REPORTER_IMAGE });
       if (!a.ok) throw new ToolError(a.error);
       return {
+        form,
         stage: a.stage,
         lockfileFrom: a.lockfileFrom ?? null,
         notes: a.notes,

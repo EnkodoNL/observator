@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { dockerSnippet, type LockfileSource, type SnippetOptions } from "./snippet";
+import { dockerSnippet, type LockfileSource, type SnippetForm, type SnippetOptions } from "./snippet";
 
 /**
  * Reads a pasted Dockerfile and works out how to add the snippet: which stage is last and
@@ -240,9 +240,23 @@ function copy(ins: Instruction, stage: Stage, stages: Stage[]): string | undefin
   return standalone;
 }
 
-/** The snippet is plain sh and picks its own client, so only images without a shell are a problem. */
-function baseNote(base: string): DockerfileNote {
+/**
+ * The reporter runs without a shell; the sh snippet picks its own client, so for it only images
+ * without a shell are a problem.
+ */
+function baseNote(base: string, form: SnippetForm): DockerfileNote {
   const image = base.toLowerCase();
+  if (form === "image") {
+    if (image === "scratch")
+      return {
+        level: "info",
+        text: "The last stage is based on scratch: the reporter runs there, but finds no runtime to report, only package.json and the lockfile if you copy them in.",
+      };
+    return {
+      level: "ok",
+      text: `Base image ${base}: the reporter runs on its own, without a shell${/distroless/.test(image) ? " (fine for distroless)" : ""}.`,
+    };
+  }
   if (/distroless/.test(image) || image === "scratch")
     return {
       level: "warn",
@@ -264,7 +278,7 @@ const describe = (o: Origin) =>
 export function analyzeDockerfile(
   text: string,
   url: string,
-  options: Pick<SnippetOptions, "keyless" | "key" | "project" | "labels"> = {},
+  options: Pick<SnippetOptions, "form" | "image" | "keyless" | "key" | "project" | "labels"> = {},
 ): DockerfileAnalysis {
   const all = instructions(text);
   const stages: Stage[] = [];
@@ -285,7 +299,8 @@ export function analyzeDockerfile(
         fromEnd: ins.end,
         workdir: parent?.workdir ?? "/",
         folders: new Map([...(parent?.folders ?? [])].map(([dir, f]) => [dir, { ...f }] as [string, Folder])),
-        observator: name === "observator",
+        // The snippet's stages: the reporter image (image form) and the report stage.
+        observator: name === "observator" || name === "observator-reporter",
       });
       continue;
     }
@@ -309,7 +324,7 @@ export function analyzeDockerfile(
   if (existing) {
     // Only the snippet's own shape is replaced: the observator stage, then one stage that copies
     // the marker. Anything else after it would be lost, so that is left to the user.
-    const after = stages.filter((s) => s.index > existing.index);
+    const after = stages.filter((s) => s.index > existing.index && !s.observator);
     const tail = after.length === 1 ? all.filter((i) => i.start > after[0].line) : [];
     if (after.length > 1 || tail.some((i) => i.keyword !== "COPY" || !/--from=observator\b/i.test(i.args)))
       return {
@@ -355,7 +370,7 @@ export function analyzeDockerfile(
     });
   }
 
-  notes.push(baseNote(last.base));
+  notes.push(baseNote(last.base, options.form ?? "image"));
 
   const here = last.folders.get(last.workdir);
   let lockfileFrom: LockfileSource | undefined;

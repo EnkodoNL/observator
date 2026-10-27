@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
-# Example app for testing the Observator snippet. Full Debian image: sent with curl.
+# Example app for testing the Observator snippet. Plain sh on full Debian: sent with curl.
 ARG NODE_IMAGE=node:22
 
 FROM ${NODE_IMAGE} AS app

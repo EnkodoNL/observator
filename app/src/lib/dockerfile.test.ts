@@ -88,13 +88,30 @@ COPY --from=app /package.json /package-lock.json ./`);
     );
   });
 
-  it("warns for images without a shell", () => {
-    const a = ok(`FROM node:22 AS build
+  it("warns for images without a shell, but only for the sh snippet", () => {
+    const distroless = `FROM node:22 AS build
 WORKDIR /app
 COPY . .
 FROM gcr.io/distroless/nodejs22-debian12 AS app
-COPY --from=build /app /app`);
-    expect(a.notes.find((n) => n.level === "warn")?.text).toContain("no shell");
+COPY --from=build /app /app`;
+    const shell = analyzeDockerfile(distroless, URL, { form: "shell" });
+    if (!shell.ok) throw new Error(shell.error);
+    expect(shell.notes.find((n) => n.level === "warn")?.text).toContain("no shell");
+    const image = ok(distroless);
+    expect(image.notes.some((n) => n.level === "warn")).toBe(false);
+    expect(image.notes.map((n) => n.text).join("\n")).toContain("fine for distroless");
+  });
+
+  it("switches an earlier snippet between the two forms", () => {
+    const v2 = ok(NEXT_STANDALONE).out;
+    const toShell = analyzeDockerfile(v2, URL, { form: "shell" });
+    if (!toShell.ok) throw new Error(toShell.error);
+    const v1 = toShell.lines.map((l) => l.text).join("\n");
+    expect(v1).not.toContain("observator-reporter");
+    expect(v1.split("# --- Observator")).toHaveLength(2);
+    expect(v1.startsWith(NEXT_STANDALONE)).toBe(true);
+    // And back: the reporter's own stage goes with the rest of the snippet.
+    expect(ok(v1).out).toBe(v2);
   });
 
   it("follows folders copied between stages", () => {

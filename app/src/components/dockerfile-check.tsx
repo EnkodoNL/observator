@@ -4,6 +4,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
+import { SnippetFormToggle, useSnippetForm } from "@/components/snippet-form";
 import { Textarea } from "@/components/ui/textarea";
 import { analyzeDockerfile, type DockerfileLine, type DockerfileNote } from "@/lib/dockerfile";
 import { cn } from "@/lib/utils";
@@ -35,9 +36,10 @@ export function DockerfileCheck({ url, keyless = false }: { url: string; keyless
   const [text, setText] = useState("");
   const [all, setAll] = useState(false);
   const deferred = useDeferredValue(text);
+  const { form, image } = useSnippetForm();
   const analysis = useMemo(
-    () => (deferred.trim() ? analyzeDockerfile(deferred, url, { keyless }) : null),
-    [deferred, url, keyless],
+    () => (deferred.trim() ? analyzeDockerfile(deferred, url, { form, image, keyless }) : null),
+    [deferred, url, form, image, keyless],
   );
   const result = analysis?.ok ? analysis.lines.map((l) => l.text).join("\n") + "\n" : "";
 
@@ -69,6 +71,7 @@ export function DockerfileCheck({ url, keyless = false }: { url: string; keyless
 
       {analysis?.ok && (
         <>
+          <SnippetFormToggle />
           <ul className="space-y-1.5 text-sm">
             {analysis.notes.map((n) => (
               <li key={n.text} className="flex items-start gap-2">

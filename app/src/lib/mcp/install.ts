@@ -38,6 +38,12 @@ export const installTools: Record<string, Tool> = {
       rotateKey: z.boolean().optional(),
       keyless: z.boolean().optional(),
       labels: z.string().max(2000).optional(),
+      form: z
+        .enum(["image", "shell"])
+        .default("image")
+        .describe(
+          "image (default): a few lines that copy the reporter from its image, also for images without a shell. shell: plain sh, nothing to pull, for builds that cannot reach the registry.",
+        ),
     }),
     write: true,
     run: async (args) => {
@@ -151,12 +157,15 @@ export const installTools: Record<string, Tool> = {
         project: reportAs,
         labels: labels.join(","),
         keyless: args.keyless,
+        form: args.form,
+        image: env().REPORTER_IMAGE,
       });
       if (!analysis.ok) throw new ToolError(analysis.error);
       if (newKey) revalidatePath("/", "layout");
 
       return {
         path: args.path ?? null,
+        form: args.form,
         dockerfile: `${analysis.lines.map((l) => l.text).join("\n")}\n`,
         notes: [...notes, ...analysis.notes],
         project,
@@ -193,7 +202,7 @@ export function registerInstallPrompt(server: McpServer): void {
             text: [
               "Set up Observator in this repository.",
               "",
-              "1. Find every Dockerfile (Dockerfile, Dockerfile.*, *.Dockerfile) that builds a deployable Node app. Skip ones for tooling or tests.",
+              "1. Find every Dockerfile (Dockerfile, Dockerfile.*, *.Dockerfile) that builds a deployable app. Skip ones for tooling or tests.",
               "2. Per app, pick a project name: the package.json name of the app it builds, or else its folder. Pick labels: app:<repository name>, role:<web|worker|...> when the repository has more than one app, env:<...> when it is obvious" +
                 (labels ? `, plus: ${labels}` : "") +
                 ".",

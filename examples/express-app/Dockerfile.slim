@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
-# Example app for testing the Observator snippet. Debian slim: no wget or curl, so sent with Node's fetch.
+# Example app for testing the Observator snippet. Plain sh on Debian slim: no wget or curl, so sent with Node's fetch.
 ARG NODE_IMAGE=node:22-slim
 
 FROM ${NODE_IMAGE} AS app
