@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: reporter/go.mod
+          cache-dependency-path: reporter/go.sum
       - name: Test
         working-directory: reporter
         run: |

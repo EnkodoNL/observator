@@ -5,7 +5,8 @@ FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS build
 ARG TARGETOS TARGETARCH TARGETVARIANT
 ARG VERSION=dev
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY *.go ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} \
     go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o /reporter .
