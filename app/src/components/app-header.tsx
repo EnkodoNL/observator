@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { LogOutIcon, MonitorIcon, MoonIcon, SunIcon, UserIcon } from "lucide-react";
+import { LogOutIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, UserIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,8 @@ const NAV = [
   { href: "/", label: "Overview", match: (p: string) => p === "/" || p.startsWith("/projects") },
   { href: "/runtimes", label: "Runtimes", match: (p: string) => p.startsWith("/runtimes") },
   { href: "/packages", label: "Packages", match: (p: string) => p.startsWith("/packages") },
-  { href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") },
+  // On a phone Settings moves into the account menu, so the rest fits without scrolling.
+  { href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings"), wide: true },
 ] as const;
 
 export function AppHeader({ email, actions }: { email: string; actions?: React.ReactNode }) {
@@ -33,7 +34,7 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-backdrop-filter:bg-background/60">
+    <header className="sticky top-0 z-40 border-b bg-background">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
         <Link
           href="/"
@@ -50,8 +51,9 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
-                  active && "bg-muted text-foreground",
+                  "rounded-sm px-2 py-1.5 text-sm whitespace-nowrap text-muted-foreground underline-offset-[9px] transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring",
+                  active && "text-foreground underline decoration-primary decoration-2",
+                  "wide" in item && "hidden sm:block",
                 )}
               >
                 {item.label}
@@ -87,6 +89,9 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
               <DropdownMenuSeparator />
               <DropdownMenuItem render={<Link href="/settings/account" />}>
                 <UserIcon /> Account
+              </DropdownMenuItem>
+              <DropdownMenuItem className="sm:hidden" render={<Link href="/settings" />}>
+                <SettingsIcon /> Settings
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void logoutAction()}>
                 <LogOutIcon /> Sign out

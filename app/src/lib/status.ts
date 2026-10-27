@@ -24,6 +24,8 @@ export interface StatusSummary {
   /** Open runtime security updates, one per runtime line. */
   runtimeSecurity: IssueRecord[];
   runtimeEol: IssueRecord[];
+  /** Open package advisories (ignored ones are not open). */
+  vulns: IssueRecord[];
   vulnCount: number;
   vulnBySeverity: Partial<Record<Severity, number>>;
   worstSeverity: Severity | null;
@@ -48,6 +50,7 @@ export function summarize(hasBuild: boolean, issues: IssueRecord[]): StatusSumma
     status,
     runtimeSecurity,
     runtimeEol,
+    vulns,
     vulnCount: vulns.length,
     vulnBySeverity,
     worstSeverity: maxSeverity(vulns.map((v) => v.severity)),
