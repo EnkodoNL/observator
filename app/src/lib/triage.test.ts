@@ -66,6 +66,27 @@ describe("triage", () => {
     expect(triage([item("Web", [issue("vuln", "critical", {}, "ignored")])], 14)).toEqual([]);
   });
 
+  it("puts critical first, then runtime security fixes, then severity and reach", () => {
+    const runtime = issue("runtime_security", "moderate", {
+      runtime: "node",
+      running: "22.11.0",
+      target: "22.23.4",
+    });
+    const causes = triage(
+      [
+        item("Web", [runtime, vuln("lodash", "4.17.20", "A", "high"), vuln("qs", "6.0.0", "B", "high")]),
+        item("Api", [vuln("minimist", "1.2.5", "C", "critical"), vuln("qs", "6.0.0", "B", "high")]),
+      ],
+      14,
+    );
+    expect(causes.map((c) => (c.kind === "package" ? c.package : c.kind))).toEqual([
+      "minimist",
+      "runtime_security",
+      "qs",
+      "lodash",
+    ]);
+  });
+
   it("puts the heaviest first: severity, then reach", () => {
     const runtime = issue("runtime_security", "high", {
       runtime: "node",

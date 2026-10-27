@@ -64,6 +64,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
         severityRank(b.severity) - severityRank(a.severity),
     );
   const openVulns = vulns.filter((i) => i.status === "open");
+  const vulnPackages = new Set(openVulns.map((v) => (v.data as unknown as VulnIssueData).package)).size;
 
   const vulnByPackage = new Map<string, { severity: Severity; count: number }>();
   for (const v of openVulns) {
@@ -157,7 +158,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <h2 className="font-medium">
               Vulnerabilities{" "}
               {openVulns.length > 0 && (
-                <span className="text-muted-foreground tabular-nums">{openVulns.length}</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {openVulns.length} in {vulnPackages} {vulnPackages === 1 ? "package" : "packages"}
+                </span>
               )}
             </h2>
             <VulnList

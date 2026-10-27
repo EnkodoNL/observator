@@ -16,7 +16,9 @@ const ITEMS = [
 export function SettingsNav() {
   const pathname = usePathname();
   return (
-    <nav className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col">
+    // The active item is marked like the header: an indigo line, under it on a phone and
+    // beside it in the column.
+    <nav className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0 md:border-l">
       {ITEMS.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
@@ -25,8 +27,9 @@ export function SettingsNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
-              active && "bg-muted text-foreground",
+              "rounded-sm px-2 py-1.5 text-sm whitespace-nowrap text-muted-foreground underline-offset-[9px] transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring md:-ml-px md:rounded-none md:border-l-2 md:border-transparent md:px-3",
+              active &&
+                "text-foreground underline decoration-primary decoration-2 md:border-primary md:no-underline",
             )}
           >
             {item.label}
