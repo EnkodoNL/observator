@@ -27,6 +27,7 @@ export const installTools: Record<string, Tool> = {
       "- project + rotateKey: gives an existing project a new key (the old one stops working) and writes it in.",
       "- keyless: the snippet without the key check, for servers on a shared key's IP allowlist; give project as the name.",
       "labels become the default for OBSERVATOR_LABELS, such as app:heatwave,role:web.",
+      "To switch an existing snippet between the image and shell form while keeping its settings, use upgrade_snippet instead.",
     ].join("\n"),
     input: z.object({
       dockerfile: z.string().min(1).max(200_000).describe("The Dockerfile's full content"),
@@ -162,6 +163,13 @@ export const installTools: Record<string, Tool> = {
       });
       if (!analysis.ok) throw new ToolError(analysis.error);
       if (newKey) revalidatePath("/", "layout");
+      if (analysis.existing?.key && !embed)
+        notes.push(
+          note(
+            "warn",
+            "The snippet that was there had a key written in; the new one has none. Pass key again, or use upgrade_snippet to keep the old settings.",
+          ),
+        );
 
       return {
         path: args.path ?? null,
@@ -220,5 +228,43 @@ export function registerInstallPrompt(server: McpServer): void {
         },
       ],
     }),
+  );
+}
+
+/** "/mcp__observator__upgrade": every snippet in a repository to one form, settings kept. */
+export function registerUpgradePrompt(server: McpServer): void {
+  server.registerPrompt(
+    "upgrade",
+    {
+      title: "Upgrade the Observator snippets in this repository",
+      description:
+        "Finds the Dockerfiles that already report to Observator and brings their snippet to the current version, as the reporter image or as plain sh.",
+      argsSchema: z.object({
+        form: z
+          .string()
+          .optional()
+          .describe("image (the reporter image, the default) or shell (plain sh, nothing pulled)"),
+      }),
+    },
+    ({ form }) => {
+      const shell = form?.trim().toLowerCase() === "shell";
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: [
+                "Upgrade the Observator snippets in this repository.",
+                "",
+                '1. Find every Dockerfile (Dockerfile, Dockerfile.*, *.Dockerfile) with an Observator snippet: a "# --- Observator" line or a stage named observator.',
+                `2. Per Dockerfile, call upgrade_snippet with its content, path and form: "${shell ? "shell" : "image"}", and write the returned dockerfile back unchanged.`,
+                "3. Finish with a short overview per file: the form before and after, what was kept, and the notes (especially warnings).",
+              ].join("\n"),
+            },
+          },
+        ],
+      };
+    },
   );
 }

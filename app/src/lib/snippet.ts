@@ -127,6 +127,8 @@ export interface SnippetOptions {
   project?: string;
   /** Default for OBSERVATOR_LABELS, such as "app:heatwave,role:web". */
   labels?: string;
+  /** Default for OBSERVATOR_FAIL_ON: the severity from which the build fails. */
+  failOn?: string;
 }
 
 /** A default inside ARG NAME="...": no quotes, escapes or variables that Docker would interpret. */
@@ -188,6 +190,7 @@ export function dockerSnippet(
     key,
     project,
     labels,
+    failOn,
   }: SnippetOptions = {},
 ): string {
   const reporter = form === "image";
@@ -201,7 +204,7 @@ export function dockerSnippet(
     ...(reporter ? ["COPY --from=observator-reporter /reporter /tmp/observator"] : []),
     `ARG OBSERVATOR_URL=${url}`,
     `ARG OBSERVATOR_KEY="${argValue(key)}"`,
-    `ARG OBSERVATOR_FAIL_ON=""`,
+    `ARG OBSERVATOR_FAIL_ON="${argValue(failOn)}"`,
     `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
     `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
     ...(reporter ? [imageRun(keyless)] : shellRun(keyless)),

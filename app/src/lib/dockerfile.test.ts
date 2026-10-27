@@ -114,6 +114,37 @@ COPY --from=build /app /app`;
     expect(ok(v1).out).toBe(v2);
   });
 
+  it("reads what an earlier snippet was set to, in both forms", () => {
+    const settings = { key: "obss_abc123", project: "web", labels: "app:heatwave,env:prod", failOn: "high" };
+    for (const form of ["image", "shell"] as const)
+      for (const keyless of [false, true]) {
+        const text = `${NEXT_STANDALONE}\n\n${dockerSnippet(URL, { form, keyless, stage: "runner", ...settings })}`;
+        const a = analyzeDockerfile(text, "https://elsewhere.example.com");
+        if (!a.ok) throw new Error(a.error);
+        expect(a.existing, `${form} keyless=${keyless}`).toEqual({
+          form,
+          image: form === "image" ? "ghcr.io/enkodonl/observator-reporter:1" : undefined,
+          url: URL,
+          keyless,
+          ...settings,
+        });
+      }
+    expect(ok(NEXT_STANDALONE).existing).toBeUndefined();
+  });
+
+  it("keeps the settings when switching forms", () => {
+    const settings = { key: "obs_k", project: "web", labels: "role:web", failOn: "critical", keyless: true };
+    const v1 = analyzeDockerfile(`${NEXT_STANDALONE}\n`, URL, { form: "shell", ...settings });
+    if (!v1.ok) throw new Error(v1.error);
+    const text = v1.lines.map((l) => l.text).join("\n");
+    const v2 = analyzeDockerfile(text, URL, { form: "image", ...settings });
+    if (!v2.ok) throw new Error(v2.error);
+    expect(v2.existing).toMatchObject({ form: "shell", ...settings });
+    const out = v2.lines.map((l) => l.text).join("\n");
+    expect(out).toContain('ARG OBSERVATOR_FAIL_ON="critical"');
+    expect(out).toContain('RUN ["/tmp/observator", "--keyless"]');
+  });
+
   it("follows folders copied between stages", () => {
     const a = ok(`FROM node:22-alpine AS deps
 WORKDIR /src

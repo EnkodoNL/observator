@@ -287,7 +287,8 @@ The key is read from the environment (`env | sed`) instead of as `$OBSERVATOR_KE
 prints `RUN` commands with build arguments filled in, which would put the key in your build log. For
 BusyBox `wget` the archive is base64-encoded, because `wget --post-file` stops at the first NUL byte
 and would truncate a binary upload. Over MCP, `setup_dockerfile` gives this form with
-`form: "shell"`.
+`form: "shell"`, and `upgrade_snippet` switches an existing snippet either way, keeping its key,
+project, labels and `OBSERVATOR_FAIL_ON`.
 
 ### Multi-stage builds
 
@@ -428,11 +429,14 @@ claude mcp add --transport http observator https://observator.example.com/api/mc
 Then ask things like "which projects run a Node.js version with an open security fix?", "where is
 lodash 4.17.20 used?", or "set up Observator in my Dockerfiles, use the shared key in my env, and get
 the project names and labels right". The `install` prompt (`/mcp__observator__install`) spells out
-that last one.
+that last one; the `upgrade` prompt (`/mcp__observator__upgrade`) brings every existing snippet in a
+repository to the current version, as the reporter image or as plain sh.
 
 - **Read:** projects with status and labels, project details with fix advice, builds and diffs,
   packages across projects, the runtimes overview, shared keys, settings and channels (secrets are never
   shown, only whether they are set).
+  `upgrade_snippet` replaces the snippet in a Dockerfile you pass with the current one, in the form
+  you pick, and keeps what the old one was set to; it changes nothing in Observator itself.
 - **Create and update** (tokens with *May make changes*): projects and their labels, deploy webhooks
   and keys, ignores (ending one lets it expire instead of deleting it), shared keys and their IP
   allowlists, settings and channels; run checks, redeploy, send a test notification.
