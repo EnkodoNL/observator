@@ -90,6 +90,11 @@ build v2-no-key "$EXPRESS.reporter" NODE_IMAGE=node:26-alpine "$OBSERVATOR_URL" 
   { ! output | grep -q 'Observator:' || fail "v2 reported without a key"; }
 build v2-unreachable "$EXPRESS.distroless" NODE_IMAGE=node:26-slim "http://127.0.0.1:9" "$OBSERVATOR_KEY" &&
   { output | grep -q 'report failed, continuing' || fail "v2 unreachable server did not fall back"; }
+# HTTPS from a slim image without a CA bundle: example.com answers with an HTTP error, which
+# proves the handshake worked. The key is a dummy.
+build v2-https "$EXPRESS.reporter" NODE_IMAGE=node:22-slim "https://example.com" "obs_https_check" &&
+  { output | grep -q 'report failed, continuing' || fail "v2 https check did not reach the server"; } &&
+  { ! output | grep -Eq 'x509|certificate' || fail "v2 has no root certificates on slim"; }
 
 # The gate is the one thing that may fail a build: the example has a critical advisory.
 for gated in "v2 $EXPRESS.reporter" "sh $EXPRESS"; do

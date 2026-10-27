@@ -183,9 +183,11 @@ without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Docke
   the key. The reporter reads the key from its environment, and the `RUN` line BuildKit prints is just
   `RUN ["/tmp/observator"]`. A key passed as a BuildKit secret works too:
   `RUN --mount=type=secret,id=OBSERVATOR_KEY,env=OBSERVATOR_KEY ["/tmp/observator"]`.
-- **No shell needed.** The reporter is one static binary (Go, no dependencies, for amd64, arm64 and
-  arm/v7). It runs `node -v`, `bun --version`, `deno`, `python3`, `php` and `ruby` directly when the
-  image has them and reports the versions it finds.
+- **No shell needed.** The reporter is one static binary (Go, for amd64, arm64 and arm/v7). Its
+  only dependency is the Go team's fallback root store (`golang.org/x/crypto/x509roots/fallback`,
+  BSD-3-Clause, Mozilla's roots), so it reaches an HTTPS Observator from slim images that have no CA
+  bundle; roots in the image itself still go first. It runs `node -v`, `bun --version`, `deno`,
+  `python3`, `php` and `ruby` directly when the image has them and reports the versions it finds.
 
 ### Base images
 
@@ -556,7 +558,7 @@ npm run dev        # http://localhost:3100
 | --- | --- |
 | `npm test` | Unit tests (Vitest): lockfile parsers with real lockfiles, issue state machine, runtime and OSV logic, the snippet's shell, Node and Python code, notification rendering |
 | `npm run lint`, `npm run format:check`, `npm run typecheck` | ESLint, Prettier, TypeScript |
-| `cd ../reporter && go vet ./... && go test ./...` | The reporter (Go 1.27, standard library only) |
+| `cd ../reporter && go vet ./... && go test ./...` | The reporter (Go 1.27; on Linux also HTTPS without a CA bundle) |
 | `node --no-warnings scripts/write-examples.ts` | Regenerate the example Dockerfiles from the snippet code |
 | `node ../scripts/check-spdx.mjs`, `node ../scripts/check-licenses.mjs` | License headers and dependency licenses |
 | `examples/test-snippet.sh` | Build the example apps with the reporter (built from `reporter/`) and the plain sh snippet against a running stack |
