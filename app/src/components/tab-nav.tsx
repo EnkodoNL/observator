@@ -23,7 +23,7 @@ export function TabNav({
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "relative -mb-px flex items-center gap-1.5 border-b-2 border-transparent px-2.5 py-2 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
-              isActive && "border-foreground text-foreground",
+              isActive && "border-primary text-foreground",
             )}
           >
             {tab.label}

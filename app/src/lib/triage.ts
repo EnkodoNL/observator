@@ -44,12 +44,18 @@ const KIND_ORDER: Record<Cause["kind"], number> = {
   stale: 3,
 };
 
+/**
+ * Critical first, whatever it is; then runtime security fixes, which are one image tag away
+ * and close every advisory in the runtime itself; then the rest.
+ */
+const tier = (c: Cause) => (c.severity === "critical" ? 0 : c.kind === "runtime_security" ? 1 : 2);
+
 const ref = (i: ProjectSummary): ProjectRef => ({ name: i.project.name, slug: i.project.slug });
 const data = <T>(issue: IssueRecord) => issue.data as unknown as T;
 const projectHref = (projects: ProjectRef[]) =>
   projects.length === 1 ? `/projects/${projects[0].slug}` : "";
 
-/** What needs doing across all projects, the heaviest first: severity, then reach. */
+/** What needs doing across all projects, the heaviest first: tier, severity, then reach. */
 export function triage(items: ProjectSummary[], staleDays: number): Cause[] {
   const causes = new Map<string, Cause>();
   const add = (key: string, make: () => Cause, item: ProjectSummary, severity: Severity) => {
@@ -126,6 +132,7 @@ export function triage(items: ProjectSummary[], staleDays: number): Cause[] {
     })
     .sort(
       (a, b) =>
+        tier(a) - tier(b) ||
         severityRank(b.severity) - severityRank(a.severity) ||
         b.projects.length - a.projects.length ||
         KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
