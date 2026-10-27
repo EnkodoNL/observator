@@ -21,12 +21,28 @@ export interface DockerfileLine {
   added: boolean;
 }
 
+/** What an earlier snippet in the Dockerfile was set to, so a new one can keep it. */
+export interface SnippetSettings {
+  form: SnippetForm;
+  /** The reporter image, for the image form. */
+  image?: string;
+  url?: string;
+  /** The ARG defaults as written; empty when the build passes them in. */
+  key: string;
+  failOn: string;
+  project: string;
+  labels: string;
+  keyless: boolean;
+}
+
 export type DockerfileAnalysis =
   | { ok: false; error: string }
   | {
       ok: true;
       stage: string;
       lockfileFrom?: LockfileSource;
+      /** The snippet that was there before, when one was replaced. */
+      existing?: SnippetSettings;
       notes: DockerfileNote[];
       lines: DockerfileLine[];
     };
@@ -268,6 +284,35 @@ function baseNote(base: string, form: SnippetForm): DockerfileNote {
   };
 }
 
+/**
+ * Reads the snippet's own instructions (everything from its first stage on): the ARG defaults,
+ * the reporter image and whether it reports without a key. Older sh snippets read the same way.
+ */
+function readSnippet(snippet: Instruction[], stages: Stage[], from: Stage): SnippetSettings {
+  const reporter = stages.find((s) => s.index >= from.index && s.name === "observator-reporter");
+  const args = new Map<string, string>();
+  for (const ins of snippet) {
+    if (ins.keyword !== "ARG") continue;
+    const m = /^([A-Za-z_]\w*)(?:=(.*))?$/.exec(ins.args.trim());
+    if (m) args.set(m[1].toUpperCase(), tokens(m[2] ?? "")[0] ?? "");
+  }
+  const run = snippet.find((i) => i.keyword === "RUN")?.args ?? "";
+  const keyless = reporter
+    ? tokens(run).includes("--keyless")
+    : // The sh form skips the report without a key through this guard; keyless drops it.
+      run.includes("OBSERVATOR_KEY") && !/\[\s*-z\s+"\$key"\s*\]\s*\|\|/.test(run);
+  return {
+    form: reporter ? "image" : "shell",
+    image: reporter?.image,
+    url: args.get("OBSERVATOR_URL") || undefined,
+    key: args.get("OBSERVATOR_KEY") ?? "",
+    failOn: args.get("OBSERVATOR_FAIL_ON") ?? "",
+    project: args.get("OBSERVATOR_PROJECT") ?? "",
+    labels: args.get("OBSERVATOR_LABELS") ?? "",
+    keyless,
+  };
+}
+
 const describe = (o: Origin) =>
   o.how === "context"
     ? `the build context copied on line ${o.line}`
@@ -278,7 +323,7 @@ const describe = (o: Origin) =>
 export function analyzeDockerfile(
   text: string,
   url: string,
-  options: Pick<SnippetOptions, "form" | "image" | "keyless" | "key" | "project" | "labels"> = {},
+  options: Pick<SnippetOptions, "form" | "image" | "keyless" | "key" | "project" | "labels" | "failOn"> = {},
 ): DockerfileAnalysis {
   const all = instructions(text);
   const stages: Stage[] = [];
@@ -321,6 +366,7 @@ export function analyzeDockerfile(
 
   // An earlier snippet: keep what is above it and add the current version.
   const existing = stages.find((s) => s.observator);
+  let previous: SnippetSettings | undefined;
   if (existing) {
     // Only the snippet's own shape is replaced: the observator stage, then one stage that copies
     // the marker. Anything else after it would be lost, so that is left to the user.
@@ -340,6 +386,11 @@ export function analyzeDockerfile(
       }
       if (lines[i].trim() !== "") break;
     }
+    previous = readSnippet(
+      all.filter((i) => i.start >= existing.line),
+      stages,
+      existing,
+    );
     lines = lines.slice(0, from);
     while (lines.length && lines.at(-1)!.trim() === "") lines.pop();
     app = stages.filter((s) => s.line <= from);
@@ -422,5 +473,5 @@ export function analyzeDockerfile(
   const snippet = dockerSnippet(url, { ...options, stage, lockfileFrom }).split("\n");
   const result: DockerfileLine[] = lines.map((l, i) => ({ text: l, added: added.has(i) }));
   result.push({ text: "", added: true }, ...snippet.map((text) => ({ text, added: true })));
-  return { ok: true, stage, lockfileFrom, notes, lines: result };
+  return { ok: true, stage, lockfileFrom, existing: previous, notes, lines: result };
 }

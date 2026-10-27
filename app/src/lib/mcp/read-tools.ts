@@ -9,6 +9,7 @@ import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages
 import { listProjects } from "@/lib/data/projects";
 import { getOverview, getProjectView } from "@/lib/data/views";
 import { analyzeDockerfile } from "@/lib/dockerfile";
+import { DEFAULT_REPORTER_IMAGE } from "@/lib/snippet";
 import { env } from "@/lib/env";
 import { displayEntry } from "@/lib/ingest/allowlist";
 import type { DesiredIssue } from "@/lib/issues/desired";
@@ -359,6 +360,79 @@ export const readTools: Record<string, Tool> = {
         stage: a.stage,
         lockfileFrom: a.lockfileFrom ?? null,
         notes: a.notes,
+        dockerfile: `${a.lines.map((l) => l.text).join("\n")}\n`,
+      };
+    },
+  }),
+
+  upgrade_snippet: defineTool({
+    title: "Upgrade the Observator snippet in a Dockerfile",
+    description: [
+      "Replaces the Observator snippet that is already in a Dockerfile with the current one, in the form you choose, and keeps what the old one was set to: the key, project, labels, OBSERVATOR_FAIL_ON, the URL and keyless. Write the returned dockerfile back as is.",
+      "form image (default): the reporter binary from its image, a few lines, also for images without a shell. form shell: plain sh with curl, wget, node or python3, nothing pulled from a registry; for builds that cannot reach it, or teams that would rather not run a binary they did not build.",
+      "For a Dockerfile without the snippet, use setup_dockerfile.",
+    ].join("\n"),
+    input: z.object({
+      dockerfile: z.string().min(1).max(200_000).describe("The Dockerfile's full content"),
+      path: z.string().max(500).optional().describe("Where the Dockerfile is, for the notes"),
+      form: z.enum(["image", "shell"]).default("image"),
+    }),
+    run: async ({ dockerfile, path, form }) => {
+      const before = analyzeDockerfile(dockerfile, env().APP_URL);
+      if (!before.ok) throw new ToolError(before.error);
+      const old = before.existing;
+      if (!old) throw new ToolError("This Dockerfile has no Observator snippet yet. Use setup_dockerfile.");
+      const a = analyzeDockerfile(dockerfile, old.url ?? env().APP_URL, {
+        form,
+        // A reporter image of its own (a mirror) stays; otherwise the configured one.
+        image: old.image && old.image !== DEFAULT_REPORTER_IMAGE ? old.image : env().REPORTER_IMAGE,
+        key: old.key,
+        project: old.project,
+        labels: old.labels,
+        failOn: old.failOn,
+        keyless: old.keyless,
+      });
+      if (!a.ok) throw new ToolError(a.error);
+      const label = (f: string) => (f === "image" ? "the reporter image" : "plain sh");
+      const notes = [
+        {
+          level: "ok" as const,
+          text:
+            old.form === form
+              ? `Kept ${label(form)}, brought up to the current snippet.`
+              : `Switched from ${label(old.form)} to ${label(form)}.`,
+        },
+        ...(form === "image" && old.form !== "image"
+          ? [
+              {
+                level: "info" as const,
+                text: `The build now pulls ${env().REPORTER_IMAGE}. Builds without access to that registry can override it with --build-context, or stay on form: shell.`,
+              },
+            ]
+          : []),
+        ...(old.url && old.url !== env().APP_URL
+          ? [
+              {
+                level: "info" as const,
+                text: `Kept OBSERVATOR_URL ${old.url}; this Observator runs at ${env().APP_URL}.`,
+              },
+            ]
+          : []),
+        ...a.notes.filter((n) => !n.text.startsWith("This Dockerfile already reports")),
+      ];
+      return {
+        path: path ?? null,
+        from: old.form,
+        form,
+        kept: {
+          key: old.key ? `${old.key.slice(0, 8)}…` : null,
+          project: old.project || null,
+          labels: old.labels || null,
+          failOn: old.failOn || null,
+          keyless: old.keyless,
+          url: old.url ?? null,
+        },
+        notes,
         dockerfile: `${a.lines.map((l) => l.text).join("\n")}\n`,
       };
     },
