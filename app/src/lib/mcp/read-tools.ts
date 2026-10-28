@@ -9,6 +9,8 @@ import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages
 import { listProjects } from "@/lib/data/projects";
 import { getOverview, getProjectView } from "@/lib/data/views";
 import { analyzeDockerfile } from "@/lib/dockerfile";
+import { appId } from "@/lib/app-board";
+import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
 import { DEFAULT_REPORTER_IMAGE } from "@/lib/snippet";
 import { env } from "@/lib/env";
 import { displayEntry } from "@/lib/ingest/allowlist";
@@ -123,13 +125,16 @@ export const readTools: Record<string, Tool> = {
   get_project: defineTool({
     title: "Project details",
     description:
-      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup and the latest build.",
+      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup, the latest build, and README badges as Markdown (badge.app covers every project of the app and suits a repository's README; badge.project is this project or server alone). Badges are public through the token in their link; new tokens are made in the web UI.",
     input: z.object({ project: projectRef }),
     run: async ({ project: ref }) => {
       const found = await resolveProject(ref);
       const [view, evaluators] = await Promise.all([getProjectView(found.slug), loadEvaluators()]);
       if (!view) throw new ToolError(`Project ${ref} disappeared.`);
       const { project: p, latest, summary, issues, ignores } = view;
+      const appUrl = env().APP_URL;
+      const app = appId(p);
+      const appToken = await appBadgeToken(app);
       const lockfile = latest?.lockfileType && latest.lockfileType !== "none" ? latest.lockfileType : "npm";
       const vulns = issues
         .filter((i) => i.kind === "vuln")
@@ -160,6 +165,10 @@ export const readTools: Record<string, Tool> = {
         url: projectUrl(p.slug),
         status: summary.status,
         labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
+        badge: {
+          app: appBadge(appUrl, app, appToken).markdown,
+          project: projectBadge(appUrl, p).markdown,
+        },
         runtimes: describeRuntimes(
           latest,
           { security: summary.runtimeSecurity, eol: summary.runtimeEol },

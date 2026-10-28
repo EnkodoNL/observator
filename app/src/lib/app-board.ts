@@ -3,6 +3,7 @@ import type { ProjectSummary } from "@/lib/data/views";
 import { effectiveLabels, labelValue } from "@/lib/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity } from "@/lib/severity";
+import { slugify } from "@/lib/slug";
 import { isStale, worstStatus, type ProjectStatus } from "@/lib/status";
 
 /** One part of an app (label role:*), on one or more servers. */
@@ -21,10 +22,14 @@ export interface Service {
 
 export interface App {
   key: string;
+  /** See appId. */
+  id: string;
   name: string;
   services: Service[];
   status: ProjectStatus;
   stale: boolean;
+  /** Advisories by severity, summed over the services. */
+  counts: Partial<Record<Severity, number>>;
   advisories: number;
   worstSeverity: Severity | null;
   buildOnly: number;
@@ -34,6 +39,23 @@ export interface App {
 
 /** The name a build reported, without the " · <ip>" a shared key adds per server. */
 export const reportedName = (p: ProjectSummary["project"]) => p.sourceName || p.name;
+
+/** How an app is addressed, as in its badge URL: the app:* label, otherwise the reported name. */
+export function appId(p: ProjectSummary["project"]): string {
+  return labelValue(effectiveLabels(p), "app") ?? slugify(reportedName(p));
+}
+
+/** The app with this id; an app:* label wins over a project that only shares its name. */
+export function findApp(apps: App[], id: string): App | undefined {
+  return apps.find((a) => a.key === `label:${id}`) ?? apps.find((a) => a.id === id);
+}
+
+function sumCounts(list: Partial<Record<Severity, number>>[]): Partial<Record<Severity, number>> {
+  const sum: Partial<Record<Severity, number>> = {};
+  for (const counts of list)
+    for (const [s, n] of Object.entries(counts) as [Severity, number][]) sum[s] = (sum[s] ?? 0) + n;
+  return sum;
+}
 
 function serviceName(item: ProjectSummary, app: string): string {
   const role = labelValue(effectiveLabels(item.project), "role");
@@ -90,10 +112,12 @@ export function appBoard(items: ProjectSummary[], staleDays: number): App[] {
       const stale = services.some((s) => s.stale);
       return {
         key,
+        id: appId(members[0].project),
         name,
         services,
         status,
         stale,
+        counts: sumCounts(services.map((s) => s.counts)),
         advisories: services.reduce((n, s) => n + s.advisories, 0),
         worstSeverity: maxSeverity(
           services

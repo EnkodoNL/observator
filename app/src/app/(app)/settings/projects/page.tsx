@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { listIngestKeys, listRefused } from "@/lib/data/ingest-keys";
 import { LabelChips } from "@/components/label-chips";
 import { listProjects } from "@/lib/data/projects";
+import { projectBadge } from "@/lib/badges";
 import { effectiveLabels } from "@/lib/labels";
 import { env } from "@/lib/env";
 import { pbDate } from "@/lib/pb/admin";
@@ -69,7 +70,12 @@ export default async function ProjectsSettingsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{timeAgo(pbDate(p.lastBuildAt))}</TableCell>
                     <TableCell>
-                      <ProjectActions id={p.id} name={p.name} appUrl={appUrl} />
+                      <ProjectActions
+                        id={p.id}
+                        name={p.name}
+                        appUrl={appUrl}
+                        badge={projectBadge(appUrl, p).markdown}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CaretLeftIcon } from "@phosphor-icons/react/ssr";
-import { CodeBlock } from "@/components/code-block";
 import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
@@ -16,7 +15,10 @@ import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import type { Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
 import { isDevVuln } from "@/lib/status";
-import { reportedName } from "@/lib/app-board";
+import { appId, reportedName } from "@/lib/app-board";
+import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
+import { BadgeRow } from "@/components/badge-row";
+import { listProjects } from "@/lib/data/projects";
 import type { IssueRecord } from "@/lib/pb/types";
 import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
@@ -29,7 +31,7 @@ import { VulnList } from "./vuln-list";
 import { IgnoreDialog, UnignoreButton } from "./ignore-dialog";
 import { LabelsEditor } from "./labels-editor";
 import { LabelChips } from "@/components/label-chips";
-import { effectiveLabels } from "@/lib/labels";
+import { effectiveLabels, labelValue } from "@/lib/labels";
 import { matchingIgnore } from "@/lib/issues/reconcile";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { formatDate } from "@/lib/time";
@@ -46,15 +48,23 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";
-  const [view, evaluators, latestByName] = await Promise.all([
+  const [view, evaluators, latestByName, allProjects] = await Promise.all([
     getProjectView(slug),
     loadEvaluators(),
     latestVersions(),
+    listProjects(),
   ]);
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
   const appUrl = env().APP_URL;
+  // The app badge is worth showing once the app is more than this project.
+  const app = {
+    id: appId(project),
+    name: labelValue(effectiveLabels(project), "app") ?? reportedName(project),
+  };
+  const appSize = allProjects.filter((p) => appId(p) === app.id).length;
+  const appToken = appSize > 1 ? await appBadgeToken(app.id) : null;
   const evaluations = new Map(
     evaluateRuntimes(latest?.runtimes ?? [], evaluators).map((e) => [e.runtime, e] as const),
   );
@@ -172,7 +182,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 target={maskUrl(project.deployWebhookUrl)}
               />
             )}
-            <ProjectActions id={project.id} name={project.name} appUrl={appUrl} />
+            <ProjectActions
+              id={project.id}
+              name={project.name}
+              appUrl={appUrl}
+              badge={projectBadge(appUrl, project).markdown}
+            />
           </div>
         </div>
       </div>
@@ -238,6 +253,46 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 <VulnList issues={devVulns} lockfile={lockfile} actions={actions} quiet empty="" />
               </details>
             ))}
+          <section className="space-y-3 border-t pt-6" aria-labelledby="badge">
+            <h2 id="badge" className="font-display text-lg font-bold tracking-tight">
+              Badge
+            </h2>
+            <p className="max-w-[65ch] text-sm text-muted-foreground">
+              For a README. The link is public and shows the status only.{" "}
+              <Link href="/settings/badges" className="text-primary underline-offset-4 hover:underline">
+                All badges
+              </Link>
+            </p>
+            {appToken ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm">
+                    <b>{app.name}</b>{" "}
+                    <span className="text-muted-foreground">as a whole, {appSize} projects</span>
+                  </p>
+                  <BadgeRow
+                    name={app.name}
+                    links={appBadge(appUrl, app.id, appToken)}
+                    target={{ kind: "app", id: app.id }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">This project only</p>
+                  <BadgeRow
+                    name={project.name}
+                    links={projectBadge(appUrl, project)}
+                    target={{ kind: "project", id: project.id }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <BadgeRow
+                name={project.name}
+                links={projectBadge(appUrl, project)}
+                target={{ kind: "project", id: project.id }}
+              />
+            )}
+          </section>
         </div>
       )}
 
@@ -291,18 +346,19 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <section className="space-y-2">
             <h2 className="font-medium">Status badge</h2>
             <p className="text-sm text-muted-foreground">
-              For a README. The token only grants this badge; it shows{" "}
-              <code className="font-mono">unknown</code> without it.
+              At the bottom of the{" "}
+              <Link
+                href={`/projects/${project.slug}`}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                overview
+              </Link>
+              , and for every app under{" "}
+              <Link href="/settings/badges" className="text-primary underline-offset-4 hover:underline">
+                Settings → Badges
+              </Link>
+              .
             </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`/badge/${project.slug}.svg?token=${project.badgeToken}`}
-              alt="Observator status"
-              height={20}
-            />
-            <CodeBlock
-              code={`[![Observator](${appUrl}/badge/${project.slug}.svg?token=${project.badgeToken})](${appUrl}/projects/${project.slug})`}
-            />
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">Labels</h2>

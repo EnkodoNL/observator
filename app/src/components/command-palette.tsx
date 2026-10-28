@@ -24,6 +24,7 @@ const PAGES = [
   { label: "Packages", href: "/packages" },
   { label: "Settings: General", href: "/settings/general" },
   { label: "Settings: Projects", href: "/settings/projects" },
+  { label: "Settings: Badges", href: "/settings/badges" },
   { label: "Settings: Notifications", href: "/settings/channels" },
   { label: "Settings: Account", href: "/settings/account" },
   { label: "Settings: Users", href: "/settings/users" },

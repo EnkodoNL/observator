@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "@/lib/data/views";
 import type { BuildRecord, IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
-import { appBoard } from "./app-board";
+import { appBoard, findApp } from "./app-board";
 import { summarize } from "./status";
 
 const vuln = (severity: Severity, dev = false) =>
@@ -65,5 +65,37 @@ describe("appBoard", () => {
   it("strips the app name from services without a role", () => {
     const [app] = appBoard([item("cinnux-socket", { labels: ["app:cinnux"] })], 14);
     expect(app.services[0].name).toBe("socket");
+  });
+
+  it("sums the services' advisories by severity", () => {
+    const [app] = appBoard(
+      [
+        item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
+        item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
+      ],
+      14,
+    );
+    expect(app.counts).toEqual({ high: 1, moderate: 2 });
+  });
+});
+
+describe("findApp", () => {
+  it("addresses an app by its label, or by the reported name as a slug", () => {
+    const apps = appBoard(
+      [
+        item("Sip Helper · 10.0.0.1", { sourceName: "Sip Helper", instance: "10.0.0.1" }),
+        item("tuinsnap-cms", { labels: ["app:tuinsnap"] }),
+      ],
+      14,
+    );
+    expect(findApp(apps, "sip-helper")?.name).toBe("Sip Helper");
+    expect(findApp(apps, "tuinsnap")?.name).toBe("tuinsnap");
+    expect(findApp(apps, "nope")).toBeUndefined();
+  });
+
+  it("prefers the app label when a project without one has the same name", () => {
+    const apps = appBoard([item("penal"), item("penal-api", { labels: ["app:penal"] })], 14);
+    expect(apps.map((a) => a.id)).toEqual(["penal", "penal"]);
+    expect(findApp(apps, "penal")?.key).toBe("label:penal");
   });
 });
