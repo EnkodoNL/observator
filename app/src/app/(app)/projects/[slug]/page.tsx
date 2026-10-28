@@ -339,8 +339,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               <code className="font-mono text-foreground">runtime</code> or a runtime name such as{" "}
               <code className="font-mono text-foreground">node</code> (for example{" "}
               <code className="font-mono text-foreground">high,node</code>) to fail the build when Observator
-              knows about such a problem: an advisory at that level, or a runtime security update. Unset, a
-              build never fails because of Observator.
+              knows about such a problem: an advisory at that level in production, or a runtime security
+              update. Unset, a build never fails because of Observator.
             </p>
           </section>
         </div>
