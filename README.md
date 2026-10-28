@@ -1,5 +1,7 @@
 # Observator
 
+![Observator](https://enkodo.app/observator-github-project.svg)
+
 Self-hosted overview of the runtimes and npm packages inside your containers, with a message on
 Slack, Telegram, e-mail or your own push service the moment one of them needs attention.
 
