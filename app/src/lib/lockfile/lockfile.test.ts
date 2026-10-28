@@ -87,3 +87,104 @@ describe("errors", () => {
     expect(() => parsePnpmLock(bomb)).toThrow(LockfileError);
   });
 });
+
+describe("workspaces", () => {
+  // Root holds the tooling; apps/web needs mariadb and links packages/db, which needs mysql2.
+  const pnpmWorkspace = `lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      vitest: {specifier: 4.0.0, version: 4.0.0}
+  apps/web:
+    dependencies:
+      mariadb: {specifier: 3.4.5, version: 3.4.5}
+      '@x/db': {specifier: workspace:*, version: link:../../packages/db}
+  apps/admin:
+    dependencies:
+      zod: {specifier: 4.3.6, version: 4.3.6}
+  packages/db:
+    dependencies:
+      mysql2: {specifier: 3.15.3, version: 3.15.3}
+snapshots:
+  vitest@4.0.0:
+    dependencies:
+      vite: 8.3.1
+  vite@8.3.1: {}
+  mariadb@3.4.5: {}
+  mysql2@3.15.3: {}
+  zod@4.3.6: {}
+`;
+  const root = { devDependencies: { vitest: "4.0.0" } };
+  const web = { dependencies: { mariadb: "3.4.5", "@x/db": "workspace:*" } };
+
+  it("pnpm: an image built from the root counts every workspace package's dependencies", () => {
+    const list = parseLockfile("pnpm-lock.yaml", pnpmWorkspace, root).components;
+    expect(find(list, "mariadb", "3.4.5")).toMatchObject({ direct: true, dev: false });
+    expect(find(list, "mysql2", "3.15.3")).toMatchObject({ direct: true, dev: false });
+    expect(find(list, "zod", "4.3.6")).toMatchObject({ dev: false });
+    expect(find(list, "vite", "8.3.1")).toMatchObject({ direct: false, dev: true, via: ["vitest"] });
+  });
+
+  it("pnpm: a package.json that matches one workspace package narrows to it", () => {
+    const list = parseLockfile("pnpm-lock.yaml", pnpmWorkspace, web).components;
+    expect(find(list, "mariadb", "3.4.5")).toMatchObject({ dev: false });
+    expect(find(list, "mysql2", "3.15.3")).toMatchObject({ dev: false });
+    expect(find(list, "zod", "4.3.6")).toMatchObject({ dev: true });
+    expect(find(list, "vitest", "4.0.0")).toMatchObject({ dev: true });
+  });
+
+  const berryWorkspace = `__metadata:
+  version: 8
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  dependencies:
+    vitest: "npm:4.0.0"
+
+"web@workspace:apps/web":
+  version: 0.0.0-use.local
+  resolution: "web@workspace:apps/web"
+  dependencies:
+    db: "workspace:^"
+    mariadb: "npm:3.4.5"
+
+"db@workspace:^, db@workspace:packages/db":
+  version: 0.0.0-use.local
+  resolution: "db@workspace:packages/db"
+  dependencies:
+    mysql2: "npm:3.15.3"
+
+"vitest@npm:4.0.0":
+  version: 4.0.0
+  resolution: "vitest@npm:4.0.0"
+
+"mariadb@npm:3.4.5":
+  version: 3.4.5
+  resolution: "mariadb@npm:3.4.5"
+
+"mysql2@npm:3.15.3":
+  version: 3.15.3
+  resolution: "mysql2@npm:3.15.3"
+`;
+
+  it("yarn berry: workspace dependencies are production, the root's dev ones are not", () => {
+    const list = parseLockfile("yarn.lock", berryWorkspace, root).components;
+    expect(find(list, "vitest", "4.0.0")).toMatchObject({ dev: true });
+    expect(find(list, "mariadb", "3.4.5")).toMatchObject({ dev: false });
+    expect(find(list, "mysql2", "3.15.3")).toMatchObject({ dev: false });
+  });
+
+  it("npm: devOptional packages are installed in production", () => {
+    const lock = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { next: "16.0.0" } },
+        "node_modules/next": { version: "16.0.0", optionalDependencies: { sharp: "0.30.7" } },
+        "node_modules/sharp": { version: "0.30.7", devOptional: true, optional: true },
+      },
+    });
+    const list = parseLockfile("package-lock.json", lock, {}).components;
+    expect(find(list, "sharp", "0.30.7")).toMatchObject({ dev: false, via: ["next"] });
+  });
+});

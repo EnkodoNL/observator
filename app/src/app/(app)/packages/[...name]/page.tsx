@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeftIcon, ExternalLinkIcon } from "lucide-react";
+import { ArrowSquareOutIcon, CaretLeftIcon } from "@phosphor-icons/react/ssr";
 import { SeverityBadge } from "@/components/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { packageDetail } from "@/lib/data/packages";
@@ -33,10 +33,10 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
           href="/packages"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ChevronLeftIcon className="size-4" /> Packages
+          <CaretLeftIcon className="size-4" /> Packages
         </Link>
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h1 className="font-mono text-xl font-semibold tracking-tight break-all">{pkg.name}</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight break-all">{pkg.name}</h1>
           {pkg.ecosystem === "npm" && (
             <a
               href={`https://www.npmjs.com/package/${pkg.name}`}
@@ -44,7 +44,7 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
-              npm <ExternalLinkIcon className="size-3.5" />
+              npm <ArrowSquareOutIcon className="size-3.5" />
             </a>
           )}
         </div>
@@ -90,7 +90,7 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 font-mono text-sm hover:underline"
                   >
-                    {a.osvId} <ExternalLinkIcon className="size-3.5 text-muted-foreground" />
+                    {a.osvId} <ArrowSquareOutIcon className="size-3.5 text-muted-foreground" />
                   </a>
                   {a.ignored && <span className="rounded bg-muted px-1.5 py-0.5 text-xs">ignored</span>}
                 </div>
@@ -162,7 +162,7 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {u.direct ? "direct" : "transitive"}
-                      {u.dev && <span className="ml-1.5 rounded bg-muted px-1 py-0.5">dev</span>}
+                      {u.dev && <span className="ml-1.5 text-quiet">dev</span>}
                     </TableCell>
                     <TableCell className="hidden max-w-72 truncate font-mono text-xs text-muted-foreground md:table-cell">
                       {u.direct ? "" : u.via.join(", ")}
@@ -170,7 +170,7 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
                     <TableCell className="text-right">
                       {u.severity ? (
                         <span className="inline-flex items-center gap-1.5">
-                          <SeverityBadge severity={u.severity} />
+                          <SeverityBadge severity={u.severity} quiet={u.dev} />
                           {u.advisories > 1 && (
                             <span className="text-xs text-muted-foreground">×{u.advisories}</span>
                           )}

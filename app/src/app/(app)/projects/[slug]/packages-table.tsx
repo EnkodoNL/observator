@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { SearchIcon } from "lucide-react";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/ssr";
 import { SeverityBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +58,7 @@ export function PackagesTable({ rows }: { rows: PackageRow[] }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-64">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -129,7 +129,7 @@ export function PackagesTable({ rows }: { rows: PackageRow[] }) {
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {r.direct ? "direct" : "transitive"}
-                  {r.dev && <span className="ml-1.5 rounded bg-muted px-1 py-0.5">dev</span>}
+                  {r.dev && <span className="ml-1.5 text-quiet">dev</span>}
                 </TableCell>
                 <TableCell className="hidden max-w-64 truncate font-mono text-xs text-muted-foreground md:table-cell">
                   {r.direct ? "" : r.via.join(", ")}
@@ -137,7 +137,7 @@ export function PackagesTable({ rows }: { rows: PackageRow[] }) {
                 <TableCell className="text-right">
                   {r.severity ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <SeverityBadge severity={r.severity} />
+                      <SeverityBadge severity={r.severity} quiet={r.dev} />
                       {r.vulnCount > 1 && (
                         <span className="text-xs text-muted-foreground">×{r.vulnCount}</span>
                       )}

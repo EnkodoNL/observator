@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,21 @@ export function SettingsForm({ initial, timezones }: { initial: Settings; timezo
 
         <Field orientation="horizontal">
           <Switch
+            id="countDevDependencies"
+            checked={value.countDevDependencies}
+            onCheckedChange={(v) => set("countDevDependencies", v)}
+          />
+          <div className="space-y-1">
+            <FieldLabel htmlFor="countDevDependencies">Count dev dependencies</FieldLabel>
+            <FieldDescription>
+              Off: advisories in packages only dev dependencies pull in are listed as build-only. They do not
+              change a project&rsquo;s status, send notifications or fail the build gate.
+            </FieldDescription>
+          </div>
+        </Field>
+
+        <Field orientation="horizontal">
+          <Switch
             id="digestEnabled"
             checked={value.digestEnabled}
             onCheckedChange={(v) => set("digestEnabled", v)}
@@ -132,7 +147,7 @@ export function SettingsForm({ initial, timezones }: { initial: Settings; timezo
 
         <div>
           <Button type="submit" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}
+            {pending && <CircleNotchIcon className="animate-spin" />}
             Save settings
           </Button>
         </div>

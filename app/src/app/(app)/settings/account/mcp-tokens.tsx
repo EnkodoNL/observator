@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { BotIcon, Loader2Icon, PlusIcon, Trash2Icon } from "lucide-react";
+import { CircleNotchIcon, PlusIcon, RobotIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { CodeBlock } from "@/components/code-block";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -39,7 +39,7 @@ export function McpTokens({ tokens, endpoint }: { tokens: McpTokenItem[]; endpoi
         <ul className="divide-y rounded-xl border">
           {tokens.map((t) => (
             <li key={t.id} className="flex items-center gap-3 px-4 py-3">
-              <BotIcon className="size-4 shrink-0 text-muted-foreground" />
+              <RobotIcon className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">
                   {t.name}{" "}
@@ -56,7 +56,7 @@ export function McpTokens({ tokens, endpoint }: { tokens: McpTokenItem[]; endpoi
                 aria-label={`Revoke ${t.name}`}
                 onClick={() => setRevoking(t)}
               >
-                <Trash2Icon />
+                <TrashIcon />
               </Button>
             </li>
           ))}
@@ -209,7 +209,7 @@ function NewTokenDialog({ endpoint }: { endpoint: string }) {
             </div>
             <DialogFooter className="mt-6">
               <Button type="submit" disabled={pending || !name.trim() || !password}>
-                {pending && <Loader2Icon className="animate-spin" />}
+                {pending && <CircleNotchIcon className="animate-spin" />}
                 Create token
               </Button>
             </DialogFooter>

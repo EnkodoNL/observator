@@ -2,7 +2,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { CircleCheckIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
+import { CheckCircleIcon, InfoIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { CopyButton } from "@/components/copy-button";
 import { SnippetFormToggle, useSnippetForm } from "@/components/snippet-form";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,9 +10,9 @@ import { analyzeDockerfile, type DockerfileLine, type DockerfileNote } from "@/l
 import { cn } from "@/lib/utils";
 
 const ICON: Record<DockerfileNote["level"], React.ReactNode> = {
-  ok: <CircleCheckIcon className="size-4 text-ok" />,
+  ok: <CheckCircleIcon className="size-4 text-ok" />,
   info: <InfoIcon className="size-4 text-muted-foreground" />,
-  warn: <TriangleAlertIcon className="size-4 text-warn" />,
+  warn: <WarningIcon className="size-4 text-warn" />,
 };
 
 const CONTEXT = 2;

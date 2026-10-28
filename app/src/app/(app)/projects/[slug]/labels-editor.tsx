@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { LabelChips } from "@/components/label-chips";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function LabelsEditor({
           autoCapitalize="none"
         />
         <Button type="submit" variant="outline" disabled={pending || invalid.length > 0}>
-          {pending && <Loader2Icon className="animate-spin" />}
+          {pending && <CircleNotchIcon className="animate-spin" />}
           Save labels
         </Button>
       </div>

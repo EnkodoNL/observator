@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { RocketIcon } from "lucide-react";
+import { RocketLaunchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function RedeployButton({
       onOpenChange={setOpen}
       trigger={
         <Button variant="outline">
-          <RocketIcon /> Redeploy
+          <RocketLaunchIcon /> Redeploy
         </Button>
       }
       title={`Redeploy ${name}?`}

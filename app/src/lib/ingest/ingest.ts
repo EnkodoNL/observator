@@ -31,9 +31,12 @@ const LOCKFILE_TYPE: Record<LockfileName, (text: string) => LockfileType> = {
   "yarn.lock": (text) => (/^__metadata:/m.test(text) ? "yarn-berry" : "yarn-v1"),
 };
 
+/** Bump when the parsers classify differently, so the next build parses an unchanged lockfile again. */
+const PARSER_VERSION = 2;
+
 /** Identifies a package.json + lockfile pair; a build with the same hash changes no packages. */
 export function reportHash(packageJson: string, lockfileName: string | null, lockfileText: string): string {
-  return sha256(`${packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
+  return sha256(`${PARSER_VERSION}\0${packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
 }
 
 export async function latestBuild(projectId: string): Promise<BuildRecord | null> {

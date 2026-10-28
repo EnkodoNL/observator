@@ -2,7 +2,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { Loader2Icon, PlayIcon, SendIcon } from "lucide-react";
+import { CircleNotchIcon, PaperPlaneTiltIcon, PlayIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { runChecksAction, sendDigestNowAction } from "./actions";
@@ -23,7 +23,7 @@ export function CheckButtons() {
           })
         }
       >
-        {checking ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+        {checking ? <CircleNotchIcon className="animate-spin" /> : <PlayIcon />}
         Run checks now
       </Button>
       <Button
@@ -36,7 +36,7 @@ export function CheckButtons() {
           })
         }
       >
-        {sending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
+        {sending ? <CircleNotchIcon className="animate-spin" /> : <PaperPlaneTiltIcon />}
         Send digest now
       </Button>
     </div>

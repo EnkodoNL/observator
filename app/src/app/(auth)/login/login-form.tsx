@@ -4,7 +4,7 @@
 import { useActionState, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from "@simplewebauthn/browser";
-import { FingerprintIcon, Loader2Icon } from "lucide-react";
+import { CircleNotchIcon, FingerprintIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldGroup, FieldSeparator } from "@/components/ui/field";
@@ -72,7 +72,7 @@ export function LoginForm({ next, notice }: { next: string; notice?: string }) {
                   }
                 }}
               >
-                {busy ? <Loader2Icon className="animate-spin" /> : <FingerprintIcon />}
+                {busy ? <CircleNotchIcon className="animate-spin" /> : <FingerprintIcon />}
                 Sign in with passkey
               </Button>
               {passkeyMessage && (

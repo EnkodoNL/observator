@@ -3,6 +3,7 @@ import { BADGE_COLORS, badgeSvg } from "@/lib/badge";
 import { safeEqual } from "@/lib/crypto";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { activeIssues } from "@/lib/data/views";
+import { getSettings } from "@/lib/settings";
 import { summarize } from "@/lib/status";
 import { latestBuild } from "@/lib/ingest/ingest";
 
@@ -38,8 +39,12 @@ export async function GET(request: Request, { params }: RouteContext<"/badge/[fi
     return svg(badgeSvg("observator", "unknown", BADGE_COLORS.none), "no-store");
   }
 
-  const [build, issues] = await Promise.all([latestBuild(project.id), activeIssues(project.id)]);
-  const s = summarize(Boolean(build), issues);
+  const [build, issues, settings] = await Promise.all([
+    latestBuild(project.id),
+    activeIssues(project.id),
+    getSettings(),
+  ]);
+  const s = summarize(Boolean(build), issues, settings.countDevDependencies);
   const [value, color] =
     s.status === "vulnerable"
       ? [`${s.vulnCount} vulnerable`, BADGE_COLORS.vulnerable]

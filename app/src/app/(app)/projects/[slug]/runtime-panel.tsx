@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { ShieldAlertIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { ShieldCheckIcon, ShieldWarningIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import type { RuntimeEolData, RuntimeSecurityData } from "@/lib/issues/types";
 import { pbDate } from "@/lib/pb/admin";
@@ -35,7 +35,7 @@ function CheckedRuntime({
         {security ? (
           <div className="space-y-2">
             <p className="flex items-center gap-2 font-medium text-warn">
-              <ShieldAlertIcon className="size-4" /> Security update available: {security.target}
+              <ShieldWarningIcon className="size-4" /> Security update available: {security.target}
             </p>
             <p className="text-sm text-muted-foreground">
               {security.securityReleases.length === 1
@@ -62,7 +62,7 @@ function CheckedRuntime({
         )}
         {eol && (
           <p className="flex items-start gap-2 text-sm text-warn">
-            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+            <WarningIcon className="mt-0.5 size-4 shrink-0" />
             {eol.phase === "eol"
               ? `${label} ${eol.line} reached end-of-life on ${formatDate(new Date(eol.end))}. Move to a supported line${evaluation?.latestSupported ? `, such as ${evaluation.latestSupported}` : ""}.`
               : `${label} ${eol.line} reaches end-of-life on ${formatDate(new Date(eol.end))}. Plan the move to a newer line.`}

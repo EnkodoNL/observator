@@ -2,7 +2,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Loader2Icon } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ export function SubmitButton({ children, className, ...props }: React.ComponentP
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending || props.disabled} className={className} {...props}>
-      {pending && <Loader2Icon className="animate-spin" />}
+      {pending && <CircleNotchIcon className="animate-spin" />}
       {children}
     </Button>
   );

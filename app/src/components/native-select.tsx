@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { ChevronDownIcon } from "lucide-react";
+import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 
 /** A native <select> styled like the inputs: accessible and form-friendly. */
@@ -12,7 +12,7 @@ export function NativeSelect({ className, children, ...props }: React.ComponentP
       >
         {children}
       </select>
-      <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <CaretDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
     </div>
   );
 }

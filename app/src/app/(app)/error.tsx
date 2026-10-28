@@ -12,7 +12,7 @@ export default function AppError({
 }) {
   return (
     <div className="mx-auto max-w-md space-y-4 py-16 text-center">
-      <h1 className="text-lg font-semibold">Something went wrong</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight">Something went wrong</h1>
       <p className="text-sm text-muted-foreground">
         Observator could not load this page. If PocketBase is restarting, trying again in a moment usually
         helps.

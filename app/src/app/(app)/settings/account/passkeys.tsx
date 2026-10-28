@@ -5,13 +5,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import {
+  CircleNotchIcon,
+  DotsThreeIcon,
   FingerprintIcon,
-  KeyRoundIcon,
-  Loader2Icon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  Trash2Icon,
-} from "lucide-react";
+  KeyIcon,
+  PencilSimpleIcon,
+  TrashIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,7 @@ export function Passkeys({ passkeys }: { passkeys: PasskeyItem[] }) {
         <ul className="divide-y rounded-xl border">
           {passkeys.map((p) => (
             <li key={p.id} className="flex items-center gap-3 px-4 py-3">
-              <KeyRoundIcon className="size-4 shrink-0 text-muted-foreground" />
+              <KeyIcon className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{p.name}</p>
                 <p className="text-xs text-muted-foreground">
@@ -91,7 +91,7 @@ export function Passkeys({ passkeys }: { passkeys: PasskeyItem[] }) {
                 <DropdownMenuTrigger
                   render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} />}
                 >
-                  <MoreHorizontalIcon />
+                  <DotsThreeIcon />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuItem
@@ -100,11 +100,11 @@ export function Passkeys({ passkeys }: { passkeys: PasskeyItem[] }) {
                       setNaming({ mode: "rename", id: p.id });
                     }}
                   >
-                    <PencilIcon /> Rename
+                    <PencilSimpleIcon /> Rename
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" onClick={() => setDeleting(p)}>
-                    <Trash2Icon /> Remove
+                    <TrashIcon /> Remove
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -154,7 +154,7 @@ export function Passkeys({ passkeys }: { passkeys: PasskeyItem[] }) {
             </Field>
             <DialogFooter className="mt-4">
               <Button type="submit" disabled={pending || !name.trim()}>
-                {pending && <Loader2Icon className="animate-spin" />}
+                {pending && <CircleNotchIcon className="animate-spin" />}
                 {naming?.mode === "add" ? "Continue" : "Save"}
               </Button>
             </DialogFooter>

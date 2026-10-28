@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { LogOutIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, UserIcon } from "lucide-react";
+import { GearIcon, MonitorIcon, MoonIcon, SignOutIcon, SunIcon, UserIcon } from "@phosphor-icons/react/ssr";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,10 +91,10 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
                 <UserIcon /> Account
               </DropdownMenuItem>
               <DropdownMenuItem className="sm:hidden" render={<Link href="/settings" />}>
-                <SettingsIcon /> Settings
+                <GearIcon /> Settings
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void logoutAction()}>
-                <LogOutIcon /> Sign out
+                <SignOutIcon /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

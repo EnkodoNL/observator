@@ -1,77 +1,86 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import Link from "next/link";
-import { ArrowRightIcon } from "lucide-react";
-import type { Severity } from "@/lib/pb/types";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { SEVERITY_TEXT } from "@/components/status";
 import { runtimeLabel } from "@/lib/runtimes/labels";
+import { SEVERITY_LABEL } from "@/lib/severity";
 import type { Cause, ProjectRef } from "@/lib/triage";
 import { cn } from "@/lib/utils";
 
 const SHOWN = 5;
 
-const DOT: Record<Severity, string> = {
-  critical: "bg-danger",
-  high: "bg-danger",
-  moderate: "bg-warn",
-  low: "border border-muted-foreground/60",
-  unknown: "border border-muted-foreground/60",
-};
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+/** The first column: how bad, or what kind of chore. */
+function kind(c: Cause): string {
+  switch (c.kind) {
+    case "package":
+      return SEVERITY_LABEL[c.severity];
+    case "runtime_security":
+      return "Security";
+    case "runtime_eol":
+      return c.phase === "eol" ? "End of life" : "EOL soon";
+    case "stale":
+      return "Stale";
+  }
+}
 
-/** What the cause is, in one line: the thing, and what to move it to. */
+/** The thing, and what to move it to. */
 function what(c: Cause): React.ReactNode {
+  const to = (from: string, target: string | null) => (
+    <span className="ml-2 font-mono text-xs text-muted-foreground">
+      {from}
+      {target && ` to ${target}`}
+    </span>
+  );
   switch (c.kind) {
     case "package":
       return (
         <>
-          <span className="font-mono">{c.package}</span>{" "}
-          <span className="font-mono text-muted-foreground">{c.versions.join(", ")}</span>
-          {c.fixedIn && (
-            <>
-              {" "}
-              <span className="text-muted-foreground">→</span> <span className="font-mono">{c.fixedIn}</span>
-            </>
-          )}
+          <b>{c.package}</b>
+          {to(c.versions.join(", "), c.fixedIn)}
         </>
       );
     case "runtime_security":
       return (
         <>
-          {runtimeLabel(c.runtime)} <span className="font-mono text-muted-foreground">{c.running}</span>{" "}
-          <span className="text-muted-foreground">→</span> <span className="font-mono">{c.target}</span>
+          <b>{runtimeLabel(c.runtime)}</b>
+          {to(c.running, c.target)}
         </>
       );
     case "runtime_eol":
       return (
         <>
-          {runtimeLabel(c.runtime)} <span className="font-mono">{c.line}</span>{" "}
-          <span className="text-muted-foreground">
+          <b>
+            {runtimeLabel(c.runtime)} {c.line}
+          </b>
+          <span className="ml-2 text-muted-foreground">
             {c.phase === "eol" ? "is past end of life" : `reaches end of life on ${c.end}`}
           </span>
         </>
       );
     case "stale":
-      return "No recent build";
+      return <b>No recent build</b>;
   }
 }
 
-function why(c: Cause, staleDays: number): string {
+function why(c: Cause, staleDays: number): string | null {
   switch (c.kind) {
     case "package":
-      return `${c.severity} · ${c.advisories === 1 ? "1 advisory" : `${c.advisories} advisories`}`;
+      return plural(c.advisories, "advisory", "advisories");
     case "runtime_security":
-      return "security release";
-    case "runtime_eol":
-      return c.phase === "eol" ? "end of life" : "end of life soon";
+      return "a security release";
     case "stale":
       return `nothing reported for ${staleDays}+ days`;
+    default:
+      return null;
   }
 }
 
 function Projects({ projects }: { projects: ProjectRef[] }) {
   const shown = projects.slice(0, 3);
   return (
-    <span className="text-muted-foreground">
+    <>
       {shown.map((p, i) => (
         <span key={p.slug}>
           {i > 0 && ", "}
@@ -84,46 +93,50 @@ function Projects({ projects }: { projects: ProjectRef[] }) {
         </span>
       ))}
       {projects.length > shown.length && ` and ${projects.length - shown.length} more`}
-    </span>
+    </>
   );
 }
 
 function Row({ cause, staleDays }: { cause: Cause; staleDays: number }) {
+  const reason = why(cause, staleDays);
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-      <span className={cn("size-2 -translate-y-px rounded-full", DOT[cause.severity])} aria-hidden="true" />
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-sm">{what(cause)}</p>
-        <p className="text-xs">
-          <span
-            className={cn(
-              cause.severity === "critical" || cause.severity === "high"
-                ? "text-danger"
-                : "text-muted-foreground",
-            )}
-          >
-            {why(cause, staleDays)}
-          </span>
-          <span className="text-muted-foreground"> · {plural(cause.projects.length, "project")}: </span>
-          <Projects projects={cause.projects} />
-        </p>
-      </div>
+    <li className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-0.5 py-3 sm:grid-cols-[6.5rem_minmax(0,1fr)_auto]">
+      <span
+        className={cn(
+          "text-sm font-bold",
+          cause.kind === "package" || cause.kind === "runtime_security"
+            ? SEVERITY_TEXT[cause.severity]
+            : "text-warn",
+        )}
+      >
+        {kind(cause)}
+      </span>
+      <span className="min-w-0">{what(cause)}</span>
       {cause.href && (
         <Link
           href={cause.href}
-          className="col-start-2 inline-flex items-center gap-1 justify-self-start text-xs font-medium text-primary underline-offset-4 hover:underline sm:col-start-3 sm:justify-self-end"
+          className="col-start-2 inline-flex items-center gap-1 justify-self-start text-sm font-bold text-primary underline-offset-4 hover:underline sm:col-start-3 sm:row-start-1 sm:justify-self-end"
         >
-          {cause.kind === "package" ? "Where and how" : "Open"} <ArrowRightIcon className="size-3" />
+          {cause.kind === "package" && cause.projects.length > 1 ? "Where and how" : "Open"}
+          <ArrowRightIcon className="size-3.5" />
         </Link>
       )}
+      <span className="col-start-2 text-sm text-muted-foreground">
+        {reason && `${reason} in `}
+        <Projects projects={cause.projects} />
+      </span>
     </li>
   );
 }
 
-/** The causes that need doing, heaviest first; beyond five they fold away. */
+/** What needs doing, heaviest first; beyond five it folds away. */
 export function AttentionList({ causes, staleDays }: { causes: Cause[]; staleDays: number }) {
   if (causes.length === 0)
-    return <p className="text-sm text-muted-foreground">All runtimes patched, no open advisories.</p>;
+    return (
+      <p className="border-y py-4 text-muted-foreground">
+        Nothing to do. Runtimes are patched and no package in production has an open advisory.
+      </p>
+    );
   const rest = causes.slice(SHOWN);
   return (
     <div>
@@ -134,8 +147,8 @@ export function AttentionList({ causes, staleDays }: { causes: Cause[]; staleDay
       </ul>
       {rest.length > 0 && (
         <details className="group">
-          <summary className="cursor-pointer py-2 text-xs text-muted-foreground select-none hover:text-foreground">
-            <span className="group-open:hidden">And {rest.length} more</span>
+          <summary className="cursor-pointer py-2 text-sm text-muted-foreground select-none hover:text-foreground">
+            <span className="group-open:hidden">{plural(rest.length, "more thing")}</span>
             <span className="hidden group-open:inline">Fewer</span>
           </summary>
           <ul className="divide-y border-b">

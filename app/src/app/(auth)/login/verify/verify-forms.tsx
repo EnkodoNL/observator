@@ -3,7 +3,7 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FingerprintIcon, Loader2Icon } from "lucide-react";
+import { CircleNotchIcon, FingerprintIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import { FormMessage, SubmitButton, TextField } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ export function PasskeyButton({ next, primary }: { next: string; primary?: boole
           }
         }}
       >
-        {busy ? <Loader2Icon className="animate-spin" /> : <FingerprintIcon />}
+        {busy ? <CircleNotchIcon className="animate-spin" /> : <FingerprintIcon />}
         {primary ? "Confirm with your passkey" : "Use your passkey instead"}
       </Button>
       {message && (

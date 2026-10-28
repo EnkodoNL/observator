@@ -33,7 +33,7 @@ export default async function PackagesPage({ searchParams }: PageProps<"/package
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Packages</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">Packages</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Every npm package in your projects&rsquo; lockfiles. Open one to see which projects use it, in which
           version, and why.

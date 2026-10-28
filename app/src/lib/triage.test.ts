@@ -112,3 +112,31 @@ describe("triage", () => {
     expect(causes.at(-1)).toMatchObject({ kind: "stale", projects: [{ name: "Old", slug: "old" }] });
   });
 });
+
+describe("dev dependencies", () => {
+  const dev = issue("vuln", "high", {
+    package: "vite",
+    version: "8.3.1",
+    osvId: "GHSA-d",
+    fixedIn: "8.3.3",
+    dev: true,
+  });
+  const prod = vuln("lodash", "4.17.20", "GHSA-1", "moderate");
+
+  it("are build-only and leave the status alone by default", () => {
+    const s = summarize(true, [dev]);
+    expect(s).toMatchObject({ status: "ok", vulnCount: 0, worstSeverity: null });
+    expect(s.buildOnly).toEqual([dev]);
+    expect(triage([item("Web", [dev])], 14)).toEqual([]);
+  });
+
+  it("count like any other advisory when the setting is on", () => {
+    const s = summarize(true, [dev, prod], true);
+    expect(s).toMatchObject({ status: "vulnerable", vulnCount: 2, worstSeverity: "high", buildOnly: [] });
+  });
+
+  it("do not hide production advisories in the same project", () => {
+    const s = summarize(true, [dev, prod]);
+    expect(s).toMatchObject({ status: "vulnerable", vulnCount: 1, worstSeverity: "moderate" });
+  });
+});

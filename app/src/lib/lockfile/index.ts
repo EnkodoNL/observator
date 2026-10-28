@@ -41,7 +41,7 @@ export function parseLockfile(name: LockfileName, text: string, pkg: PackageJson
     case "package-lock.json":
       return parseNpmLock(text, pkg);
     case "pnpm-lock.yaml":
-      return parsePnpmLock(text);
+      return parsePnpmLock(text, pkg);
     case "yarn.lock":
       return /^__metadata:/m.test(text) ? parseYarnBerry(text, pkg) : parseYarnV1(text, pkg);
   }

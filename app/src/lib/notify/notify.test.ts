@@ -5,6 +5,7 @@ import type { IssueEvent } from "@/lib/issues/events";
 import { describeFetchError, request } from "./channels/types";
 import { signWebhook } from "./channels/webhook";
 import { toMarkdown, toPlainText } from "./message";
+import { countedEvents } from "./publish";
 import { renderEvents, type RenderContext } from "./render";
 
 const ctx: RenderContext = {
@@ -119,5 +120,21 @@ describe("request errors", () => {
     expect(describeFetchError(Object.assign(new Error("t"), { name: "TimeoutError" }), 15000)).toBe(
       "timed out after 15s",
     );
+  });
+});
+
+describe("countedEvents", () => {
+  const prod = vuln("p1", "lodash", "high");
+  const dev = { ...vuln("p1", "vite", "high"), data: { ...vuln("p1", "vite", "high").data, dev: true } };
+  const runtime = {
+    ...prod,
+    type: "runtime.security_update",
+    kind: "runtime_security",
+    data: {},
+  } as IssueEvent;
+
+  it("drops advisories in dev dependencies unless they count", () => {
+    expect(countedEvents([prod, dev, runtime], false)).toEqual([prod, runtime]);
+    expect(countedEvents([prod, dev, runtime], true)).toEqual([prod, dev, runtime]);
   });
 });

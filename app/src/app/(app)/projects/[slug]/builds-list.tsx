@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { ArrowDownIcon, ArrowRightIcon, ArrowUpIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowRightIcon, ArrowUpIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { changeDirection } from "@/lib/ingest/direction";
 import { pbDate } from "@/lib/pb/admin";
 import type { BuildRecord } from "@/lib/pb/types";
@@ -188,7 +188,7 @@ export function BuildsList({ builds }: { builds: BuildRecord[] }) {
             </div>
             {b.error && (
               <p className="mt-2 flex items-start gap-1.5 text-xs text-warn">
-                <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" /> {b.error}
+                <WarningIcon className="mt-0.5 size-3.5 shrink-0" /> {b.error}
               </p>
             )}
             {!isFirst && <Diff build={b} />}

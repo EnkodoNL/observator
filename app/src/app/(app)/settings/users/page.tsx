@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
-import { KeyRoundIcon } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { PageHeader } from "@/components/page-header";
 import { requireUser } from "@/lib/auth/session";
 import { INVITE_TTL_DAYS, listInvites, listUsers } from "@/lib/data/users";
@@ -37,7 +37,7 @@ export default async function UsersPage() {
                   {u.passkeys > 0 && (
                     <>
                       {" · "}
-                      <KeyRoundIcon className="size-3" /> {u.passkeys} passkey{u.passkeys === 1 ? "" : "s"}
+                      <KeyIcon className="size-3" /> {u.passkeys} passkey{u.passkeys === 1 ? "" : "s"}
                     </>
                   )}
                   {" · "}

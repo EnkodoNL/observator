@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon, MailPlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { CircleNotchIcon, EnvelopeSimpleIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { CodeBlock } from "@/components/code-block";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -37,7 +37,7 @@ export function InviteButton({ days }: { days: number }) {
       }}
     >
       <DialogTrigger render={<Button />}>
-        <MailPlusIcon /> Invite
+        <EnvelopeSimpleIcon /> Invite
       </DialogTrigger>
       <DialogContent className="grid-cols-1 sm:max-w-lg">
         <DialogHeader>
@@ -81,7 +81,7 @@ export function InviteButton({ days }: { days: number }) {
             <Button onClick={() => setOpen(false)}>Done</Button>
           ) : (
             <Button type="submit" form="invite-form" disabled={pending}>
-              {pending && <Loader2Icon className="animate-spin" />}
+              {pending && <CircleNotchIcon className="animate-spin" />}
               Create invite link
             </Button>
           )}
@@ -101,7 +101,7 @@ export function RevokeInviteButton({ id }: { id: string }) {
       disabled={pending}
       onClick={() => start(() => revokeInviteAction(id))}
     >
-      {pending ? <Loader2Icon className="animate-spin" /> : <XIcon />}
+      {pending ? <CircleNotchIcon className="animate-spin" /> : <XIcon />}
     </Button>
   );
 }
@@ -111,7 +111,7 @@ export function RemoveUserButton({ id, email }: { id: string; email: string }) {
     <ConfirmDialog
       trigger={
         <Button variant="ghost" size="icon-sm" aria-label={`Remove ${email}`}>
-          <Trash2Icon />
+          <TrashIcon />
         </Button>
       }
       title={`Remove ${email}?`}

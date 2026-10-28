@@ -24,7 +24,7 @@ export function parseYarnBerry(text: string, pkg: PackageJson): ParseResult {
 
   const graph = new DepGraph();
   const byDescriptor = new Map<string, string>();
-  let rootKey: string | null = null;
+  const workspaces = new Map<string, { root: boolean }>();
 
   for (const [key, entry] of Object.entries(doc)) {
     if (key === "__metadata" || !entry || typeof entry !== "object") continue;
@@ -34,7 +34,7 @@ export function parseYarnBerry(text: string, pkg: PackageJson): ParseResult {
     const resolution = String(entry.resolution ?? descriptors[0]);
     const [name, ref] = splitSpec(resolution);
     const protocol = ref.slice(0, ref.indexOf(":"));
-    if (protocol === "workspace" && ref === "workspace:.") rootKey = key;
+    if (protocol === "workspace") workspaces.set(key, { root: ref === "workspace:." });
     if (!REGISTRY_PROTOCOLS.has(protocol) || entry.version === undefined) continue;
     graph.addNode(key, name, String(entry.version));
   }
@@ -50,18 +50,36 @@ export function parseYarnBerry(text: string, pkg: PackageJson): ParseResult {
     }
   }
 
-  // The workspace entry merges prod and dev dependencies; package.json tells them apart.
-  const root = rootKey ? doc[rootKey] : undefined;
+  // A workspace entry merges prod and dev dependencies; only the reported package.json tells
+  // them apart. The other workspaces' dependencies all count as production, and so do those of
+  // a workspace that is linked in.
   const devNames = new Set(Object.keys(pkg.devDependencies ?? {}));
   const prodNames = new Set([
     ...Object.keys(pkg.dependencies ?? {}),
     ...Object.keys(pkg.optionalDependencies ?? {}),
   ]);
-  for (const [dep, range] of Object.entries(root?.dependencies ?? {})) {
-    const id = lookup(dep, String(range));
-    if (!id) continue;
-    if (prodNames.has(dep) || !devNames.has(dep)) graph.prodRoots.add(id);
-    else graph.devRoots.add(id);
+  const depsOf = (key: string) => ({ ...doc[key].dependencies, ...doc[key].optionalDependencies });
+  const wanted = [...prodNames, ...devNames].sort().join("\n");
+  const reported = [...workspaces.keys()].filter((k) => Object.keys(depsOf(k)).sort().join("\n") === wanted);
+  const own = reported.length === 1 ? reported[0] : null;
+  const selected = own && !workspaces.get(own)!.root ? [own] : [...workspaces.keys()];
+
+  const seen = new Set<string>();
+  const addRoots = (key: string, split: boolean) => {
+    for (const [dep, range] of Object.entries(depsOf(key))) {
+      const id = lookup(dep, String(range));
+      if (!id) continue;
+      if (workspaces.has(id)) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        addRoots(id, false);
+      } else if (split && devNames.has(dep) && !prodNames.has(dep)) graph.devRoots.add(id);
+      else graph.prodRoots.add(id);
+    }
+  };
+  for (const key of selected) {
+    seen.add(key);
+    addRoots(key, key === own || (own === null && workspaces.get(key)!.root));
   }
 
   return { type: "yarn-berry", components: graph.toComponents() };
