@@ -55,7 +55,7 @@ And for the days you do open it:
 ```sh
 git clone https://github.com/EnkodoNL/observator.git
 cd observator
-cp .env.example .env        # set APP_URL and the PocketBase superuser password
+cp .env.example .env        # set APP_URL, the PocketBase superuser password and SECRETS_KEY
 docker compose up -d --build
 ```
 
@@ -353,8 +353,12 @@ On a project's *Setup* tab you can store a deploy webhook. Observator calls it w
 *Redeploy* on the project page or in a notification, always after a confirmation.
 
 - **Coolify:** the resource's deploy webhook URL (`https://coolify.example.com/api/v1/deploy?uuid=...`),
-  method `GET`, and a Coolify API token as bearer token.
+  method `GET`, and a Coolify API token as bearer token. Give that token only the `deploy` permission
+  (*Keys & Tokens → API Tokens*): leaked, it can then start redeploys but change nothing.
 - **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
+
+The URL and the token are stored encrypted, so this needs `SECRETS_KEY` (see
+[Secrets at rest](#secrets-at-rest)).
 
 A rebuild only gets a newer runtime if the Dockerfile pins the new version (as the advice says) or the
 build pulls the base image.
@@ -531,10 +535,27 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `TRUST_CLOUDFLARE` | `off` | Cloudflare proxies Observator: take the visitor from `CF-Connecting-IP` |
 | `REPORTER_IMAGE` | `ghcr.io/enkodonl/observator-reporter:1` | Where the snippet copies the reporter from, such as your own mirror |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
+| `SECRETS_KEY` | | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets; without it, deploy webhooks and channels with credentials cannot be saved. See [Secrets at rest](#secrets-at-rest) |
+| `SECRETS_KEY_PREVIOUS` | | The previous key during a rotation |
 | `SETUP_CODE` | `on` | The first account needs the setup code from the web container's log; `off` lets the first visitor of `/setup` create it |
 | `OBSERVATOR_SELF` | `on` | Observator reports its own Node.js version and packages as the "Observator" project |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
+
+### Secrets at rest
+
+Deploy webhooks (URL and token) and the credentials of notification channels are stored encrypted,
+with AES-256-GCM under `SECRETS_KEY`. Keys, tokens, invites and recovery codes are stored as hashes
+already. Without `SECRETS_KEY` such secrets cannot be saved; the reason is shown where you try.
+
+This protects a copy of the database, such as a backup, a volume snapshot or the PocketBase admin
+UI, not a compromised web container, which needs the key to use them. So keep the key out of the
+backups of `pb_data`. Lose it and the secrets are gone: enter the webhooks and channel credentials
+again.
+
+To rotate, move the current key to `SECRETS_KEY_PREVIOUS`, set a new `SECRETS_KEY` and restart: the
+start re-encrypts everything under the new key. Remove the previous key after that. Values saved
+before encryption existed are encrypted at the first start with a key.
 
 ### Client addresses
 
@@ -559,8 +580,9 @@ Cloudflare address and set that header themselves; with it on, let only Cloudfla
 
 1. Create a resource from this repository with the *Docker Compose* build pack.
 2. Give the `web` service a domain (port 3000) and set `APP_URL` to it, with `https://`.
-3. Set `PB_SUPERUSER_EMAIL` and a long `PB_SUPERUSER_PASSWORD`, plus SMTP if you want e-mail. Behind
-   Cloudflare, also set `TRUST_CLOUDFLARE=on`.
+3. Set `PB_SUPERUSER_EMAIL` and a long `PB_SUPERUSER_PASSWORD`, `SECRETS_KEY`
+   (`openssl rand -base64 32`), plus SMTP if you want e-mail. Behind Cloudflare, also set
+   `TRUST_CLOUDFLARE=on`.
 4. Deploy. The PocketBase data lives in the `pb_data` volume.
 
 To reach the PocketBase admin UI for debugging, uncomment the `127.0.0.1:8090:8090` port in

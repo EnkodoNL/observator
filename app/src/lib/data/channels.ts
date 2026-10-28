@@ -13,6 +13,7 @@ import {
   type NotificationRecord,
   type Severity,
 } from "@/lib/pb/types";
+import { seal, SecretsKeyError, unseal } from "@/lib/secrets";
 import { maskUrlSecrets, urlOrigin } from "@/lib/url";
 
 export const CHANNEL_TYPES = [
@@ -53,8 +54,27 @@ const invalid = (issues: z.core.$ZodIssue[]): ChannelResult => {
   return { error: "Please check the highlighted fields.", fieldErrors };
 };
 
+const secretContext = (type: ChannelType, field: string) => `channels.${type}.${field}`;
+
+/** A channel's config with its secret fields decrypted, ready for the driver. */
+export function openConfig(channel: Pick<ChannelRecord, "type" | "config">): Record<string, string> {
+  const config = { ...((channel.config ?? {}) as Record<string, string>) };
+  for (const field of secretFields(channel.type))
+    if (typeof config[field] === "string")
+      config[field] = unseal(config[field], secretContext(channel.type, field));
+  return config;
+}
+
+/** The config as stored: secret fields encrypted (lib/secrets). */
+function sealConfig(type: ChannelType, config: Record<string, string>): Record<string, string> {
+  const out = { ...config };
+  for (const field of secretFields(type))
+    if (out[field]) out[field] = seal(out[field], secretContext(type, field));
+  return out;
+}
+
 async function resolveConfig(input: ChannelInput) {
-  const previous = input.id ? (await getChannel(input.id)).config : null;
+  const previous = input.id ? openConfig(await getChannel(input.id)) : null;
   return mergeConfig(input.type as ChannelType, input.config, previous);
 }
 
@@ -65,6 +85,13 @@ export async function saveChannel(raw: unknown): Promise<ChannelResult> {
   const input = parsed.data;
   const merged = await resolveConfig(input);
   if (!merged.ok) return { error: "Please check the highlighted fields.", fieldErrors: merged.errors };
+  let config: Record<string, string>;
+  try {
+    config = sealConfig(input.type as ChannelType, merged.config);
+  } catch (err) {
+    if (err instanceof SecretsKeyError) return { error: `Not saved: ${err.message}.` };
+    throw err;
+  }
   const pb = await adminPb();
   const data = {
     type: input.type,
@@ -73,7 +100,7 @@ export async function saveChannel(raw: unknown): Promise<ChannelResult> {
     minSeverity: input.minSeverity,
     events: input.events.length === EVENT_TYPES.length ? [] : input.events,
     projects: input.projects,
-    config: merged.config,
+    config,
   };
   const record = input.id
     ? await pb.collection("channels").update(input.id, data)
@@ -95,7 +122,11 @@ export async function testChannel(raw: unknown): Promise<ChannelResult> {
 
 export async function testSavedChannel(id: string): Promise<ChannelResult> {
   const channel = await getChannel(id);
-  return send(channel.type, (channel.config ?? {}) as Record<string, string>);
+  try {
+    return send(channel.type, openConfig(channel));
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 async function send(type: ChannelType, config: Record<string, string>): Promise<ChannelResult> {

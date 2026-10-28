@@ -2,7 +2,9 @@
 import "server-only";
 import { kvGet, kvSet } from "@/lib/kv";
 import { describeFetchError } from "@/lib/notify/channels/types";
+import { WEBHOOK_TOKEN, WEBHOOK_URL } from "@/lib/data/projects";
 import { checkOutbound, isRedirect, OutboundError } from "@/lib/outbound";
+import { SecretsKeyError, unseal } from "@/lib/secrets";
 import type { ProjectRecord } from "@/lib/pb/types";
 
 export interface RedeployResult {
@@ -10,6 +12,15 @@ export interface RedeployResult {
   ok: boolean;
   status?: number;
   message: string;
+}
+
+/** The stored webhook URL, masked for showing; "…" when it cannot be decrypted. */
+export function maskedWebhook(project: Pick<ProjectRecord, "deployWebhookUrl">): string {
+  try {
+    return maskUrl(unseal(project.deployWebhookUrl, WEBHOOK_URL));
+  } catch {
+    return "…";
+  }
 }
 
 /** Shows enough of a webhook URL to recognise it, without the token that is often in it. */
@@ -33,14 +44,16 @@ export async function triggerRedeploy(project: ProjectRecord): Promise<RedeployR
   const at = new Date().toISOString();
   let result: RedeployResult;
   try {
+    const url = unseal(project.deployWebhookUrl, WEBHOOK_URL);
+    const token = unseal(project.deployWebhookToken, WEBHOOK_TOKEN);
     // Same guard as notification channels; only the status comes back, never the body.
-    const target = await checkOutbound(project.deployWebhookUrl);
+    const target = await checkOutbound(url);
     const res = await fetch(target.href, {
       method: project.deployWebhookMethod || "POST",
       redirect: "manual",
       headers: {
         "user-agent": "observator",
-        ...(project.deployWebhookToken ? { authorization: `Bearer ${project.deployWebhookToken}` } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       signal: AbortSignal.timeout(20_000),
     });
@@ -56,7 +69,10 @@ export async function triggerRedeploy(project: ProjectRecord): Promise<RedeployR
     result = {
       at,
       ok: false,
-      message: err instanceof OutboundError ? `refused: ${err.message}` : describeFetchError(err, 20_000),
+      message:
+        err instanceof OutboundError || err instanceof SecretsKeyError
+          ? `refused: ${err.message}`
+          : describeFetchError(err, 20_000),
     };
   }
   await kvSet(`redeploy:${project.id}`, result);
