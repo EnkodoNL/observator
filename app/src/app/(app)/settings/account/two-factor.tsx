@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon, ShieldCheckIcon, ShieldIcon } from "lucide-react";
+import { CircleNotchIcon, ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { CodeBlock } from "@/components/code-block";
 import { Button } from "@/components/ui/button";
@@ -165,7 +165,7 @@ export function TwoFactor({
                       />
                     </>
                   ) : (
-                    <Loader2Icon className="mx-auto animate-spin text-muted-foreground" />
+                    <CircleNotchIcon className="mx-auto animate-spin text-muted-foreground" />
                   )}
                 </div>
               )}
@@ -196,7 +196,7 @@ export function TwoFactor({
                 variant={mode === "disable" ? "destructive" : "default"}
                 disabled={pending || !code.trim() || (mode === "setup" && !setup)}
               >
-                {pending && <Loader2Icon className="animate-spin" />}
+                {pending && <CircleNotchIcon className="animate-spin" />}
                 {mode === "setup" ? "Turn on" : mode === "recovery" ? "Create new codes" : "Turn off"}
               </Button>
             )}

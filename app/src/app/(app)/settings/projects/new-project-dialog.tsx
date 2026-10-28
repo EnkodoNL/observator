@@ -3,7 +3,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

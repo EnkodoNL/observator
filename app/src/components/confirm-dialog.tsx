@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,7 +59,7 @@ export function ConfirmDialog({
               })
             }
           >
-            {pending && <Loader2Icon className="animate-spin" />}
+            {pending && <CircleNotchIcon className="animate-spin" />}
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

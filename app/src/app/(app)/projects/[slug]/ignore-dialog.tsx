@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { EyeOffIcon, Loader2Icon } from "lucide-react";
+import { CircleNotchIcon, EyeSlashIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,7 +79,7 @@ export function IgnoreDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="ghost" size="xs" />}>
-        <EyeOffIcon /> Ignore
+        <EyeSlashIcon /> Ignore
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <form
@@ -170,7 +170,7 @@ export function IgnoreDialog({
           </FieldGroup>
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={pending}>
-              {pending && <Loader2Icon className="animate-spin" />}
+              {pending && <CircleNotchIcon className="animate-spin" />}
               Ignore
             </Button>
           </DialogFooter>
@@ -194,7 +194,7 @@ export function UnignoreButton({ ignoreId }: { ignoreId: string }) {
         })
       }
     >
-      {pending && <Loader2Icon className="animate-spin" />}
+      {pending && <CircleNotchIcon className="animate-spin" />}
       Stop ignoring
     </Button>
   );

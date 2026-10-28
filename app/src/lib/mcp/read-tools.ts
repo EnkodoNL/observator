@@ -79,7 +79,7 @@ export const readTools: Record<string, Tool> = {
   list_projects: defineTool({
     title: "List projects",
     description:
-      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, none = no build yet), runtimes (such as node 22.11.0; only Node.js is checked so far), app version, advisory counts, labels and last build. Start here.",
+      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, none = no build yet), runtimes (such as node 22.11.0; only Node.js is checked so far), app version, advisory counts, labels and last build. Advisories in packages only dev dependencies pull in are counted under buildOnly and do not make a project vulnerable, unless the countDevDependencies setting is on. Start here.",
     input: z.object({
       labels: z
         .array(z.string())
@@ -111,6 +111,7 @@ export const readTools: Record<string, Tool> = {
           runtimes: describeRuntimes(latest, { security: summary.runtimeSecurity, eol: summary.runtimeEol }),
           app: latest?.appVersion ? { name: latest.appName, version: latest.appVersion } : null,
           advisories: summary.vulnBySeverity,
+          buildOnly: summary.buildOnly.length,
           lastBuild: lastBuildAt?.toISOString() ?? null,
           sharedKey: p.ingestKey ? (keyName.get(p.ingestKey) ?? "revoked") : null,
           server: p.instance || null,
@@ -122,7 +123,7 @@ export const readTools: Record<string, Tool> = {
   get_project: defineTool({
     title: "Project details",
     description:
-      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), ignored advisories with their reason, labels, setup and the latest build.",
+      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup and the latest build.",
     input: z.object({ project: projectRef }),
     run: async ({ project: ref }) => {
       const found = await resolveProject(ref);
@@ -149,7 +150,9 @@ export const readTools: Record<string, Tool> = {
           via: d.via,
         };
       };
-      const open = vulns.filter((i) => i.status === "open");
+      const buildOnlyIds = new Set(summary.buildOnly.map((i) => i.id));
+      const open = vulns.filter((i) => i.status === "open" && !buildOnlyIds.has(i.id));
+      const buildOnly = vulns.filter((i) => buildOnlyIds.has(i.id));
       const ignored = vulns.filter((i) => i.status === "ignored");
       return {
         slug: p.slug,
@@ -167,6 +170,13 @@ export const readTools: Record<string, Tool> = {
         os: latest?.os || null,
         advisories: capped(
           open.map((i) => ({
+            ...advisory(i),
+            advice: packageAdvice(i.data as unknown as VulnIssueData, lockfile),
+          })),
+          100,
+        ),
+        buildOnly: capped(
+          buildOnly.map((i) => ({
             ...advisory(i),
             advice: packageAdvice(i.data as unknown as VulnIssueData, lockfile),
           })),

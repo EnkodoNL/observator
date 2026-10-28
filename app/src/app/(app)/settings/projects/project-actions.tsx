@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRoundIcon, MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { DotsThreeIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,15 +27,15 @@ export function ProjectActions({ id, name, appUrl }: { id: string; name: string;
         <DropdownMenuTrigger
           render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${name}`} />}
         >
-          <MoreHorizontalIcon />
+          <DotsThreeIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuItem onClick={() => setConfirm("rotate")}>
-            <KeyRoundIcon /> Rotate API key
+            <KeyIcon /> Rotate API key
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => setConfirm("delete")}>
-            <Trash2Icon /> Delete project
+            <TrashIcon /> Delete project
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

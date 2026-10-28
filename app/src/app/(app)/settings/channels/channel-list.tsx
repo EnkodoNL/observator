@@ -2,7 +2,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon, MoreHorizontalIcon, PencilIcon, PlusIcon, SendIcon, Trash2Icon } from "lucide-react";
+import {
+  CircleNotchIcon,
+  DotsThreeIcon,
+  PaperPlaneTiltIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -90,22 +97,22 @@ export function ChannelList({
                   else toast.error(res.error ?? "Test failed", { duration: 8000 });
                 }}
               >
-                {testingId === c.id ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
+                {testingId === c.id ? <CircleNotchIcon className="animate-spin" /> : <PaperPlaneTiltIcon />}
                 <span className="hidden sm:inline">Send test</span>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${c.name}`} />}
                 >
-                  <MoreHorizontalIcon />
+                  <DotsThreeIcon />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuItem onClick={() => setEditing(c)}>
-                    <PencilIcon /> Edit
+                    <PencilSimpleIcon /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" onClick={() => setDeleting(c)}>
-                    <Trash2Icon /> Delete
+                    <TrashIcon /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

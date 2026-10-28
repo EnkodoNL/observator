@@ -8,7 +8,7 @@ import { cn } from "cn";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
-import { SearchIcon, CheckIcon } from "lucide-react";
+import { CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react/ssr";
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
@@ -66,7 +66,7 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
           {...props}
         />
         <InputGroupAddon>
-          <SearchIcon className="size-4 shrink-0 opacity-50" />
+          <MagnifyingGlassIcon className="size-4 shrink-0 opacity-50" />
         </InputGroupAddon>
       </InputGroup>
     </div>

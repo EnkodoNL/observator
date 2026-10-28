@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ChevronLeftIcon, Loader2Icon, RadarIcon, SendIcon } from "lucide-react";
+import { CaretLeftIcon, CircleNotchIcon, CrosshairIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
@@ -171,7 +171,7 @@ function ChannelFields({
               onClick={onBack}
               aria-label="Back to channel types"
             >
-              <ChevronLeftIcon />
+              <CaretLeftIcon />
             </Button>
           )}
           {channel ? `Edit ${channel.name}` : `Add ${meta.label}`}
@@ -230,7 +230,7 @@ function ChannelFields({
                       })
                     }
                   >
-                    {detecting ? <Loader2Icon className="animate-spin" /> : <RadarIcon />}
+                    {detecting ? <CircleNotchIcon className="animate-spin" /> : <CrosshairIcon />}
                     Detect chat
                   </Button>
                 )}
@@ -345,11 +345,11 @@ function ChannelFields({
             })
           }
         >
-          {testing ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
+          {testing ? <CircleNotchIcon className="animate-spin" /> : <PaperPlaneTiltIcon />}
           Send test
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving && <Loader2Icon className="animate-spin" />}
+          {saving && <CircleNotchIcon className="animate-spin" />}
           {channel ? "Save" : "Add channel"}
         </Button>
       </DialogFooter>

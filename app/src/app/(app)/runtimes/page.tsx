@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRightIcon, ShieldAlertIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowRightIcon, ShieldCheckIcon, ShieldWarningIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import { runtimeOverview, type RuntimeSection, type VersionGroup } from "@/lib/data/runtime-overview";
 import { lineDescription, pinFor } from "@/lib/runtimes/labels";
@@ -40,7 +40,7 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
             <p className="text-sm text-muted-foreground">No release data right now</p>
           ) : security ? (
             <p className="flex items-center justify-end gap-1.5 font-medium text-warn">
-              <ShieldAlertIcon className="size-4" />
+              <ShieldWarningIcon className="size-4" />
               Security update available
               <ArrowRightIcon className="size-3.5" />
               <span className="font-mono">{security.target}</span>
@@ -56,7 +56,7 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
           )}
           {eol && (
             <p className="flex items-center justify-end gap-1.5 text-sm text-danger">
-              <TriangleAlertIcon className="size-4" />
+              <WarningIcon className="size-4" />
               {ev!.phase === "eol" ? "End-of-life" : `End-of-life in ${ev!.daysToEol} days`}
             </p>
           )}
@@ -103,7 +103,7 @@ export default async function RuntimesPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Runtimes</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">Runtimes</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {sections.length === 0
             ? "No builds have reported yet."

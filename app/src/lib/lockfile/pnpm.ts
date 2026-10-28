@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { posix } from "node:path";
 import { parse } from "yaml";
 import { DepGraph } from "./graph";
-import { LockfileError, type ParseResult } from "./types";
+import { LockfileError, type PackageJson, type ParseResult } from "./types";
 
 type DepMap = Record<string, string | { specifier?: string; version: string }>;
 
@@ -34,8 +35,30 @@ function splitKey(key: string): { name: string; version: string } | null {
 
 const isLocal = (v: string) => /^(link|file|workspace):/.test(v);
 
+const depNames = (x: Importer | PackageJson) =>
+  [
+    ...Object.keys(x.dependencies ?? {}),
+    ...Object.keys(x.optionalDependencies ?? {}),
+    ...Object.keys(x.devDependencies ?? {}),
+  ]
+    .sort()
+    .join("\n");
+
+/**
+ * The workspace packages whose dependencies are in the image: the one package the reported
+ * package.json matches by dependency names, when that is not the workspace root. Otherwise
+ * (an image built from the root) all of them, so what any package needs in production counts
+ * as production.
+ */
+function selectImporters(importers: Record<string, Importer>, pkg: PackageJson): string[] {
+  const keys = Object.keys(importers);
+  const wanted = depNames(pkg);
+  const matches = keys.filter((k) => depNames(importers[k]) === wanted);
+  return matches.length === 1 && matches[0] !== "." ? matches : keys;
+}
+
 /** pnpm-lock.yaml, lockfile formats 6.x (pnpm 8) and 9.x (pnpm 9 and later). */
-export function parsePnpmLock(text: string): ParseResult {
+export function parsePnpmLock(text: string, pkg: PackageJson = {}): ParseResult {
   let lock: PnpmLock;
   try {
     lock = parse(text, { maxAliasCount: 0 }) ?? {};
@@ -64,7 +87,10 @@ export function parsePnpmLock(text: string): ParseResult {
     const parsed = splitKey(key);
     if (parsed) graph.addNode(key, parsed.name, parsed.version);
   }
-  if (!v9) {
+  const importers: Record<string, Importer> = lock.importers ?? { ".": lock };
+  const selected = selectImporters(importers, pkg);
+  // v6 dev flags cover the whole workspace; with one workspace package selected they can be wrong.
+  if (!v9 && selected.length === Object.keys(importers).length) {
     for (const [key, entry] of Object.entries(lock.packages ?? {})) {
       if (typeof entry?.dev === "boolean") graph.devFlags.set(key, entry.dev);
     }
@@ -77,16 +103,31 @@ export function parsePnpmLock(text: string): ParseResult {
     }
   }
 
-  const root: Importer = lock.importers?.["."] ?? lock;
-  const addRoots = (deps: DepMap | undefined, into: Set<string>) => {
+  // A link to another workspace package brings in that package's production dependencies.
+  const seen = new Set<string>();
+  const addRoots = (from: string, deps: DepMap | undefined, into: Set<string>) => {
     for (const [dep, value] of Object.entries(deps ?? {})) {
       const version = versionOf(value);
-      if (!isLocal(version)) into.add(refKey(dep, version));
+      if (!isLocal(version)) {
+        into.add(refKey(dep, version));
+        continue;
+      }
+      if (!version.startsWith("link:")) continue;
+      const target = posix.normalize(posix.join(from, version.slice("link:".length))) || ".";
+      const linked = importers[target];
+      const id = `${target}\0${into === graph.prodRoots}`;
+      if (!linked || seen.has(id)) continue;
+      seen.add(id);
+      addRoots(target, linked.dependencies, into);
+      addRoots(target, linked.optionalDependencies, into);
     }
   };
-  addRoots(root.dependencies, graph.prodRoots);
-  addRoots(root.optionalDependencies, graph.prodRoots);
-  addRoots(root.devDependencies, graph.devRoots);
+  for (const key of selected) {
+    const importer = importers[key];
+    addRoots(key, importer.dependencies, graph.prodRoots);
+    addRoots(key, importer.optionalDependencies, graph.prodRoots);
+    addRoots(key, importer.devDependencies, graph.devRoots);
+  }
 
   return { type: "pnpm", components: graph.toComponents() };
 }

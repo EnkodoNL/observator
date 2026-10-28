@@ -14,6 +14,8 @@ export const settingsSchema = z.object({
   digestDay: z.coerce.number().int().min(0).max(6),
   digestHour: z.coerce.number().int().min(0).max(23),
   timezone: z.string().refine(isTimezone, "Unknown timezone"),
+  /** Advisories in dev dependencies count toward status, notifications and the build gate. */
+  countDevDependencies: z.boolean(),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -36,6 +38,7 @@ function defaults(): Settings {
     digestDay: 1,
     digestHour: 9,
     timezone: isTimezone(tz) ? tz : "UTC",
+    countDevDependencies: false,
   };
 }
 

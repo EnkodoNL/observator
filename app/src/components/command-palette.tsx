@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BoxIcon, FolderIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { FolderIcon, GearIcon, MagnifyingGlassIcon, PackageIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -74,7 +74,7 @@ export function CommandPalette({ projects }: { projects: { name: string; slug: s
         className="hidden w-48 justify-start text-muted-foreground md:inline-flex"
         onClick={() => setOpen(true)}
       >
-        <SearchIcon />
+        <MagnifyingGlassIcon />
         Search
         <kbd className="ml-auto rounded border bg-muted px-1 font-mono text-[10px]">⌘K</kbd>
       </Button>
@@ -85,7 +85,7 @@ export function CommandPalette({ projects }: { projects: { name: string; slug: s
         aria-label="Search"
         onClick={() => setOpen(true)}
       >
-        <SearchIcon />
+        <MagnifyingGlassIcon />
       </Button>
       <CommandDialog
         open={open}
@@ -122,7 +122,7 @@ export function CommandPalette({ projects }: { projects: { name: string; slug: s
                     value={`package ${p.name}`}
                     onSelect={() => go(packageHref(p.name))}
                   >
-                    <BoxIcon />
+                    <PackageIcon />
                     <span className="font-mono">{p.name}</span>
                     <CommandShortcut>
                       {p.projects} project{p.projects === 1 ? "" : "s"}
@@ -138,7 +138,7 @@ export function CommandPalette({ projects }: { projects: { name: string; slug: s
               </CommandItem>
               {PAGES.map((p) => (
                 <CommandItem key={p.href} value={`page ${p.label}`} onSelect={() => go(p.href)}>
-                  <SettingsIcon />
+                  <GearIcon />
                   {p.label}
                 </CommandItem>
               ))}

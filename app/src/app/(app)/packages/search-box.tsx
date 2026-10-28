@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { SearchIcon } from "lucide-react";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/ssr";
 import { Input } from "@/components/ui/input";
 
 /** Updates ?q= as you type (debounced), so results are shareable links. */
@@ -38,7 +38,7 @@ export function SearchBox({ initial }: { initial: string }) {
 
   return (
     <div className="relative w-full sm:w-80">
-      <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+      <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={value}
         onChange={(e) => setValue(e.target.value)}

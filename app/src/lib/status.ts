@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { VulnIssueData } from "@/lib/issues/types";
 import type { IssueRecord, Severity } from "@/lib/pb/types";
 import { maxSeverity } from "@/lib/severity";
 import { daysSince } from "@/lib/time";
@@ -24,18 +25,29 @@ export interface StatusSummary {
   /** Open runtime security updates, one per runtime line. */
   runtimeSecurity: IssueRecord[];
   runtimeEol: IssueRecord[];
-  /** Open package advisories (ignored ones are not open). */
+  /** Open package advisories that count (ignored ones are not open). */
   vulns: IssueRecord[];
+  /** Open advisories in dev dependencies, when those do not count: not in the running image. */
+  buildOnly: IssueRecord[];
   vulnCount: number;
   vulnBySeverity: Partial<Record<Severity, number>>;
   worstSeverity: Severity | null;
   stale: boolean;
 }
 
-/** Derives the dashboard status of a project from its open issues. */
-export function summarize(hasBuild: boolean, issues: IssueRecord[]): StatusSummary {
+/** An advisory in a package only dev dependencies pull in. */
+export const isDevVuln = (issue: { kind: string; data?: unknown }) =>
+  issue.kind === "vuln" && Boolean((issue.data as Partial<VulnIssueData> | null)?.dev);
+
+/**
+ * Derives the dashboard status of a project from its open issues. Advisories in dev
+ * dependencies only count with countDev; otherwise they are listed as build-only.
+ */
+export function summarize(hasBuild: boolean, issues: IssueRecord[], countDev = false): StatusSummary {
   const open = issues.filter((i) => i.status === "open");
-  const vulns = open.filter((i) => i.kind === "vuln");
+  const allVulns = open.filter((i) => i.kind === "vuln");
+  const vulns = countDev ? allVulns : allVulns.filter((i) => !isDevVuln(i));
+  const buildOnly = countDev ? [] : allVulns.filter(isDevVuln);
   const runtimeSecurity = open.filter((i) => i.kind === "runtime_security");
   const runtimeEol = open.filter((i) => i.kind === "runtime_eol");
   const vulnBySeverity: Partial<Record<Severity, number>> = {};
@@ -51,6 +63,7 @@ export function summarize(hasBuild: boolean, issues: IssueRecord[]): StatusSumma
     runtimeSecurity,
     runtimeEol,
     vulns,
+    buildOnly,
     vulnCount: vulns.length,
     vulnBySeverity,
     worstSeverity: maxSeverity(vulns.map((v) => v.severity)),

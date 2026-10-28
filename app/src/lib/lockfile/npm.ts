@@ -53,7 +53,9 @@ export function parseNpmLock(text: string, pkg: PackageJson): ParseResult {
     if (!path.includes(NM) || entry.link || !entry.version) continue;
     const name = entry.name ?? path.slice(path.lastIndexOf(NM) + NM.length);
     graph.addNode(path, name, entry.version);
-    graph.devFlags.set(path, entry.dev === true || entry.devOptional === true);
+    // devOptional: a dev dependency that is also an optional dependency of a production
+    // package, so `npm ci --omit=dev` still installs it.
+    graph.devFlags.set(path, entry.dev === true);
   }
 
   for (const [path, entry] of Object.entries(packages)) {
@@ -78,6 +80,20 @@ export function parseNpmLock(text: string, pkg: PackageJson): ParseResult {
   for (const dep of Object.keys(dev)) {
     const id = resolve(packages, "", dep);
     if (id) graph.devRoots.add(id);
+  }
+  // Workspace packages ("apps/web"): their dependencies resolve from their own folder. npm's
+  // dev flags already account for them; as roots they name the way in.
+  for (const [path, entry] of Object.entries(packages)) {
+    if (!path || path.includes(NM)) continue;
+    for (const [deps, into] of [
+      [{ ...entry.dependencies, ...entry.optionalDependencies }, graph.prodRoots],
+      [entry.devDependencies ?? {}, graph.devRoots],
+    ] as const) {
+      for (const dep of Object.keys(deps)) {
+        const id = resolve(packages, path, dep);
+        if (id) into.add(id);
+      }
+    }
   }
 
   return { type: "npm", components: graph.toComponents() };

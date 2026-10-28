@@ -6,7 +6,9 @@ import { env } from "@/lib/env";
 import type { EventType, IssueEvent } from "@/lib/issues/events";
 import { adminPb, isUniqueViolation, toPbDate } from "@/lib/pb/admin";
 import type { ChannelRecord, ProjectRecord } from "@/lib/pb/types";
+import { getSettings } from "@/lib/settings";
 import { atLeast } from "@/lib/severity";
+import { isDevVuln } from "@/lib/status";
 import type { Message } from "./message";
 import { processQueue } from "./queue";
 import { renderEvents, type ProjectInfo, type RenderContext } from "./render";
@@ -39,6 +41,11 @@ export function eventsForChannel(
       return false;
     return true;
   });
+}
+
+/** Advisories in dev dependencies are not announced unless they count (the setting). */
+export function countedEvents(events: IssueEvent[], countDev: boolean): IssueEvent[] {
+  return countDev ? events : events.filter((e) => !isDevVuln(e));
 }
 
 export function dedupeKey(type: string, events: IssueEvent[]): string {
@@ -77,7 +84,9 @@ export async function enqueue(
  * Hands issue events to the notification pipeline: filter per channel, bundle per event
  * type, queue, then send in the background. Issues that reached a channel get notifiedAt.
  */
-export async function publish(events: IssueEvent[]): Promise<void> {
+export async function publish(all: IssueEvent[]): Promise<void> {
+  if (all.length === 0) return;
+  const events = countedEvents(all, (await getSettings()).countDevDependencies);
   if (events.length === 0) return;
   const channels = (await listChannels()).filter((c) => c.enabled);
   if (channels.length === 0) return;

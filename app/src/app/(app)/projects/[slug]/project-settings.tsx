@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2Icon } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
@@ -101,7 +101,7 @@ export function ProjectSettings({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}
+            {pending && <CircleNotchIcon className="animate-spin" />}
             Save
           </Button>
           {webhook.masked && (

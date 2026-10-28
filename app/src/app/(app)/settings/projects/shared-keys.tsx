@@ -2,7 +2,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { BookOpenIcon, KeyRoundIcon, Loader2Icon, NetworkIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  BookOpenIcon,
+  CircleNotchIcon,
+  KeyIcon,
+  PlusIcon,
+  TrashIcon,
+  TreeStructureIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DockerfileSetup } from "@/components/dockerfile-setup";
@@ -124,7 +131,7 @@ export function NewSharedKeyDialog({ appUrl }: { appUrl: string }) {
             </div>
             <DialogFooter className="mt-6">
               <Button type="submit" disabled={pending || !name.trim()}>
-                {pending && <Loader2Icon className="animate-spin" />}
+                {pending && <CircleNotchIcon className="animate-spin" />}
                 Create shared key
               </Button>
             </DialogFooter>
@@ -153,7 +160,7 @@ export function SharedKeyList({
       <ul className="divide-y rounded-xl border">
         {keys.map((k) => (
           <li key={k.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-            <KeyRoundIcon className="size-4 shrink-0 text-muted-foreground" />
+            <KeyIcon className="size-4 shrink-0 text-muted-foreground" />
             {/* On a phone the buttons go below the name instead of squeezing it. */}
             <div className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] sm:basis-0">
               <p className="truncate font-medium">
@@ -173,7 +180,7 @@ export function SharedKeyList({
                 <BookOpenIcon /> Setup
               </Button>
               <Button variant="outline" size="sm" onClick={() => setAllowing(k)}>
-                <NetworkIcon /> IP allowlist
+                <TreeStructureIcon /> IP allowlist
               </Button>
               <Button
                 variant="ghost"
@@ -181,7 +188,7 @@ export function SharedKeyList({
                 aria-label={`Revoke ${k.name}`}
                 onClick={() => setRevoking(k)}
               >
-                <Trash2Icon />
+                <TrashIcon />
               </Button>
             </div>
           </li>
@@ -361,7 +368,7 @@ function AllowlistDialog({
           {/* Not a DialogFooter: the snippet follows below, so this is not the end of the dialog. */}
           <div className="flex justify-end">
             <Button type="submit" disabled={pending || parsed.errors.length > 0}>
-              {pending && <Loader2Icon className="animate-spin" />}
+              {pending && <CircleNotchIcon className="animate-spin" />}
               Save allowlist
             </Button>
           </div>

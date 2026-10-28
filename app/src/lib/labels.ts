@@ -36,72 +36,7 @@ export function labelValue(labels: readonly string[], key: string): string | nul
   return found ? found.slice(key.length + 1) : null;
 }
 
-/** The keys of all key:value labels, for a "group by" choice. */
-export function labelKeys(sets: readonly (readonly string[])[]): string[] {
-  const keys = new Set<string>();
-  for (const set of sets) for (const l of set) if (l.includes(":")) keys.add(l.slice(0, l.indexOf(":")));
-  return [...keys].sort();
-}
-
 /** Every wanted label is present. */
 export function hasLabels(labels: readonly string[], wanted: readonly string[]): boolean {
   return wanted.every((w) => labels.includes(w));
-}
-
-export interface LabelSection<T> {
-  /** The label value, or null for projects without the key. */
-  value: string | null;
-  items: T[];
-}
-
-/** Sections per value of a label key, alphabetical, with the projects without it last. */
-export function sectionsByLabel<T>(
-  items: T[],
-  key: string,
-  labelsOf: (t: T) => readonly string[],
-): LabelSection<T>[] {
-  const byValue = new Map<string | null, T[]>();
-  for (const item of items) {
-    const value = labelValue(labelsOf(item), key);
-    byValue.set(value, [...(byValue.get(value) ?? []), item]);
-  }
-  return [...byValue]
-    .map(([value, list]) => ({ value, items: list }))
-    .sort((a, b) => (a.value === null ? 1 : b.value === null ? -1 : a.value.localeCompare(b.value)));
-}
-
-export type ServerEntry<T> =
-  { kind: "single"; item: T } | { kind: "group"; key: string; name: string; items: T[] };
-
-/**
- * Collapses the servers of one app into one entry: projects that share a server key (a
- * shared key's split-by-IP projects with the same reported name). A key with a single
- * project, or a project without a key, stays on its own. Order follows the first member.
- */
-export function groupServers<T>(
-  items: T[],
-  serverOf: (t: T) => { key: string; name: string } | null,
-): ServerEntry<T>[] {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const s = serverOf(item);
-    if (s) counts.set(s.key, (counts.get(s.key) ?? 0) + 1);
-  }
-  const entries: ServerEntry<T>[] = [];
-  const groups = new Map<string, ServerEntry<T> & { kind: "group" }>();
-  for (const item of items) {
-    const s = serverOf(item);
-    if (!s || (counts.get(s.key) ?? 0) < 2) {
-      entries.push({ kind: "single", item });
-      continue;
-    }
-    const existing = groups.get(s.key);
-    if (existing) existing.items.push(item);
-    else {
-      const group = { kind: "group" as const, key: s.key, name: s.name, items: [item] };
-      groups.set(s.key, group);
-      entries.push(group);
-    }
-  }
-  return entries;
 }

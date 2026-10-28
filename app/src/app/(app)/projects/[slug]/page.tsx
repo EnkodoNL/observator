@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeftIcon } from "lucide-react";
+import { CaretLeftIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { StatusBadge } from "@/components/status";
@@ -15,6 +15,9 @@ import { env } from "@/lib/env";
 import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
 import type { Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
+import { isDevVuln } from "@/lib/status";
+import { reportedName } from "@/lib/app-board";
+import type { IssueRecord } from "@/lib/pb/types";
 import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
 import { BuildsList } from "./builds-list";
@@ -64,7 +67,35 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
         severityRank(b.severity) - severityRank(a.severity),
     );
   const openVulns = vulns.filter((i) => i.status === "open");
-  const vulnPackages = new Set(openVulns.map((v) => (v.data as unknown as VulnIssueData).package)).size;
+  const prodVulns = vulns.filter((i) => !isDevVuln(i));
+  const devVulns = vulns.filter(isDevVuln);
+  /** "12 advisories in 1 package", for the open ones in a list. */
+  const tally = (list: IssueRecord[]) => {
+    const open = list.filter((i) => i.status === "open");
+    const packages = new Set(open.map((v) => (v.data as unknown as VulnIssueData).package)).size;
+    return open.length
+      ? `${open.length} ${open.length === 1 ? "advisory" : "advisories"} in ${packages} ${packages === 1 ? "package" : "packages"}`
+      : "";
+  };
+  const lockfile = latest?.lockfileType ?? "npm";
+  const actions = (issue: IssueRecord) => {
+    const d = issue.data as unknown as VulnIssueData;
+    if (issue.status !== "ignored") {
+      return (
+        <IgnoreDialog projectId={project.id} projectName={project.name} osvId={d.osvId} pkg={d.package} />
+      );
+    }
+    const ignore = matchingIgnore(issue as unknown as DesiredIssue, project.id, view.ignores, new Date());
+    return ignore ? (
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span title={ignore.reason}>
+          Ignored{ignore.project ? "" : " everywhere"}
+          {ignore.expiresAt ? ` until ${formatDate(pbDate(ignore.expiresAt))}` : ""}: {ignore.reason}
+        </span>
+        <UnignoreButton ignoreId={ignore.id} />
+      </span>
+    ) : null;
+  };
 
   const vulnByPackage = new Map<string, { severity: Severity; count: number }>();
   for (const v of openVulns) {
@@ -104,28 +135,34 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           href="/"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ChevronLeftIcon className="size-4" /> Overview
+          <CaretLeftIcon className="size-4" /> Overview
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h1 className="font-display text-3xl leading-tight font-bold tracking-tight">
+                {reportedName(project)}
+              </h1>
               <StatusBadge status={summary.status} />
             </div>
-            <LabelChips labels={effectiveLabels(project)} className="mt-2" />
-            <p className="mt-1 text-sm text-muted-foreground">
-              {view.lastBuildAt ? `Last build ${timeAgo(view.lastBuildAt)}` : "No builds yet"} ·{" "}
-              <span className="font-mono">{project.slug}</span>
-              {redeploy && (
+            <p className="text-sm text-muted-foreground">
+              {view.lastBuildAt ? `Last build ${timeAgo(view.lastBuildAt)}` : "No builds yet"}
+              {project.instance && (
                 <>
-                  {" · "}
-                  <span className={redeploy.ok ? undefined : "text-danger"} title={redeploy.message}>
-                    last redeploy {timeAgo(new Date(redeploy.at))}
-                    {!redeploy.ok && " failed"}
-                  </span>
+                  {" "}
+                  on <span className="font-mono text-foreground">{project.instance}</span>
                 </>
               )}
+              .
+              {redeploy && (
+                <span className={redeploy.ok ? undefined : "text-danger"} title={redeploy.message}>
+                  {" "}
+                  Last redeploy {timeAgo(new Date(redeploy.at))}
+                  {!redeploy.ok && " failed"}.
+                </span>
+              )}
             </p>
+            <LabelChips labels={effectiveLabels(project)} />
           </div>
           <div className="flex items-center gap-2">
             {project.deployWebhookUrl && (
@@ -154,58 +191,53 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
       {tab === "overview" && (
         <div className="space-y-6">
           <RuntimePanel latest={latest} summary={summary} evaluations={evaluations} />
-          <section className="space-y-3">
-            <h2 className="font-medium">
-              Vulnerabilities{" "}
-              {openVulns.length > 0 && (
-                <span className="text-muted-foreground tabular-nums">
-                  {openVulns.length} in {vulnPackages} {vulnPackages === 1 ? "package" : "packages"}
-                </span>
-              )}
+          <section className="space-y-3" aria-labelledby="production">
+            <h2 id="production" className="flex flex-wrap items-baseline gap-x-3">
+              <span className="font-display text-xl font-bold tracking-tight">In production</span>
+              <span className="text-sm text-muted-foreground">{tally(prodVulns)}</span>
             </h2>
             <VulnList
-              issues={vulns}
-              lockfile={latest?.lockfileType ?? "npm"}
-              actions={(issue) => {
-                const d = issue.data as unknown as VulnIssueData;
-                if (issue.status !== "ignored") {
-                  return (
-                    <IgnoreDialog
-                      projectId={project.id}
-                      projectName={project.name}
-                      osvId={d.osvId}
-                      pkg={d.package}
-                    />
-                  );
-                }
-                const ignore = matchingIgnore(
-                  issue as unknown as DesiredIssue,
-                  project.id,
-                  view.ignores,
-                  new Date(),
-                );
-                return ignore ? (
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    <span title={ignore.reason}>
-                      Ignored{ignore.project ? "" : " everywhere"}
-                      {ignore.expiresAt ? ` until ${formatDate(pbDate(ignore.expiresAt))}` : ""}:{" "}
-                      {ignore.reason}
-                    </span>
-                    <UnignoreButton ignoreId={ignore.id} />
-                  </span>
-                ) : null;
-              }}
+              issues={prodVulns}
+              lockfile={lockfile}
+              actions={actions}
               empty={
                 !latest
                   ? "Packages are checked after the first build reports."
                   : latest.lockfileType === "none"
                     ? "This project reports without a lockfile, so packages are not checked."
-                    : project.vulnsCheckedAt
-                      ? "No known vulnerabilities in the current packages."
-                      : "The package check has not run yet."
+                    : !project.vulnsCheckedAt
+                      ? "The package check has not run yet."
+                      : devVulns.length
+                        ? "No known vulnerabilities in the packages this project runs with."
+                        : "No known vulnerabilities in the current packages."
               }
             />
           </section>
+          {devVulns.length > 0 &&
+            (view.countDev ? (
+              <section className="space-y-3" aria-labelledby="dev">
+                <h2 id="dev" className="flex flex-wrap items-baseline gap-x-3">
+                  <span className="font-display text-xl font-bold tracking-tight">Dev dependencies</span>
+                  <span className="text-sm text-muted-foreground">{tally(devVulns)}</span>
+                </h2>
+                <VulnList issues={devVulns} lockfile={lockfile} actions={actions} empty="" />
+              </section>
+            ) : (
+              <details className="space-y-3">
+                <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">
+                  <b className="font-display text-foreground">Build only</b>,{" "}
+                  {tally(devVulns) || "all ignored"}
+                </summary>
+                <p className="max-w-[65ch] text-sm text-muted-foreground">
+                  These packages come in through dev dependencies only, so an image installed without them
+                  does not run them. They do not change the status or send notifications.{" "}
+                  <Link href="/settings/general" className="text-primary underline-offset-4 hover:underline">
+                    Count them anyway
+                  </Link>
+                </p>
+                <VulnList issues={devVulns} lockfile={lockfile} actions={actions} quiet empty="" />
+              </details>
+            ))}
         </div>
       )}
 

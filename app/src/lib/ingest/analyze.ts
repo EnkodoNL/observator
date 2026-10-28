@@ -7,7 +7,9 @@ import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/i
 import { pinFor, runtimeLabel } from "@/lib/runtimes";
 import { checkProject } from "@/lib/osv/check";
 import type { IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
+import { getSettings } from "@/lib/settings";
 import { atLeast, severityRank } from "@/lib/severity";
+import { isDevVuln } from "@/lib/status";
 import type { IngestOutcome } from "./ingest";
 import type { FailOn, IngestMeta } from "./request";
 
@@ -31,7 +33,7 @@ function countBySeverity(issues: IssueRecord[]): string {
     .join(", ");
 }
 
-export function describeIssues(issues: IssueRecord[]): string[] {
+export function describeIssues(issues: IssueRecord[], countDev: boolean): string[] {
   const open = issues.filter((i) => i.status === "open");
   const lines: string[] = [];
   for (const security of open.filter((i) => i.kind === "runtime_security")) {
@@ -49,8 +51,9 @@ export function describeIssues(issues: IssueRecord[]): string[] {
         : `${runtimeLabel(d.runtime)} ${d.line} reaches end-of-life on ${d.end}.`,
     );
   }
+  const buildOnly = countDev ? [] : open.filter(isDevVuln);
   const vulns = open
-    .filter((i) => i.kind === "vuln")
+    .filter((i) => i.kind === "vuln" && !buildOnly.includes(i))
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
   if (vulns.length > 0) {
     lines.push(
@@ -63,11 +66,19 @@ export function describeIssues(issues: IssueRecord[]): string[] {
     }
     if (vulns.length > 5) lines.push(`  ...and ${vulns.length - 5} more`);
   }
+  if (buildOnly.length > 0)
+    lines.push(
+      `${buildOnly.length} advisor${buildOnly.length === 1 ? "y" : "ies"} in dev dependencies only, not counted (${countBySeverity(buildOnly)})`,
+    );
   return lines;
 }
 
-function gateDecision(failOn: FailOn, issues: IssueRecord[]): { gate: "pass" | "fail"; reason?: string } {
-  const open = issues.filter((i) => i.status === "open");
+function gateDecision(
+  failOn: FailOn,
+  issues: IssueRecord[],
+  countDev: boolean,
+): { gate: "pass" | "fail"; reason?: string } {
+  const open = issues.filter((i) => i.status === "open" && (countDev || !isDevVuln(i)));
   const reasons: string[] = [];
   if (failOn.severity) {
     const hits = open.filter((i) => i.kind === "vuln" && atLeast(i.severity, failOn.severity!));
@@ -113,10 +124,11 @@ export async function analyzeInline(
 
   const events = await evaluateProject(project.id);
   const issues = await activeIssues(project.id);
-  const decision = gateRequested ? gateDecision(meta.failOn, issues) : null;
+  const { countDevDependencies: countDev } = await getSettings();
+  const decision = gateRequested ? gateDecision(meta.failOn, issues, countDev) : null;
 
   return {
-    warnings: describeIssues(issues),
+    warnings: describeIssues(issues, countDev),
     packagesPending,
     gate: decision?.gate ?? null,
     gateReason: [decision?.reason, gateNote].filter(Boolean).join("; ") || undefined,
