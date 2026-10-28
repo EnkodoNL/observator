@@ -53,6 +53,11 @@ const schema = z.object({
   SECRETS_KEY: secretsKey,
   SECRETS_KEY_PREVIOUS: secretsKey,
   /**
+   * A public, read-only demo: visitors without a session are let in as a viewer who can look at
+   * everything except users and accounts, and change nothing. Signing in still works as usual.
+   */
+  DEMO_MODE: bool.default(false),
+  /**
    * The first account needs the setup code from the log. Off: whoever reaches /setup first
    * creates it, for installs that are not reachable from outside until they are set up.
    */

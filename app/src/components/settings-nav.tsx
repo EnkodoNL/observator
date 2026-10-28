@@ -10,17 +10,18 @@ const ITEMS = [
   { href: "/settings/projects", label: "Projects" },
   { href: "/settings/badges", label: "Badges" },
   { href: "/settings/channels", label: "Notifications" },
-  { href: "/settings/account", label: "Account" },
-  { href: "/settings/users", label: "Users" },
+  { href: "/settings/account", label: "Account", personal: true },
+  { href: "/settings/users", label: "Users", personal: true },
 ];
 
-export function SettingsNav() {
+/** demo: the read-only demo, which has no account and shows no users. */
+export function SettingsNav({ demo = false }: { demo?: boolean }) {
   const pathname = usePathname();
   return (
     // The active item is marked like the header: an indigo line, under it on a phone and
     // beside it in the column.
     <nav className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0 md:border-l">
-      {ITEMS.map((item) => {
+      {ITEMS.filter((item) => !(demo && "personal" in item)).map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link

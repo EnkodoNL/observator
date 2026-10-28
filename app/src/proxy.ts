@@ -15,6 +15,8 @@ export function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // A read-only demo lets visitors in without signing in; pages hand them the demo session.
+  if (/^(on|true|1)$/i.test(process.env.DEMO_MODE ?? "")) return NextResponse.next();
   const url = request.nextUrl.clone();
   url.pathname = "/login";
   url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;

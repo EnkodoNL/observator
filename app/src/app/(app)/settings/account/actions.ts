@@ -9,7 +9,7 @@ import {
   clearSessionCookie,
   isFreshSession,
   passwordLogin,
-  requireUser,
+  requireWriter,
   setSessionCookie,
   STALE_SESSION_ERROR,
 } from "@/lib/auth/session";
@@ -35,7 +35,7 @@ const g = globalThis as typeof globalThis & { __passwordCheckLimiter?: RateLimit
 const passwordCheckLimiter = (g.__passwordCheckLimiter ??= RateLimiter.perWindow(10, 15 * 60 * 1000));
 
 async function ownPasskey(id: string): Promise<PasskeyRecord> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const pb = await adminPb();
   const passkey = await pb.collection("passkeys").getOne<PasskeyRecord>(z.string().min(1).parse(id));
   if (passkey.user !== user.id) throw new Error("Not your passkey");
@@ -73,7 +73,7 @@ const passwordSchema = z
 
 /** Changing the password rotates the user's token key: every session ends, this one is renewed. */
 export async function changePasswordAction(_prev: FormState, data: FormData): Promise<FormState> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const parsed = passwordSchema.safeParse(formObject(data));
   if (!parsed.success) return zodState(parsed.error);
   if (!passwordCheckLimiter.take(user.id)) return { error: "Too many attempts. Try again in a few minutes." };
@@ -93,7 +93,7 @@ export async function changePasswordAction(_prev: FormState, data: FormData): Pr
 }
 
 export async function beginTotpSetupAction(): Promise<{ secret: string; qr: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const secret = newTotpSecret();
   return { secret, qr: qrSvg(otpauthUri(user.email, secret)) };
 }
@@ -102,7 +102,7 @@ export async function confirmTotpSetupAction(
   secret: string,
   code: string,
 ): Promise<{ codes?: string[]; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   if (!(await isFreshSession())) return { error: STALE_SESSION_ERROR };
   const status = await twoFactorStatus(user.id);
   if (status.totp) return { error: "An authenticator is already set up. Turn it off first to replace it." };
@@ -116,7 +116,7 @@ export async function confirmTotpSetupAction(
 
 /** Changing two-factor settings needs a current code, so a stolen session alone cannot do it. */
 export async function regenerateRecoveryAction(code: string): Promise<{ codes?: string[]; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const check = await checkSecondFactor(user.id, code);
   if (!check.ok) return { error: check.error };
   const codes = await regenerateRecoveryCodes(user.id);
@@ -125,7 +125,7 @@ export async function regenerateRecoveryAction(code: string): Promise<{ codes?: 
 }
 
 export async function disableTotpAction(code: string): Promise<{ ok?: boolean; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   if (!keepsAFactor(await twoFactorStatus(user.id), "totp"))
     return { error: "Add a passkey before you turn off the authenticator app." };
   const check = await checkSecondFactor(user.id, code);
@@ -148,7 +148,7 @@ const mcpTokenSchema = z.object({
 export async function createMcpTokenAction(
   input: z.infer<typeof mcpTokenSchema>,
 ): Promise<{ token?: string; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const parsed = mcpTokenSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   if (!passwordCheckLimiter.take(user.id)) return { error: "Too many attempts. Try again in a few minutes." };
@@ -164,7 +164,7 @@ export async function createMcpTokenAction(
 }
 
 export async function revokeMcpTokenAction(id: string): Promise<void> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   await revokeMcpToken(user.id, z.string().min(1).parse(id));
   revalidatePath("/settings/account");
 }
@@ -174,7 +174,7 @@ export async function revokeMcpTokenAction(id: string): Promise<void> {
  * PocketBase issued. Signing out only drops this browser's cookie; a copied one would live on.
  */
 export async function signOutEverywhereAction(): Promise<void> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const pb = await adminPb();
   await pb.collection("users").update(user.id, { tokenKey: randomToken(32) });
   await clearSessionCookie();

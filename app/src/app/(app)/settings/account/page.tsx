@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { listPasskeys } from "@/lib/auth/passkeys";
 import { requireUser } from "@/lib/auth/session";
@@ -17,7 +18,8 @@ import { TwoFactor } from "./two-factor";
 export const metadata: Metadata = { title: "Account" };
 
 export default async function AccountPage() {
-  const { user } = await requireUser();
+  const { user, readOnly } = await requireUser();
+  if (readOnly) redirect("/settings/general");
   const [passkeys, twoFactor, tokens] = await Promise.all([
     listPasskeys(user.id),
     twoFactorStatus(user.id),

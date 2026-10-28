@@ -524,8 +524,8 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | --- | --- | --- |
 | `APP_URL` | (required) | Public URL; used for links and as passkey RP ID and origin |
 | `PB_SUPERUSER_EMAIL`, `PB_SUPERUSER_PASSWORD` | (required) | Created or updated on every PocketBase start |
-| `WEB_PORT` | `3000` | Host port (compose) |
-| `WEB_BIND` | `127.0.0.1` | Host address the port is published on (compose); see [Client addresses](#client-addresses) |
+| `WEB_PORT` | `3000` | Host port, from `docker-compose.override.yml` (a plain `docker compose up`) |
+| `WEB_BIND` | `127.0.0.1` | Host address that port is published on; see [Client addresses](#client-addresses) |
 | `TZ` | `UTC` | Default timezone for the digest |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | | For e-mail notifications |
 | `OBSERVATOR_JOBS` | `on` | Background checks |
@@ -537,6 +537,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
 | `SECRETS_KEY` | | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets; without it, deploy webhooks and channels with credentials cannot be saved. See [Secrets at rest](#secrets-at-rest) |
 | `SECRETS_KEY_PREVIOUS` | | The previous key during a rotation |
+| `DEMO_MODE` | `off` | A public read-only demo; see [Demo](#demo) |
 | `SETUP_CODE` | `on` | The first account needs the setup code from the web container's log; `off` lets the first visitor of `/setup` create it |
 | `OBSERVATOR_SELF` | `on` | Observator reports its own Node.js version and packages as the "Observator" project |
 
@@ -564,8 +565,10 @@ expects a reverse proxy in front of it (Coolify's Traefik, Caddy, nginx) and tru
 `X-Forwarded-For` entry that proxy added, the last one; earlier entries come from the client and can
 say anything. With more proxies in a row, set `TRUSTED_PROXIES` to their number.
 
-That only holds when clients cannot reach Observator past the proxy. Compose therefore publishes the
-port on `127.0.0.1`; the proxy reaches the container over the Docker network. A client that talks to
+That only holds when clients cannot reach Observator past the proxy. `docker-compose.yml` therefore
+publishes no port at all: Coolify's proxy reaches the container over the Docker network. A plain
+`docker compose up` also loads `docker-compose.override.yml`, which publishes it on `127.0.0.1`
+(`WEB_PORT`), for a local install or a proxy outside Docker. A client that talks to
 the port directly writes its own `X-Forwarded-For` and passes as any address, IP allowlists included.
 Set `WEB_BIND=0.0.0.0` only when a firewall keeps everyone else off the port, for instance so builds
 on the same host can reach it through the Docker gateway.
@@ -585,8 +588,24 @@ Cloudflare address and set that header themselves; with it on, let only Cloudfla
    `TRUST_CLOUDFLARE=on`.
 4. Deploy. The PocketBase data lives in the `pb_data` volume.
 
+Coolify uses `docker-compose.yml` only, which publishes no host port, so several Observators (a demo
+next to the real one) run side by side on one server without port clashes.
+
 To reach the PocketBase admin UI for debugging, uncomment the `127.0.0.1:8090:8090` port in
 `docker-compose.yml` and use an SSH tunnel.
+
+## Demo
+
+`DEMO_MODE=on` turns an install into a public, read-only demo. Visitors are let in without signing in
+and see the overview, projects, packages, runtimes and settings, but cannot change anything: every
+action that would sends them back with a "not saved" note. Users and accounts are hidden, so no names
+or e-mail addresses show. Builds keep reporting and the checks keep running, so the demo stays alive.
+
+You manage the demo by signing in at `/login` as usual: a real account has its normal rights. The
+setup code, ingest keys, MCP tokens and badges work as on any install. A second Observator for the
+demo runs next to the real one on the same Coolify server (see
+[Deploying on Coolify](#deploying-on-coolify)); give it its own `APP_URL`, `SECRETS_KEY` and
+superuser password.
 
 ## Development
 

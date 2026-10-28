@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { requireWriter } from "@/lib/auth/session";
 import { createIgnore, deleteIgnore, ignoreSchema, type IgnoreInput } from "@/lib/data/ignores";
 import {
   projectSettingsSchema,
@@ -18,7 +18,7 @@ import { SecretsKeyError } from "@/lib/secrets";
 import type { ProjectRecord } from "@/lib/pb/types";
 
 export async function redeployAction(projectId: string): Promise<RedeployResult> {
-  await requireUser();
+  await requireWriter();
   const pb = await adminPb();
   const project = await pb.collection("projects").getOne<ProjectRecord>(z.string().min(1).parse(projectId));
   const result = await triggerRedeploy(project);
@@ -30,7 +30,7 @@ export async function saveProjectSettingsAction(
   projectId: string,
   input: ProjectSettings,
 ): Promise<{ ok?: boolean; error?: string; fieldErrors?: Record<string, string> }> {
-  await requireUser();
+  await requireWriter();
   const parsed = projectSettingsSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error.issues);
   let project: ProjectRecord;
@@ -49,7 +49,7 @@ export async function updateLabelsAction(
   projectId: string,
   text: string,
 ): Promise<{ ok?: boolean; error?: string }> {
-  await requireUser();
+  await requireWriter();
   const { labels, invalid } = parseLabels(z.string().max(2000).parse(text));
   if (invalid.length) return { error: `Not a label: ${invalid.join(", ")}` };
   const project = await setLabels(z.string().min(1).parse(projectId), labels);
@@ -61,7 +61,7 @@ export async function updateLabelsAction(
 export async function ignoreAction(
   input: IgnoreInput,
 ): Promise<{ ok?: boolean; error?: string; fieldErrors?: Record<string, string> }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const parsed = ignoreSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error.issues);
   await createIgnore(parsed.data, user.id);
@@ -69,7 +69,7 @@ export async function ignoreAction(
 }
 
 export async function unignoreAction(ignoreId: string): Promise<void> {
-  await requireUser();
+  await requireWriter();
   await deleteIgnore(z.string().min(1).parse(ignoreId));
 }
 

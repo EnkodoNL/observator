@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { requireWriter } from "@/lib/auth/session";
 import { createIngestKey, revokeIngestKey, updateSharedKey } from "@/lib/data/ingest-keys";
 import type { AllowEntry } from "@/lib/ingest/allowlist";
 import { createProject, deleteProject, rotateApiKey } from "@/lib/data/projects";
@@ -17,7 +17,7 @@ export interface CreatedProject extends FormState {
 const nameSchema = z.object({ name: z.string().trim().min(1, "Give the project a name.").max(100) });
 
 export async function createProjectAction(_prev: CreatedProject, data: FormData): Promise<CreatedProject> {
-  await requireUser();
+  await requireWriter();
   const values = formObject(data);
   const parsed = nameSchema.safeParse(values);
   if (!parsed.success) return zodState(parsed.error, values);
@@ -27,14 +27,14 @@ export async function createProjectAction(_prev: CreatedProject, data: FormData)
 }
 
 export async function rotateKeyAction(projectId: string): Promise<{ apiKey: string }> {
-  await requireUser();
+  await requireWriter();
   const apiKey = await rotateApiKey(z.string().min(1).parse(projectId));
   revalidatePath("/", "layout");
   return { apiKey };
 }
 
 export async function deleteProjectAction(projectId: string): Promise<void> {
-  await requireUser();
+  await requireWriter();
   await deleteProject(z.string().min(1).parse(projectId));
   revalidatePath("/", "layout");
 }
@@ -43,7 +43,7 @@ export async function createSharedKeyAction(
   name: string,
   splitByIp: boolean,
 ): Promise<{ key?: string; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const parsed = z.string().trim().min(1, "Give the key a name").max(100).safeParse(name);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { key } = await createIngestKey(parsed.data, Boolean(splitByIp), user.id);
@@ -56,7 +56,7 @@ export async function updateAllowlistAction(
   id: string,
   text: string,
 ): Promise<{ entries?: AllowEntry[]; error?: string }> {
-  await requireUser();
+  await requireWriter();
   const res = await updateSharedKey(z.string().min(1).parse(id), {
     allowlist: z.string().max(20_000).parse(text),
   });
@@ -66,7 +66,7 @@ export async function updateAllowlistAction(
 }
 
 export async function revokeSharedKeyAction(id: string): Promise<void> {
-  await requireUser();
+  await requireWriter();
   await revokeIngestKey(z.string().min(1).parse(id));
   revalidatePath("/", "layout");
 }

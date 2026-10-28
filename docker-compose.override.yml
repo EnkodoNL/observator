@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Loaded automatically by a plain `docker compose up` (not when files are named with -f, as
+# Coolify does): publishes the web service on the host, for a local install or a proxy outside
+# Docker.
+#
+# Localhost only by default. Directly on a public port, any client could write its own
+# X-Forwarded-For and pass as an allowlisted address; WEB_BIND=0.0.0.0 publishes it anyway.
+services:
+  web:
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
