@@ -114,9 +114,18 @@ describe("webhook signature", () => {
 });
 
 describe("request errors", () => {
+  it("refuses the container itself, link-local addresses and PocketBase", async () => {
+    await expect(request("http://127.0.0.1:4999/x", { json: {} }, 2000)).rejects.toThrow(/refused: .*local/);
+    await expect(request("http://169.254.169.254/latest", { json: {} }, 2000)).rejects.toThrow(/link-local/);
+    await expect(request("http://[::1]:8090/", { json: {} }, 2000)).rejects.toThrow(/refused/);
+    await expect(request("file:///etc/passwd", { json: {} }, 2000)).rejects.toThrow(/only http/);
+  });
+
   it("reports the underlying network error", async () => {
-    await expect(request("http://127.0.0.1:4999/x", { json: {} }, 2000)).rejects.toThrow(/ECONNREFUSED/);
-    await expect(request("http://127.0.0.1:9/x", { json: {} }, 2000)).rejects.toThrow(/bad port/);
+    const refused = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("connect ECONNREFUSED 10.0.0.9:4999"), { code: "ECONNREFUSED" }),
+    });
+    expect(describeFetchError(refused, 15000)).toBe("ECONNREFUSED");
     expect(describeFetchError(Object.assign(new Error("t"), { name: "TimeoutError" }), 15000)).toBe(
       "timed out after 15s",
     );

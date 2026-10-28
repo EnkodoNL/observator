@@ -12,5 +12,11 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
+    // What env() requires; nothing is reached at these addresses.
+    env: {
+      APP_URL: "http://localhost:3000",
+      PB_SUPERUSER_EMAIL: "test@example.com",
+      PB_SUPERUSER_PASSWORD: "test-password-not-secret",
+    },
   },
 });

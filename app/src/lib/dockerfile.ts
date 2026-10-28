@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { dockerSnippet, type LockfileSource, type SnippetForm, type SnippetOptions } from "./snippet";
+import {
+  dockerSnippet,
+  sourceDir,
+  stageName,
+  type LockfileSource,
+  type SnippetForm,
+  type SnippetOptions,
+} from "./snippet";
 
 /**
  * Reads a pasted Dockerfile and works out how to add the snippet: which stage is last and
@@ -284,6 +291,17 @@ function baseNote(base: string, form: SnippetForm): DockerfileNote {
   };
 }
 
+/** An http(s) URL that can stand unquoted in an ARG line; anything else is dropped. */
+function plainUrl(value: string | undefined): string | undefined {
+  if (!value || !/^https?:\/\/[^\s"'`$\\]+$/.test(value)) return undefined;
+  try {
+    new URL(value);
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Reads the snippet's own instructions (everything from its first stage on): the ARG defaults,
  * the reporter image and whether it reports without a key. Older sh snippets read the same way.
@@ -304,7 +322,7 @@ function readSnippet(snippet: Instruction[], stages: Stage[], from: Stage): Snip
   return {
     form: reporter ? "image" : "shell",
     image: reporter?.image,
-    url: args.get("OBSERVATOR_URL") || undefined,
+    url: plainUrl(args.get("OBSERVATOR_URL")),
     key: args.get("OBSERVATOR_KEY") ?? "",
     failOn: args.get("OBSERVATOR_FAIL_ON") ?? "",
     project: args.get("OBSERVATOR_PROJECT") ?? "",
@@ -404,6 +422,12 @@ export function analyzeDockerfile(
 
   const last = app.at(-1)!;
   let stage = last.name;
+  // The name goes into new FROM lines as is, so it has to be one Docker accepts and nothing more.
+  if (stage && stageName(stage, "") !== stage)
+    return {
+      ok: false,
+      error: `The last stage name "${stage.slice(0, 40)}" is not a valid Docker stage name.`,
+    };
   const added = new Set<number>();
   if (stage) {
     notes.push({
@@ -451,7 +475,10 @@ export function analyzeDockerfile(
         : "The last stage has package.json but no lockfile."
       : `The last stage has no package.json in ${last.workdir}.`;
     if (pick) {
-      lockfileFrom = { stage: pick.s.name ?? String(pick.s.index), dir: pick.dir };
+      lockfileFrom = {
+        stage: pick.s.name && stageName(pick.s.name, "") === pick.s.name ? pick.s.name : String(pick.s.index),
+        dir: sourceDir(pick.dir),
+      };
       notes.push({
         level: "info",
         text: `${why} The snippet copies both from ${pick.s.name ?? `stage ${pick.s.index}`} (${pick.dir}, ${describe(pick.f.lock!)}).`,

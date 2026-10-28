@@ -22,12 +22,15 @@ export function ProjectActions({
   name,
   appUrl,
   badge,
+  sharedKey,
 }: {
   id: string;
   name: string;
   appUrl: string;
   /** The project badge as Markdown, for a README. */
   badge?: string;
+  /** The shared key that created the project; it keeps reporting to it after a rotate. */
+  sharedKey?: string;
 }) {
   const [confirm, setConfirm] = useState<"rotate" | "delete" | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -65,7 +68,19 @@ export function ProjectActions({
         open={confirm === "rotate"}
         onOpenChange={(open) => !open && setConfirm(null)}
         title={`Rotate the key for ${name}?`}
-        description="The current key stops working immediately. Builds using it will keep succeeding but stop reporting until you update the build variable."
+        description={
+          <>
+            The current key stops working immediately. Builds using it will keep succeeding but stop reporting
+            until you update the build variable.
+            {sharedKey && (
+              <>
+                {" "}
+                The shared key &ldquo;{sharedKey}&rdquo; (and its IP allowlist) can still report to this
+                project; revoke or change that key under Shared keys to stop it.
+              </>
+            )}
+          </>
+        }
         confirmLabel="Rotate key"
         onConfirm={async () => {
           const { apiKey } = await rotateKeyAction(id);

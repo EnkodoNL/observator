@@ -11,7 +11,10 @@ const schema = z.object({
   APP_URL: z.url().transform((v) => v.replace(/\/+$/, "")),
   PB_URL: z.url().default("http://127.0.0.1:8090"),
   PB_SUPERUSER_EMAIL: z.email(),
-  PB_SUPERUSER_PASSWORD: z.string().min(10),
+  PB_SUPERUSER_PASSWORD: z
+    .string()
+    .min(10)
+    .refine((v) => v !== "change-me-to-something-long", "still the example value from .env.example"),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_USER: z.string().optional(),
@@ -30,10 +33,17 @@ const schema = z.object({
    * Traefik is one). Cloudflare does not count: it is recognised by its address.
    */
   TRUSTED_PROXIES: z.coerce.number().int().min(1).max(10).default(1),
+  /** Cloudflare sits in front: take the visitor from CF-Connecting-IP when the hop is Cloudflare. */
+  TRUST_CLOUDFLARE: bool.default(false),
   SOURCE_URL: z.url().default("https://github.com/EnkodoNL/observator"),
   TZ: z.string().default("UTC"),
   /** Where the snippet copies the reporter from; a mirror or fork can point elsewhere. */
   REPORTER_IMAGE: z.string().trim().default(DEFAULT_REPORTER_IMAGE).transform(reporterImage),
+  /**
+   * The first account needs the setup code from the log. Off: whoever reaches /setup first
+   * creates it, for installs that are not reachable from outside until they are set up.
+   */
+  SETUP_CODE: bool.default(true),
   /** Report Observator's own Node version and packages at startup, as the "Observator" project. */
   OBSERVATOR_SELF: bool.default(true),
 });

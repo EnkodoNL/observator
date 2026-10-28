@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { listPackages, PACKAGE_SCOPES, type PackageScope } from "@/lib/data/packages";
 import { packageHref } from "@/lib/package-href";
 import { SearchBox } from "./search-box";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Packages" };
 
@@ -22,6 +23,7 @@ function scopeHref(scope: PackageScope, q: string): string {
 }
 
 export default async function PackagesPage({ searchParams }: PageProps<"/packages">) {
+  await requireUser();
   const params = await searchParams;
   const q = String(params.q ?? "")
     .trim()

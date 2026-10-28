@@ -18,6 +18,8 @@ import type { PasskeyRecord, UserRecord } from "@/lib/pb/types";
 
 const CHALLENGE_COOKIE = "obs_webauthn";
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+// The login options are public, so the store has a ceiling instead of growing with every request.
+const MAX_PENDING = 5000;
 
 type Pending = { challenge: string; userId?: string; expires: number };
 const g = globalThis as typeof globalThis & { __webauthn?: Map<string, Pending> };
@@ -33,6 +35,7 @@ async function remember(challenge: string, userId?: string): Promise<void> {
   const id = randomToken(18);
   const now = Date.now();
   for (const [k, v] of pending) if (v.expires < now) pending.delete(k);
+  if (pending.size >= MAX_PENDING) throw new Error("Too many sign-ins in progress. Try again in a minute.");
   pending.set(id, { challenge, userId, expires: now + CHALLENGE_TTL_MS });
   (await cookies()).set({
     name: CHALLENGE_COOKIE,
@@ -79,7 +82,7 @@ export async function registrationOptions(user: Pick<UserRecord, "id" | "email">
       id: p.credentialId,
       transports: (p.transports ?? undefined) as AuthenticatorTransport[] | undefined,
     })),
-    authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
   });
   await remember(options.challenge, user.id);
   return options;
@@ -98,7 +101,7 @@ export async function verifyRegistration(
     expectedChallenge: challenge.challenge,
     expectedOrigin: origin,
     expectedRPID: rpID,
-    requireUserVerification: false,
+    requireUserVerification: true,
   });
   if (!result.verified) throw new Error("The passkey could not be verified.");
   const { credential, credentialDeviceType, credentialBackedUp } = result.registrationInfo;
@@ -117,7 +120,7 @@ export async function verifyRegistration(
 
 export async function authenticationOptions() {
   const { rpID } = relyingParty();
-  const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
+  const options = await generateAuthenticationOptions({ rpID, userVerification: "required" });
   await remember(options.challenge);
   return options;
 }
@@ -142,7 +145,7 @@ export async function verifyAuthentication(response: AuthenticationResponseJSON)
     expectedChallenge: challenge.challenge,
     expectedOrigin: origin,
     expectedRPID: rpID,
-    requireUserVerification: false,
+    requireUserVerification: true,
     credential: {
       id: passkey.credentialId,
       publicKey: isoBase64URL.toBuffer(passkey.publicKey),

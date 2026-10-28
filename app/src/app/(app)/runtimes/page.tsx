@@ -7,6 +7,7 @@ import { runtimeOverview, type RuntimeSection, type VersionGroup } from "@/lib/d
 import { lineDescription, pinFor } from "@/lib/runtimes/labels";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Runtimes" };
 
@@ -96,6 +97,7 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
 }
 
 export default async function RuntimesPage() {
+  await requireUser();
   const sections = await runtimeOverview();
   const affected = sections.reduce((n, s) => n + s.affected, 0);
   const targets = sections.flatMap((s) => s.targets.map((t) => `${s.label} ${t}`));

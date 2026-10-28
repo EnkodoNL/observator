@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { originValidationResponse } from "@modelcontextprotocol/server";
-import { clientIpFrom } from "@/lib/client-ip";
+import { clientIpFrom, rateKey } from "@/lib/client-ip";
 import { findMcpToken, touchMcpToken } from "@/lib/data/mcp-tokens";
 import { env } from "@/lib/env";
 import { mcpHandler } from "@/lib/mcp/server";
@@ -29,16 +29,16 @@ async function handle(request: Request): Promise<Response> {
   const rejected = originValidationResponse(request, [new URL(env().APP_URL).hostname]);
   if (rejected) return rejected;
 
-  const ip = clientIpFrom(request.headers, env().TRUSTED_PROXIES);
+  const ip = clientIpFrom(request.headers, env().TRUSTED_PROXIES, env().TRUST_CLOUDFLARE);
   const { probe, perToken } = limits();
-  if (!probe.take(ip)) return refuse(429, "Too many requests with a wrong token; try again later.");
+  if (!probe.take(rateKey(ip))) return refuse(429, "Too many requests with a wrong token; try again later.");
   const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get("authorization") ?? "")?.[1];
   const caller = bearer ? await findMcpToken(bearer) : null;
   if (!caller)
     return refuse(401, "Missing or unknown MCP token. Create one under Settings → Account → MCP.", {
       "WWW-Authenticate": 'Bearer realm="Observator"',
     });
-  probe.reset(ip);
+  probe.reset(rateKey(ip));
   if (!perToken.take(caller.tokenId))
     return refuse(429, "Rate limit for this token reached; try again in a few minutes.");
   await touchMcpToken(caller, ip);

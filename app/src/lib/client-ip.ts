@@ -126,8 +126,12 @@ export function inRange(address: Address, cidr: string): boolean {
 
 const isCloudflare = (a: Address) => CLOUDFLARE_RANGES.some((r) => inRange(a, r));
 
-/** The client's address, or "unknown" when the headers do not say. */
-export function clientIpFrom(headers: Headers, trustedProxies = 1): string {
+/**
+ * The client's address, or "unknown" when the headers do not say. CF-Connecting-IP counts only
+ * with `trustCloudflare`: any Cloudflare customer can reach the proxy from a Cloudflare address
+ * (a Worker opening its own socket) and write that header themselves.
+ */
+export function clientIpFrom(headers: Headers, trustedProxies = 1, trustCloudflare = false): string {
   const chain = (headers.get("x-forwarded-for") ?? "")
     .split(",")
     .map((s) => s.trim())
@@ -135,9 +139,19 @@ export function clientIpFrom(headers: Headers, trustedProxies = 1): string {
   if (chain.length === 0) return "unknown";
   const hop = parseAddress(chain[Math.max(0, chain.length - Math.max(1, trustedProxies))]);
   if (!hop) return "unknown";
-  if (isCloudflare(hop)) {
+  if (trustCloudflare && isCloudflare(hop)) {
     const visitor = parseAddress(headers.get("cf-connecting-ip") ?? "");
     if (visitor) return formatAddress(visitor);
   }
   return formatAddress(hop);
+}
+
+/**
+ * The key to rate-limit an address by. IPv6 counts per /64: one server or household gets a
+ * whole /64, so per-address buckets would let it rotate through billions of keys.
+ */
+export function rateKey(ip: string): string {
+  const a = parseAddress(ip);
+  if (!a || a.version === 4) return ip;
+  return `${formatAddress({ version: 6, value: (a.value >> 64n) << 64n })}/64`;
 }

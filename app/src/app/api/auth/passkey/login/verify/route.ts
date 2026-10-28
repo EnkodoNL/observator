@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     const { response } = await request.json();
     const userId = await verifyAuthentication(response);
-    await setSessionCookie(await impersonate(userId));
+    await setSessionCookie(await impersonate(userId), { fresh: true });
     // A passkey is enough on its own; drop any half-finished password sign-in.
     await clearPending();
     return json(200, { ok: true });

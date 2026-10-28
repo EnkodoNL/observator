@@ -7,6 +7,7 @@ import { clientIp, passwordLogin } from "@/lib/auth/session";
 import { startPending } from "@/lib/auth/two-factor";
 import { findInvite, markInviteUsed } from "@/lib/data/users";
 import { type FormState, formObject, publicValues, zodState } from "@/lib/forms";
+import { tryLock } from "@/lib/kv";
 import { adminPb, isUniqueViolation } from "@/lib/pb/admin";
 import { RateLimiter } from "@/lib/rate-limit";
 
@@ -32,18 +33,33 @@ export async function acceptInviteAction(_prev: FormState, data: FormData): Prom
   if (!parsed.success) return zodState(parsed.error, values);
   const { token, email, password, passwordConfirm } = parsed.data;
 
+  const gone = { error: "This invite link is no longer valid. Ask for a new one." };
   const invite = await findInvite(token);
-  if (!invite) return { error: "This invite link is no longer valid. Ask for a new one." };
-  const pb = await adminPb();
+  if (!invite) return gone;
+  if (invite.email && invite.email.toLowerCase() !== email)
+    return {
+      error: "Please check the highlighted fields.",
+      fieldErrors: { email: `This invite is for ${invite.email}.` },
+      values: publicValues(values),
+    };
+  // One account per invite, also when two submissions race: the lock, then the check again.
+  const release = await tryLock(`invite:${invite.id}`, 30_000);
+  if (!release) return { error: "This invite is being used right now.", values: publicValues(values) };
   try {
-    await pb.collection("users").create({ email, password, passwordConfirm, verified: true });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      return { error: "An account with this e-mail already exists.", values: publicValues(values) };
+    if (!(await findInvite(token))) return gone;
+    const pb = await adminPb();
+    try {
+      await pb.collection("users").create({ email, password, passwordConfirm, verified: true });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        return { error: "An account with this e-mail already exists.", values: publicValues(values) };
+      }
+      return { error: "Could not create the account.", values: publicValues(values) };
     }
-    return { error: "Could not create the account.", values: publicValues(values) };
+    await markInviteUsed(invite.id);
+  } finally {
+    await release();
   }
-  await markInviteUsed(invite.id);
   const login = await passwordLogin(email, password);
   await startPending(login.user, login.token, "/");
   redirect("/login/verify");

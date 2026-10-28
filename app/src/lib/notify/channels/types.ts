@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { z } from "zod";
+import { checkOutbound, isRedirect, OutboundError, showsReplies } from "@/lib/outbound";
 import type { ChannelType } from "@/lib/pb/types";
 import type { Message } from "../message";
 
@@ -41,17 +42,29 @@ export function describeFetchError(err: unknown, timeoutMs: number): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** POST with a timeout; turns non-2xx responses into a readable error. */
+/**
+ * POST with a timeout; turns non-2xx responses into a readable error. The URL passes the outbound
+ * guard first and redirects are not followed, so a channel cannot be pointed at the container,
+ * cloud metadata or PocketBase, directly or through a redirect.
+ */
 export async function request(
   url: string,
   init: RequestInit & { json?: unknown } = {},
   timeoutMs = 15_000,
 ): Promise<Response> {
   const { json, headers, ...rest } = init;
+  let target: URL;
+  try {
+    target = await checkOutbound(url);
+  } catch (err) {
+    if (err instanceof OutboundError) throw new SendError(`refused: ${err.message}`);
+    throw err;
+  }
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(target.href, {
       method: "POST",
+      redirect: "manual",
       ...rest,
       headers: {
         "user-agent": "observator",
@@ -64,8 +77,9 @@ export async function request(
   } catch (err) {
     throw new SendError(`request failed: ${describeFetchError(err, timeoutMs)}`);
   }
+  if (isRedirect(res.status)) throw new SendError(`HTTP ${res.status}: redirects are not followed`);
   if (!res.ok) {
-    const body = (await res.text().catch(() => "")).slice(0, 300);
+    const body = showsReplies(target) ? (await res.text().catch(() => "")).slice(0, 300) : "";
     throw new SendError(`HTTP ${res.status}${body ? `: ${body}` : ""}`);
   }
   return res;

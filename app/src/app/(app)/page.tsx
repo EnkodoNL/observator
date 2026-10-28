@@ -11,6 +11,7 @@ import { effectiveLabels, hasLabels } from "@/lib/labels";
 import { getSettings } from "@/lib/settings";
 import { triage } from "@/lib/triage";
 import { cn } from "@/lib/utils";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -32,6 +33,7 @@ function dashboardHref(labels: string[]): string {
 }
 
 export default async function DashboardPage({ searchParams }: PageProps<"/">) {
+  await requireUser();
   const params = await searchParams;
   const [all, settings] = await Promise.all([getOverview(), getSettings()]);
 

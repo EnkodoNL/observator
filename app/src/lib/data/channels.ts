@@ -13,6 +13,7 @@ import {
   type NotificationRecord,
   type Severity,
 } from "@/lib/pb/types";
+import { maskUrlSecrets, urlOrigin } from "@/lib/url";
 
 export const CHANNEL_TYPES = [
   "slack",
@@ -131,7 +132,7 @@ export function toView(c: ChannelRecord): ChannelView {
   for (const [k, v] of Object.entries(c.config ?? {})) {
     if (secrets.has(k)) {
       if (v) secretsSet.push(k);
-    } else config[k] = String(v ?? "");
+    } else config[k] = maskUrlSecrets(String(v ?? ""));
   }
   return {
     id: c.id,
@@ -158,7 +159,9 @@ export async function getChannel(id: string): Promise<ChannelRecord> {
 
 /**
  * Validates config with the driver's schema. Empty secret fields keep the stored value,
- * so the UI never needs to know a secret to edit the other settings.
+ * so the UI never needs to know a secret to edit the other settings. Not when a server URL
+ * points somewhere else: the stored secret would go along to the new server, so it has to be
+ * entered again.
  */
 export function mergeConfig(
   type: ChannelType,
@@ -166,11 +169,20 @@ export function mergeConfig(
   previous: Record<string, unknown> | null,
 ): { ok: true; config: Record<string, string> } | { ok: false; errors: Record<string, string> } {
   const driver = driverFor(type);
+  const moved = driver.fields.some(
+    (f) =>
+      f.kind === "url" &&
+      !f.secret &&
+      previous?.[f.name] &&
+      urlOrigin((input[f.name] ?? "").trim()) !== urlOrigin(previous[f.name]),
+  );
   const merged: Record<string, string> = {};
   for (const field of driver.fields) {
-    const value = (input[field.name] ?? "").trim();
+    let value = (input[field.name] ?? "").trim();
     const prev = previous?.[field.name];
-    if (field.secret && !value && typeof prev === "string" && prev) merged[field.name] = prev;
+    // Shown masked (see toView), so the masked form coming back means: unchanged.
+    if (typeof prev === "string" && value && value !== prev && value === maskUrlSecrets(prev)) value = prev;
+    if (field.secret && !value && !moved && typeof prev === "string" && prev) merged[field.name] = prev;
     else if (value) merged[field.name] = value;
   }
   const parsed = driver.schema.safeParse(merged);
@@ -179,7 +191,10 @@ export function mergeConfig(
     for (const issue of parsed.error.issues) errors[`config.${issue.path.join(".")}`] ??= issue.message;
     for (const field of driver.fields) {
       if (field.required && !merged[field.name])
-        errors[`config.${field.name}`] = `${field.label} is required`;
+        errors[`config.${field.name}`] =
+          field.secret && moved
+            ? `Enter the ${field.label.toLowerCase()} again: the server changed`
+            : `${field.label} is required`;
     }
     return { ok: false, errors };
   }

@@ -11,6 +11,7 @@ import { formatDate, timeAgo } from "@/lib/time";
 import { McpTokens } from "./mcp-tokens";
 import { Passkeys } from "./passkeys";
 import { PasswordForm } from "./password-form";
+import { SignOutEverywhere } from "./sign-out-everywhere";
 import { TwoFactor } from "./two-factor";
 
 export const metadata: Metadata = { title: "Account" };
@@ -52,6 +53,13 @@ export default async function AccountPage() {
       <section>
         <PageHeader title="Password" description="Changing it signs out every other session." />
         <PasswordForm email={user.email} />
+      </section>
+      <section>
+        <PageHeader
+          title="Sessions"
+          description="Signing out only forgets this browser. Lost a device, or signed in somewhere you should not have? End every session at once."
+        />
+        <SignOutEverywhere />
       </section>
       <section>
         <PageHeader

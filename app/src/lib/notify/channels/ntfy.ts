@@ -19,7 +19,15 @@ export const ntfy: ChannelDriver<{ serverUrl: string; topic: string; token?: str
   description: "Push to a topic on ntfy.sh or your own ntfy server.",
   fields: [
     { name: "serverUrl", label: "Server URL", kind: "url", placeholder: "https://ntfy.sh", required: true },
-    { name: "topic", label: "Topic", kind: "text", placeholder: "observator-a8f3", required: true },
+    {
+      name: "topic",
+      label: "Topic",
+      kind: "password",
+      placeholder: "observator-a8f3",
+      help: "Kept like a password: on a public server, anyone who knows the topic can read it.",
+      required: true,
+      secret: true,
+    },
     {
       name: "token",
       label: "Access token",

@@ -208,9 +208,9 @@ export function SharedKeyList({
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Reports from addresses on no allowlist, without a valid key. To accept them, add the address to a
-            key&rsquo;s IP allowlist; a wrong key from an allowed address is then ignored, with a warning in
-            the build log.
+            Reports from addresses on no allowlist, without a valid key. Unverified: anyone can send one, with
+            any project name, so only allow an address you recognise as your own server. A wrong key from an
+            allowed address is then ignored, with a warning in the build log.
           </p>
         </div>
       )}
@@ -296,7 +296,7 @@ function AllowlistDialog({
     ...refused.map((r) => ({
       ip: r.ip,
       note: r.project,
-      detail: [r.project, r.reason, `${r.count}×`, r.when].filter(Boolean).join(" · "),
+      detail: ["unverified", r.project, r.reason, `${r.count}×`, r.when].filter(Boolean).join(" · "),
     })),
   ].filter((s, i, all) => !matchEntry(s.ip, current) && all.findIndex((o) => o.ip === s.ip) === i);
   const add = (ip: string, note: string) =>
@@ -350,6 +350,10 @@ function AllowlistDialog({
           {suggestions.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Seen by Observator</p>
+              <p className="text-xs text-muted-foreground">
+                Refused reports are unverified: check that an address is one of your servers before you add
+                it.
+              </p>
               <ul className="divide-y rounded-lg border">
                 {suggestions.map((s) => (
                   <li key={s.ip} className="flex items-center gap-3 px-3 py-2">

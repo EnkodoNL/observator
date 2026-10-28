@@ -14,10 +14,12 @@ import { timeAgo } from "@/lib/time";
 import { NewProjectDialog } from "./new-project-dialog";
 import { ProjectActions } from "./project-actions";
 import { NewSharedKeyDialog, SharedKeyList } from "./shared-keys";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Projects" };
 
 export default async function ProjectsSettingsPage() {
+  await requireUser();
   const [projects, keys] = await Promise.all([listProjects(), listIngestKeys()]);
   const refused = await listRefused(keys);
   const appUrl = env().APP_URL;
@@ -75,6 +77,7 @@ export default async function ProjectsSettingsPage() {
                         name={p.name}
                         appUrl={appUrl}
                         badge={projectBadge(appUrl, p).markdown}
+                        sharedKey={p.ingestKey ? keyName.get(p.ingestKey) : undefined}
                       />
                     </TableCell>
                   </TableRow>

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import type { Component } from "./types";
+import { LockfileError, type Component } from "./types";
+
+/** Far above any real project; a ceiling so a crafted lockfile cannot take the server down. */
+export const MAX_PACKAGES = 50_000;
 
 /**
  * Format-independent dependency graph. Node ids are parser-specific (install paths for
@@ -14,6 +17,8 @@ export class DepGraph {
   readonly devFlags = new Map<string, boolean>();
 
   addNode(id: string, name: string, version: string): void {
+    if (this.nodes.size >= MAX_PACKAGES && !this.nodes.has(id))
+      throw new LockfileError(`lockfile has more than ${MAX_PACKAGES} packages`);
     this.nodes.set(id, { name, version });
   }
 
@@ -40,14 +45,23 @@ export class DepGraph {
     const prod = this.reach(this.prodRoots);
     const roots = [...this.prodRoots, ...this.devRoots].filter((id) => this.nodes.has(id));
 
+    // Up to three roots per package, the first ones in root order that reach it. A walk stops at
+    // a package that already names this root or three roots: it passed those on to everything
+    // below it already. So each package is entered at most three times, instead of once per root.
     const via = new Map<string, Set<string>>();
     for (const root of roots) {
       const rootName = this.nodes.get(root)!.name;
-      for (const id of this.reach([root])) {
-        if (id === root) continue;
+      const seen = new Set<string>([root]);
+      const stack = [...(this.edges.get(root) ?? [])];
+      while (stack.length) {
+        const id = stack.pop()!;
+        if (seen.has(id) || !this.nodes.has(id)) continue;
+        seen.add(id);
         let set = via.get(id);
         if (!set) via.set(id, (set = new Set()));
-        if (set.size < 3) set.add(rootName);
+        if (set.has(rootName) || set.size >= 3) continue;
+        set.add(rootName);
+        for (const next of this.edges.get(id) ?? []) if (!seen.has(next)) stack.push(next);
       }
     }
 

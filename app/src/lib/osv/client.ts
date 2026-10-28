@@ -3,6 +3,7 @@ import type { OsvVuln } from "./types";
 
 const API = "https://api.osv.dev/v1";
 const BATCH = 1000;
+const MAX_PAGES = 20;
 
 export interface OsvQuery {
   /** OSV's name for the ecosystem, as stored on components: "npm", later "PyPI" and so on. */
@@ -30,7 +31,8 @@ export async function queryBatch(
   const out: { id: string; modified: string }[][] = queries.map(() => []);
   for (let offset = 0; offset < queries.length; offset += BATCH) {
     let pending = queries.slice(offset, offset + BATCH).map((q, i) => ({ q, index: offset + i, token: "" }));
-    while (pending.length > 0) {
+    // A package with this many pages of advisories does not exist; the bound is for a broken reply.
+    for (let page = 0; pending.length > 0 && page < MAX_PAGES; page++) {
       const res = await post<{
         results: { vulns?: { id: string; modified: string }[]; next_page_token?: string }[];
       }>(

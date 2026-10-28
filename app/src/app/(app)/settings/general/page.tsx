@@ -8,10 +8,12 @@ import { getSettings } from "@/lib/settings";
 import { timeAgo } from "@/lib/time";
 import { CheckButtons } from "./checks";
 import { SettingsForm } from "./settings-form";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "General settings" };
 
 export default async function GeneralSettingsPage() {
+  await requireUser();
   const [settings, states] = await Promise.all([getSettings(), jobStates()]);
   const timezones = Intl.supportedValuesOf("timeZone");
   if (!timezones.includes(settings.timezone)) timezones.unshift(settings.timezone);

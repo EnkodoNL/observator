@@ -2,6 +2,7 @@
 import "server-only";
 import { kvGet, kvSet } from "@/lib/kv";
 import { describeFetchError } from "@/lib/notify/channels/types";
+import { checkOutbound, isRedirect, OutboundError } from "@/lib/outbound";
 import type { ProjectRecord } from "@/lib/pb/types";
 
 export interface RedeployResult {
@@ -32,23 +33,31 @@ export async function triggerRedeploy(project: ProjectRecord): Promise<RedeployR
   const at = new Date().toISOString();
   let result: RedeployResult;
   try {
-    const res = await fetch(project.deployWebhookUrl, {
+    // Same guard as notification channels; only the status comes back, never the body.
+    const target = await checkOutbound(project.deployWebhookUrl);
+    const res = await fetch(target.href, {
       method: project.deployWebhookMethod || "POST",
+      redirect: "manual",
       headers: {
         "user-agent": "observator",
         ...(project.deployWebhookToken ? { authorization: `Bearer ${project.deployWebhookToken}` } : {}),
       },
       signal: AbortSignal.timeout(20_000),
     });
-    const body = (await res.text().catch(() => "")).slice(0, 200).trim();
     result = {
       at,
       ok: res.ok,
       status: res.status,
-      message: res.ok ? "Deploy triggered" : `HTTP ${res.status}${body ? `: ${body}` : ""}`,
+      message: res.ok
+        ? "Deploy triggered"
+        : `HTTP ${res.status}${isRedirect(res.status) ? ": redirects are not followed" : ""}`,
     };
   } catch (err) {
-    result = { at, ok: false, message: describeFetchError(err, 20_000) };
+    result = {
+      at,
+      ok: false,
+      message: err instanceof OutboundError ? `refused: ${err.message}` : describeFetchError(err, 20_000),
+    };
   }
   await kvSet(`redeploy:${project.id}`, result);
   return result;
