@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { DotsThreeIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react/ssr";
+import { DotsThreeIcon, KeyIcon, ShieldCheckIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,7 +17,18 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { KeyReveal } from "@/components/key-reveal";
 import { deleteProjectAction, rotateKeyAction } from "./actions";
 
-export function ProjectActions({ id, name, appUrl }: { id: string; name: string; appUrl: string }) {
+export function ProjectActions({
+  id,
+  name,
+  appUrl,
+  badge,
+}: {
+  id: string;
+  name: string;
+  appUrl: string;
+  /** The project badge as Markdown, for a README. */
+  badge?: string;
+}) {
   const [confirm, setConfirm] = useState<"rotate" | "delete" | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
 
@@ -30,6 +41,16 @@ export function ProjectActions({ id, name, appUrl }: { id: string; name: string;
           <DotsThreeIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
+          {badge && (
+            <DropdownMenuItem
+              onClick={async () => {
+                await navigator.clipboard.writeText(badge);
+                toast.success("Badge copied as Markdown");
+              }}
+            >
+              <ShieldCheckIcon /> Copy badge
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => setConfirm("rotate")}>
             <KeyIcon /> Rotate API key
           </DropdownMenuItem>

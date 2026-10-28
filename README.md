@@ -353,16 +353,25 @@ On a project's *Setup* tab you can store a deploy webhook. Observator calls it w
 A rebuild only gets a newer runtime if the Dockerfile pins the new version (as the advice says) or the
 build pulls the base image.
 
-### Status badge
+### Status badges
 
-The *Setup* tab also has a badge URL for your README, showing `ok`, `node update` (or `node eol`) or
-the number of open advisories:
+Every app and every project has a public badge for a README. It shows `ok`, `node update` (or
+`node eol`), `no builds`, or the open advisories in production, such as `2 high, 10 moderate`. It is
+red for high and critical, amber for moderate.
+
+- **App badge** (`/badge/app/<app>.svg`): all projects of an app together, such as every server behind
+  a shared key. An app is its `app:` label, otherwise the name the build reported. This is the one for
+  a repository's README.
+- **Project badge** (`/badge/<slug>.svg`): one project, or one server of an app.
 
 ```markdown
-[![Observator](https://observator.example.com/badge/api.svg?token=...)](https://observator.example.com/projects/api)
+[![Observator](https://observator.example.com/badge/app/api.svg?token=...)](https://observator.example.com/?label=app%3Aapi)
 ```
 
-The token only grants the badge. Without it the badge says `unknown`.
+You find them at the bottom of a project's overview, under **Settings → Badges** (all apps and
+projects), in a project's menu (*Copy badge*), and in `get_project` over MCP. The token in the link
+only grants the badge; without it, or with an old one, the badge says `unknown`. *New token* retires
+the current link, for when a badge should stop showing.
 
 ### Labels
 

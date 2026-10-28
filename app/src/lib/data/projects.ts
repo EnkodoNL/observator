@@ -4,17 +4,7 @@ import { z } from "zod";
 import { adminPb, isNotFound } from "@/lib/pb/admin";
 import { newApiKey, randomToken, sha256 } from "@/lib/crypto";
 import type { ProjectRecord } from "@/lib/pb/types";
-
-export function slugify(name: string): string {
-  return (
-    name
-      .normalize("NFKD")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "project"
-  );
-}
+import { slugify } from "@/lib/slug";
 
 export async function listProjects(): Promise<ProjectRecord[]> {
   const pb = await adminPb();

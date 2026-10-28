@@ -6,9 +6,9 @@ import type { App, Service } from "@/lib/app-board";
 import type { ProjectSummary } from "@/lib/data/views";
 import type { Severity } from "@/lib/pb/types";
 import { primaryRuntime } from "@/lib/runtimes/labels";
+import { countsText, worstCounted } from "@/lib/severity";
 import { cn } from "@/lib/utils";
 
-const ORDER: Severity[] = ["critical", "high", "moderate", "low", "unknown"];
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** "2 high, 10 moderate" in the colour of the worst; otherwise build-only or clean. */
@@ -24,20 +24,13 @@ function Advisories({
   stale: boolean;
 }) {
   if (!built) return <span className="text-muted-foreground">no build yet</span>;
-  const present = ORDER.filter((s) => counts[s]);
-  const text = present.length
-    ? present
-        .slice(0, 2)
-        .map((s) => `${counts[s]} ${s}`)
-        .join(", ")
-    : buildOnly
-      ? `${buildOnly} build-only`
-      : "clean";
+  const worst = worstCounted(counts);
+  const text = worst ? countsText(counts) : buildOnly ? `${buildOnly} build-only` : "clean";
   return (
     <span
       className={cn(
-        present.length ? SEVERITY_TEXT[present[0]] : buildOnly ? "text-quiet" : "text-muted-foreground",
-        present.length && "font-bold",
+        worst ? SEVERITY_TEXT[worst] : buildOnly ? "text-quiet" : "text-muted-foreground",
+        worst && "font-bold",
       )}
     >
       {text}

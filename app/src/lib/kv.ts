@@ -38,6 +38,22 @@ export async function kvSet(key: string, value: unknown, expiresAt?: Date): Prom
   }
 }
 
+/** Stores `value` unless the key exists, and returns what is stored: the first writer wins. */
+export async function kvEnsure<T>(key: string, value: T): Promise<T> {
+  const existing = await find(key);
+  if (existing) return existing.value as T;
+  const pb = await adminPb();
+  try {
+    await pb.collection("kv").create({ key, value, expiresAt: "" });
+    return value;
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    const raced = await find(key);
+    if (!raced) throw err;
+    return raced.value as T;
+  }
+}
+
 export async function kvDelete(key: string): Promise<void> {
   const pb = await adminPb();
   const existing = await find(key);

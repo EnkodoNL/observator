@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { escapeHtml } from "@/lib/notify/message";
+import type { Severity } from "@/lib/pb/types";
+import { countsText, worstCounted } from "@/lib/severity";
+import type { ProjectStatus, StatusSummary } from "@/lib/status";
 
 // Average glyph widths of Verdana 11px, close enough to size the boxes like shields.io.
 const WIDE = /[MWmw@%]/;
@@ -16,6 +19,55 @@ export const BADGE_COLORS = {
   vulnerable: "#d92d20",
   none: "#8a8f98",
 } as const;
+
+/** Red only for high and critical, as on the board. */
+const SEVERITY_COLOR: Record<Severity, string> = {
+  critical: BADGE_COLORS.vulnerable,
+  high: BADGE_COLORS.vulnerable,
+  moderate: BADGE_COLORS.update,
+  low: BADGE_COLORS.none,
+  unknown: BADGE_COLORS.none,
+};
+
+/** "node update" or "node eol", for the first runtime that needs attention; null if none does. */
+export function runtimeBadge(s: Pick<StatusSummary, "runtimeSecurity" | "runtimeEol">): string | null {
+  const issue = s.runtimeSecurity[0] ?? s.runtimeEol[0];
+  if (!issue) return null;
+  const runtime = (issue.data as { runtime?: string } | null)?.runtime ?? "runtime";
+  return `${runtime} ${s.runtimeSecurity.length ? "update" : "eol"}`;
+}
+
+/** What a badge says: "2 high, 10 moderate", "node update", "ok" or "no builds". */
+export function badgeValue({
+  status,
+  counts,
+  runtime,
+}: {
+  status: ProjectStatus;
+  counts: Partial<Record<Severity, number>>;
+  runtime: string | null;
+}): { value: string; color: string } {
+  const worst = worstCounted(counts);
+  if (status === "vulnerable" && worst) return { value: countsText(counts), color: SEVERITY_COLOR[worst] };
+  if (status === "update") return { value: runtime ?? "runtime update", color: BADGE_COLORS.update };
+  if (status === "ok") return { value: "ok", color: BADGE_COLORS.ok };
+  return { value: "no builds", color: BADGE_COLORS.none };
+}
+
+/** The SVG response, locked down: no scripts, nothing loaded from elsewhere. */
+export const badgeResponse = (body: string, cache: string) =>
+  new Response(body, {
+    headers: {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": cache,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
+    },
+  });
+
+/** Shown for a wrong token or an unknown badge, so a badge never tells whether something exists. */
+export const unknownBadge = () =>
+  badgeResponse(badgeSvg("observator", "unknown", BADGE_COLORS.none), "no-store");
 
 /** A flat, shields.io-style badge: grey label on the left, coloured value on the right. */
 export function badgeSvg(label: string, value: string, color: string): string {

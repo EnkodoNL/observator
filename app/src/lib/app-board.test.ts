@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "@/lib/data/views";
 import type { BuildRecord, IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
-import { appBoard } from "./app-board";
+import { appBoard, findApp } from "./app-board";
 import { summarize } from "./status";
 
 const vuln = (severity: Severity, dev = false) =>
@@ -65,5 +65,37 @@ describe("appBoard", () => {
   it("strips the app name from services without a role", () => {
     const [app] = appBoard([item("chat-socket", { labels: ["app:chat"] })], 14);
     expect(app.services[0].name).toBe("socket");
+  });
+
+  it("sums the services' advisories by severity", () => {
+    const [app] = appBoard(
+      [
+        item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
+        item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
+      ],
+      14,
+    );
+    expect(app.counts).toEqual({ high: 1, moderate: 2 });
+  });
+});
+
+describe("findApp", () => {
+  it("addresses an app by its label, or by the reported name as a slug", () => {
+    const apps = appBoard(
+      [
+        item("Price Watch · 10.0.0.1", { sourceName: "Price Watch", instance: "10.0.0.1" }),
+        item("garden-cms", { labels: ["app:garden"] }),
+      ],
+      14,
+    );
+    expect(findApp(apps, "price-watch")?.name).toBe("Price Watch");
+    expect(findApp(apps, "garden")?.name).toBe("garden");
+    expect(findApp(apps, "nope")).toBeUndefined();
+  });
+
+  it("prefers the app label when a project without one has the same name", () => {
+    const apps = appBoard([item("league"), item("league-api", { labels: ["app:league"] })], 14);
+    expect(apps.map((a) => a.id)).toEqual(["league", "league"]);
+    expect(findApp(apps, "league")?.key).toBe("label:league");
   });
 });

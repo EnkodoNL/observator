@@ -2,7 +2,8 @@
 import "server-only";
 import { randomToken, sha256 } from "@/lib/crypto";
 import { findIngestKey, findIngestKeyForIp } from "@/lib/data/ingest-keys";
-import { getProjectByKey, slugify, uniqueSlug } from "@/lib/data/projects";
+import { getProjectByKey, uniqueSlug } from "@/lib/data/projects";
+import { slugify } from "@/lib/slug";
 import { adminPb, isUniqueViolation } from "@/lib/pb/admin";
 import type { IngestKeyRecord, ProjectRecord } from "@/lib/pb/types";
 import { RateLimiter } from "@/lib/rate-limit";
