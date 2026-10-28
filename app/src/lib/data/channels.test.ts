@@ -36,3 +36,28 @@ describe("masked URLs", () => {
     expect(res).toMatchObject({ ok: true, config: { url: stored.url } });
   });
 });
+
+describe("openConfig", () => {
+  it("decrypts the secret fields and leaves the rest", async () => {
+    const { randomBytes } = await import("node:crypto");
+    const { vi } = await import("vitest");
+    vi.resetModules();
+    vi.stubEnv("SECRETS_KEY", randomBytes(32).toString("base64"));
+    try {
+      const { seal } = await import("@/lib/secrets");
+      const { openConfig } = await import("./channels");
+      const config = {
+        serverUrl: "https://gotify.example.com",
+        appToken: seal("A.secret", "channels.gotify.appToken"),
+      };
+      expect(openConfig({ type: "gotify", config })).toEqual({
+        serverUrl: "https://gotify.example.com",
+        appToken: "A.secret",
+      });
+      // Stored before encryption existed: read as it is.
+      expect(openConfig({ type: "gotify", config: { ...config, appToken: "plain" } }).appToken).toBe("plain");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

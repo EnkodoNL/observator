@@ -2,16 +2,12 @@
 
 /**
  * In the Node.js server process (not during build, not on edge): prints the setup code on a fresh
- * install and starts the periodic checks.
+ * install, encrypts stored secrets under SECRETS_KEY and starts the periodic checks. The import
+ * sits inside the runtime check so the edge build leaves the Node-only code out.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  // A fresh install prints the code for its first account; PocketBase may still be starting.
-  import("./lib/auth/setup-code").then((m) => m.announceSetupCode()).catch(() => undefined);
-  if (/^(off|false|0)$/i.test(process.env.OBSERVATOR_JOBS ?? "")) {
-    console.info("[jobs] disabled by OBSERVATOR_JOBS");
-    return;
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { startNode } = await import("./instrumentation-node");
+    await startNode();
   }
-  const { startScheduler } = await import("./lib/jobs/scheduler");
-  startScheduler();
 }

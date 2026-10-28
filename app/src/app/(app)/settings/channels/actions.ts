@@ -8,6 +8,7 @@ import {
   type ChannelInput,
   type ChannelResult,
   getChannel,
+  openConfig,
   saveChannel,
   testChannel,
   testSavedChannel,
@@ -56,7 +57,7 @@ export async function detectTelegramAction(
 ): Promise<{ chats?: { id: string; name: string; type: string }[]; error?: string }> {
   await requireUser();
   let token = botToken.trim();
-  if (!token && channelId) token = String((await getChannel(channelId)).config?.botToken ?? "");
+  if (!token && channelId) token = openConfig(await getChannel(channelId)).botToken ?? "";
   if (!token) return { error: "Enter the bot token first." };
   try {
     const chats = await telegramChats(token);

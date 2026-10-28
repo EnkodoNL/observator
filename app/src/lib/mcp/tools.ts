@@ -7,6 +7,7 @@ import { getProjectBySlug, listProjects } from "@/lib/data/projects";
 import { env } from "@/lib/env";
 import { pbDate } from "@/lib/pb/admin";
 import type { ProjectRecord } from "@/lib/pb/types";
+import { SecretsKeyError } from "@/lib/secrets";
 
 /** A mistake the client can fix (an unknown project, a bad value): its message is shown as is. */
 export class ToolError extends Error {}
@@ -71,7 +72,8 @@ export function registerTools(server: McpServer, caller: McpCaller, tools: Recor
             structuredContent: data,
           };
         } catch (err) {
-          const known = err instanceof ToolError || err instanceof z.ZodError;
+          const known =
+            err instanceof ToolError || err instanceof SecretsKeyError || err instanceof z.ZodError;
           if (!known) console.error(`[mcp] ${name} failed`, err);
           const text =
             err instanceof z.ZodError

@@ -5,6 +5,7 @@ import { adminPb, isNotFound } from "@/lib/pb/admin";
 import { newApiKey, randomToken, sha256 } from "@/lib/crypto";
 import type { ProjectRecord } from "@/lib/pb/types";
 import { slugify } from "@/lib/slug";
+import { seal, unseal } from "@/lib/secrets";
 import { urlOrigin } from "@/lib/url";
 
 export async function listProjects(): Promise<ProjectRecord[]> {
@@ -92,6 +93,10 @@ export const projectSettingsSchema = z.object({
 
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
 
+/** Contexts the webhook fields are encrypted under, see lib/secrets. */
+export const WEBHOOK_URL = "projects.deployWebhookUrl";
+export const WEBHOOK_TOKEN = "projects.deployWebhookToken";
+
 /**
  * Saves the name and the deploy webhook. Empty URL or token fields keep the stored values:
  * they are secrets the browser (or an MCP client) never sees. A new URL on another host drops
@@ -101,12 +106,14 @@ export async function saveProjectSettings(projectId: string, input: ProjectSetti
   const { name, deployWebhookUrl, deployWebhookMethod, deployWebhookToken, clearWebhook } = input;
   const data: Partial<ProjectRecord> = { name, deployWebhookMethod };
   const previous = await (await adminPb()).collection("projects").getOne<ProjectRecord>(projectId);
+  const previousUrl = unseal(previous.deployWebhookUrl, WEBHOOK_URL);
   if (clearWebhook) Object.assign(data, { deployWebhookUrl: "", deployWebhookToken: "" });
   else {
-    if (deployWebhookUrl) data.deployWebhookUrl = deployWebhookUrl;
-    if (deployWebhookToken) data.deployWebhookToken = deployWebhookToken;
+    // Both are stored encrypted: Dokploy and Portainer put the token in the URL itself.
+    if (deployWebhookUrl) data.deployWebhookUrl = seal(deployWebhookUrl, WEBHOOK_URL);
+    if (deployWebhookToken) data.deployWebhookToken = seal(deployWebhookToken, WEBHOOK_TOKEN);
     // A token never travels to a new host on its own: it was meant for the old one.
-    else if (deployWebhookUrl && urlOrigin(deployWebhookUrl) !== urlOrigin(previous.deployWebhookUrl))
+    else if (deployWebhookUrl && urlOrigin(deployWebhookUrl) !== urlOrigin(previousUrl))
       data.deployWebhookToken = "";
   }
   return updateProject(projectId, data);

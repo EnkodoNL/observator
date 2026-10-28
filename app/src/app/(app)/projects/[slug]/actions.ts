@@ -14,6 +14,7 @@ import {
 import { parseLabels } from "@/lib/labels";
 import { triggerRedeploy, type RedeployResult } from "@/lib/deploy";
 import { adminPb } from "@/lib/pb/admin";
+import { SecretsKeyError } from "@/lib/secrets";
 import type { ProjectRecord } from "@/lib/pb/types";
 
 export async function redeployAction(projectId: string): Promise<RedeployResult> {
@@ -32,7 +33,13 @@ export async function saveProjectSettingsAction(
   await requireUser();
   const parsed = projectSettingsSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error.issues);
-  const project = await saveProjectSettings(z.string().min(1).parse(projectId), parsed.data);
+  let project: ProjectRecord;
+  try {
+    project = await saveProjectSettings(z.string().min(1).parse(projectId), parsed.data);
+  } catch (err) {
+    if (err instanceof SecretsKeyError) return { error: `Not saved: ${err.message}.` };
+    throw err;
+  }
   revalidatePath(`/projects/${project.slug}`);
   revalidatePath("/", "layout");
   return { ok: true };

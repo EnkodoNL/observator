@@ -4,6 +4,7 @@ import { adminPb, toPbDate } from "@/lib/pb/admin";
 import type { ChannelRecord, NotificationRecord } from "@/lib/pb/types";
 import { driverFor } from "./channels";
 import type { Message } from "./message";
+import { openConfig } from "@/lib/data/channels";
 
 /** Delay before retry n (1-based). After the last one the notification is marked failed. */
 export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000];
@@ -18,10 +19,7 @@ async function deliver(n: NotificationRecord): Promise<void> {
   const attempts = n.attempts + 1;
   try {
     const channel = await pb.collection("channels").getOne<ChannelRecord>(n.channel);
-    await driverFor(channel.type).send(
-      n.payload as Message,
-      (channel.config ?? {}) as Record<string, string>,
-    );
+    await driverFor(channel.type).send(n.payload as Message, openConfig(channel));
     await pb
       .collection("notifications")
       .update(n.id, { status: "sent", attempts, sentAt: toPbDate(new Date()), error: "" });

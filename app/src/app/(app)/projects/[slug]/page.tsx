@@ -7,7 +7,7 @@ import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
-import { lastRedeploy, maskUrl } from "@/lib/deploy";
+import { lastRedeploy, maskedWebhook } from "@/lib/deploy";
 import { latestVersions, outdatedLevel } from "@/lib/npm-latest";
 import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
 import { env } from "@/lib/env";
@@ -178,11 +178,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
           <div className="flex items-center gap-2">
             {project.deployWebhookUrl && (
-              <RedeployButton
-                projectId={project.id}
-                name={project.name}
-                target={maskUrl(project.deployWebhookUrl)}
-              />
+              <RedeployButton projectId={project.id} name={project.name} target={maskedWebhook(project)} />
             )}
             <ProjectActions
               id={project.id}
@@ -382,7 +378,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               projectId={project.id}
               name={project.name}
               webhook={{
-                masked: maskUrl(project.deployWebhookUrl),
+                masked: maskedWebhook(project),
                 method: project.deployWebhookMethod || "POST",
                 hasToken: Boolean(project.deployWebhookToken),
               }}

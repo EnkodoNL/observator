@@ -63,6 +63,7 @@ jobs:
           cp .env.example .env
           sed -i 's#^PB_SUPERUSER_PASSWORD=.*#PB_SUPERUSER_PASSWORD=ci-password-not-secret#' .env
           echo "OBSERVATOR_JOBS=off" >> .env
+          sed -i "s#^SECRETS_KEY=.*#SECRETS_KEY=$(openssl rand -base64 32)#" .env
           # The example builds reach Observator through the Docker host gateway, not localhost.
           echo "WEB_BIND=0.0.0.0" >> .env
       - name: Start the stack

@@ -7,6 +7,13 @@ const bool = z
   .enum(["on", "off", "true", "false", "1", "0"])
   .transform((v) => v === "on" || v === "true" || v === "1");
 
+/** 32 random bytes, base64: `openssl rand -base64 32`. */
+const secretsKey = z
+  .string()
+  .trim()
+  .refine((v) => Buffer.from(v, "base64").length === 32, "must be 32 bytes, base64 (openssl rand -base64 32)")
+  .optional();
+
 const schema = z.object({
   APP_URL: z.url().transform((v) => v.replace(/\/+$/, "")),
   PB_URL: z.url().default("http://127.0.0.1:8090"),
@@ -39,6 +46,12 @@ const schema = z.object({
   TZ: z.string().default("UTC"),
   /** Where the snippet copies the reporter from; a mirror or fork can point elsewhere. */
   REPORTER_IMAGE: z.string().trim().default(DEFAULT_REPORTER_IMAGE).transform(reporterImage),
+  /**
+   * Encrypts stored secrets (deploy webhooks, channel credentials) at rest. Without it, such
+   * secrets cannot be saved. The previous key still decrypts during a rotation.
+   */
+  SECRETS_KEY: secretsKey,
+  SECRETS_KEY_PREVIOUS: secretsKey,
   /**
    * The first account needs the setup code from the log. Off: whoever reaches /setup first
    * creates it, for installs that are not reachable from outside until they are set up.
