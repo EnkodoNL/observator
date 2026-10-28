@@ -96,20 +96,26 @@ build v2-https "$EXPRESS.reporter" NODE_IMAGE=node:22-slim "https://example.com"
   { output | grep -q 'report failed, continuing' || fail "v2 https check did not reach the server"; } &&
   { ! output | grep -Eq 'x509|certificate' || fail "v2 has no root certificates on slim"; }
 
-# The gate is the one thing that may fail a build: the example has a critical advisory.
+# The gate is the one thing that may fail a build: the example has high advisories in production.
+gate() {
+  docker build --progress=plain --no-cache-filter observator --add-host=host.docker.internal:host-gateway \
+    --build-context "$REPORTER=docker-image://observator-reporter:test" -f "$1" \
+    --build-arg "OBSERVATOR_URL=$OBSERVATOR_URL" --build-arg "OBSERVATOR_KEY=$OBSERVATOR_KEY" \
+    --build-arg "OBSERVATOR_FAIL_ON=$2" "$(dirname "$1")" >"$LOG" 2>&1
+}
 for gated in "v2 $EXPRESS.reporter" "sh $EXPRESS"; do
   set -- $gated
-  echo "==> gate-$1 (OBSERVATOR_FAIL_ON=critical)"
-  if docker build --progress=plain --no-cache-filter observator --add-host=host.docker.internal:host-gateway \
-    --build-context "$REPORTER=docker-image://observator-reporter:test" -f "$2" \
-    --build-arg "OBSERVATOR_URL=$OBSERVATOR_URL" --build-arg "OBSERVATOR_KEY=$OBSERVATOR_KEY" \
-    --build-arg OBSERVATOR_FAIL_ON=critical "$(dirname "$2")" >"$LOG" 2>&1; then
+  echo "==> gate-$1 (OBSERVATOR_FAIL_ON=high)"
+  if gate "$2" high; then
     fail "gate did not fail the build ($1)"
   else
     output | grep -q '^OBSERVATOR_GATE=fail' || fail "build failed without the gate saying so ($1)"
     output | grep '^OBSERVATOR_GATE' | sed 's/^/    /'
   fi
 done
+# Its one critical advisory (minimist) is a dev dependency, which the gate leaves alone by default.
+echo "==> gate-dev (OBSERVATOR_FAIL_ON=critical)"
+gate "$EXPRESS.reporter" critical || fail "gate failed the build on a dev dependency"
 
 # The plain sh snippet, one image per client.
 

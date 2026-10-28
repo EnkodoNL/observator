@@ -314,7 +314,8 @@ The `*` makes each lockfile optional, so the same line works for npm, pnpm and y
 Set `OBSERVATOR_FAIL_ON` (also a build variable) to fail the build when Observator knows about a
 problem: a severity (`critical`, `high`, `moderate`, `low`) for package advisories, `runtime` for a
 runtime security release that the image does not have yet (or one runtime by name, such as `node`),
-or both, such as `high,node`. With a new lockfile the server checks
+or both, such as `high,node`. Advisories in dev dependencies only count when *Count dev
+dependencies* is on under **Settings → General**. With a new lockfile the server checks
 OSV before answering (up to 20 seconds). If that check does not finish, the gate passes and says so.
 
 ### What is sent
