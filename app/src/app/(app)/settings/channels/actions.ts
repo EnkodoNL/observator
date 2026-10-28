@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { requireWriter } from "@/lib/auth/session";
 import {
   type ChannelInput,
   type ChannelResult,
@@ -20,31 +20,31 @@ export type { ChannelInput } from "@/lib/data/channels";
 export type ActionResult = ChannelResult;
 
 export async function saveChannelAction(raw: ChannelInput): Promise<ActionResult> {
-  await requireUser();
+  await requireWriter();
   const result = await saveChannel(raw);
   if (result.ok) revalidatePath("/settings/channels");
   return result;
 }
 
 export async function testChannelAction(raw: ChannelInput): Promise<ActionResult> {
-  await requireUser();
+  await requireWriter();
   return testChannel(raw);
 }
 
 export async function testSavedChannelAction(id: string): Promise<ActionResult> {
-  await requireUser();
+  await requireWriter();
   return testSavedChannel(z.string().min(1).parse(id));
 }
 
 export async function toggleChannelAction(id: string, enabled: boolean): Promise<void> {
-  await requireUser();
+  await requireWriter();
   const pb = await adminPb();
   await pb.collection("channels").update(z.string().min(1).parse(id), { enabled: Boolean(enabled) });
   revalidatePath("/settings/channels");
 }
 
 export async function deleteChannelAction(id: string): Promise<void> {
-  await requireUser();
+  await requireWriter();
   const pb = await adminPb();
   await pb.collection("channels").delete(z.string().min(1).parse(id));
   revalidatePath("/settings/channels");
@@ -55,7 +55,7 @@ export async function detectTelegramAction(
   botToken: string,
   channelId?: string,
 ): Promise<{ chats?: { id: string; name: string; type: string }[]; error?: string }> {
-  await requireUser();
+  await requireWriter();
   let token = botToken.trim();
   if (!token && channelId) token = openConfig(await getChannel(channelId)).botToken ?? "";
   if (!token) return { error: "Enter the bot token first." };

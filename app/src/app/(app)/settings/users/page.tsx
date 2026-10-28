@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { PageHeader } from "@/components/page-header";
 import { requireUser } from "@/lib/auth/session";
@@ -11,7 +12,9 @@ import { InviteButton, RemoveUserButton, ResetTwoFactorButton, RevokeInviteButto
 export const metadata: Metadata = { title: "Users" };
 
 export default async function UsersPage() {
-  const { user: me } = await requireUser();
+  const { user: me, readOnly } = await requireUser();
+  // The demo shows no people: names and e-mail addresses are not part of it.
+  if (readOnly) redirect("/settings/general");
   const [users, invites] = await Promise.all([listUsers(), listInvites()]);
 
   return (

@@ -4,7 +4,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { GearIcon, MonitorIcon, MoonIcon, SignOutIcon, SunIcon, UserIcon } from "@phosphor-icons/react/ssr";
+import {
+  GearIcon,
+  MonitorIcon,
+  MoonIcon,
+  SignInIcon,
+  SignOutIcon,
+  SunIcon,
+  UserIcon,
+} from "@phosphor-icons/react/ssr";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +37,16 @@ const NAV = [
   { href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings"), wide: true },
 ] as const;
 
-export function AppHeader({ email, actions }: { email: string; actions?: React.ReactNode }) {
+export function AppHeader({
+  email,
+  actions,
+  demo = false,
+}: {
+  email: string;
+  actions?: React.ReactNode;
+  /** The read-only demo: no account, and signing in instead of out. */
+  demo?: boolean;
+}) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
@@ -87,15 +104,23 @@ export function AppHeader({ email, actions }: { email: string; actions?: React.R
                 </DropdownMenuRadioGroup>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/settings/account" />}>
-                <UserIcon /> Account
-              </DropdownMenuItem>
+              {!demo && (
+                <DropdownMenuItem render={<Link href="/settings/account" />}>
+                  <UserIcon /> Account
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="sm:hidden" render={<Link href="/settings" />}>
                 <GearIcon /> Settings
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void logoutAction()}>
-                <SignOutIcon /> Sign out
-              </DropdownMenuItem>
+              {demo ? (
+                <DropdownMenuItem render={<Link href="/login" />}>
+                  <SignInIcon /> Sign in
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => void logoutAction()}>
+                  <SignOutIcon /> Sign out
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

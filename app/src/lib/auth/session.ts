@@ -14,7 +14,12 @@ export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export interface Session {
   user: Pick<UserRecord, "id" | "email" | "name">;
+  /** A demo visitor (DEMO_MODE): may look, never change anything. */
+  readOnly?: boolean;
 }
+
+/** Who a visitor without a session is in DEMO_MODE. Not a PocketBase user; it owns nothing. */
+const DEMO_SESSION: Session = { user: { id: "demo", email: "Demo visitor", name: "Demo" }, readOnly: true };
 
 /** How long after a full sign-in a session may change its sign-in factors. */
 const FRESH_MS = 10 * 60 * 1000;
@@ -62,10 +67,29 @@ export const getSession = cache(async (): Promise<Session | null> => {
   }
 });
 
+/** The signed-in user; in DEMO_MODE a visitor without a session gets the read-only demo session. */
 export async function requireUser(): Promise<Session> {
   const session = await getSession();
-  if (!session) redirect("/login");
-  return session;
+  if (session) return session;
+  if (env().DEMO_MODE) return DEMO_SESSION;
+  redirect("/login");
+}
+
+/**
+ * For anything that changes something: every server action except pure lookups. A demo visitor
+ * is sent back to the page they were on, with a note that the demo is read-only.
+ */
+export async function requireWriter(): Promise<Session> {
+  const session = await requireUser();
+  if (!session.readOnly) return session;
+  let path = "/";
+  try {
+    const from = new URL((await headers()).get("referer") ?? "");
+    if (from.origin === new URL(env().APP_URL).origin) path = from.pathname;
+  } catch {
+    // No usable referer: back to the overview.
+  }
+  redirect(`${path}?demo=read-only`);
 }
 
 /**

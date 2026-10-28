@@ -3,14 +3,14 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { requireWriter } from "@/lib/auth/session";
 import { resetSecondFactors } from "@/lib/auth/two-factor";
 import { createInvite, revokeInvite } from "@/lib/data/users";
 import { env } from "@/lib/env";
 import { adminPb } from "@/lib/pb/admin";
 
 export async function createInviteAction(email: string): Promise<{ link?: string; error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const parsed = z.union([z.literal(""), z.email()]).safeParse(email.trim().toLowerCase());
   if (!parsed.success) return { error: "Enter a valid e-mail address, or leave it empty." };
   const token = await createInvite(user.id, parsed.data);
@@ -19,13 +19,13 @@ export async function createInviteAction(email: string): Promise<{ link?: string
 }
 
 export async function revokeInviteAction(id: string): Promise<void> {
-  await requireUser();
+  await requireWriter();
   await revokeInvite(z.string().min(1).parse(id));
   revalidatePath("/settings/users");
 }
 
 export async function removeUserAction(id: string): Promise<{ error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const target = z.string().min(1).parse(id);
   if (target === user.id) return { error: "You cannot remove yourself." };
   const pb = await adminPb();
@@ -39,7 +39,7 @@ export async function removeUserAction(id: string): Promise<{ error?: string }> 
 
 /** For a colleague who lost their phone: their next password sign-in sets up a new authenticator. */
 export async function resetTwoFactorAction(id: string): Promise<{ error?: string }> {
-  const { user } = await requireUser();
+  const { user } = await requireWriter();
   const target = z.string().min(1).parse(id);
   if (target === user.id) return { error: "Change your own two-step verification under Account." };
   await resetSecondFactors(target);
