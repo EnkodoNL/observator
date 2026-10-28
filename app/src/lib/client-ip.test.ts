@@ -50,29 +50,36 @@ describe("clientIpFrom", () => {
     expect(clientIpFrom(headers, 9)).toBe("10.0.0.1");
   });
 
-  it("takes CF-Connecting-IP when the request came through Cloudflare", () => {
-    // Traefik replaced the header (default) or appended to Cloudflare's (trusted IPs).
-    expect(clientIpFrom(h({ "x-forwarded-for": CF, "cf-connecting-ip": "203.0.113.9" }))).toBe("203.0.113.9");
-    expect(
-      clientIpFrom(h({ "x-forwarded-for": `203.0.113.9, ${CF}`, "cf-connecting-ip": "203.0.113.9" })),
-    ).toBe("203.0.113.9");
-    expect(clientIpFrom(h({ "x-forwarded-for": CF6, "cf-connecting-ip": "2a01:4f8::7" }))).toBe(
-      "2a01:4f8::7",
-    );
+  describe("with TRUST_CLOUDFLARE", () => {
+    const ip = (headers: Record<string, string>) => clientIpFrom(h(headers), 1, true);
+
+    it("takes CF-Connecting-IP when the request came through Cloudflare", () => {
+      // Traefik replaced the header (default) or appended to Cloudflare's (trusted IPs).
+      expect(ip({ "x-forwarded-for": CF, "cf-connecting-ip": "203.0.113.9" })).toBe("203.0.113.9");
+      expect(ip({ "x-forwarded-for": `203.0.113.9, ${CF}`, "cf-connecting-ip": "203.0.113.9" })).toBe(
+        "203.0.113.9",
+      );
+      expect(ip({ "x-forwarded-for": CF6, "cf-connecting-ip": "2a01:4f8::7" })).toBe("2a01:4f8::7");
+    });
+
+    it("ignores CF-Connecting-IP from anyone who skips Cloudflare", () => {
+      expect(ip({ "x-forwarded-for": "198.51.100.4", "cf-connecting-ip": "203.0.113.9" })).toBe(
+        "198.51.100.4",
+      );
+      expect(ip({ "x-forwarded-for": `${CF}, 198.51.100.4`, "cf-connecting-ip": "203.0.113.9" })).toBe(
+        "198.51.100.4",
+      );
+    });
+
+    it("falls back to the Cloudflare hop when the header is missing or junk", () => {
+      expect(ip({ "x-forwarded-for": CF })).toBe(CF);
+      expect(ip({ "x-forwarded-for": CF, "cf-connecting-ip": "nope" })).toBe(CF);
+    });
   });
 
-  it("ignores CF-Connecting-IP from anyone who skips Cloudflare", () => {
-    expect(clientIpFrom(h({ "x-forwarded-for": "198.51.100.4", "cf-connecting-ip": "203.0.113.9" }))).toBe(
-      "198.51.100.4",
-    );
-    expect(
-      clientIpFrom(h({ "x-forwarded-for": `${CF}, 198.51.100.4`, "cf-connecting-ip": "203.0.113.9" })),
-    ).toBe("198.51.100.4");
-  });
-
-  it("falls back to the Cloudflare hop when the header is missing or junk", () => {
-    expect(clientIpFrom(h({ "x-forwarded-for": CF }))).toBe(CF);
-    expect(clientIpFrom(h({ "x-forwarded-for": CF, "cf-connecting-ip": "nope" }))).toBe(CF);
+  it("ignores CF-Connecting-IP without TRUST_CLOUDFLARE, even from a Cloudflare address", () => {
+    // A Worker can open its own socket from Cloudflare's ranges and write the header.
+    expect(clientIpFrom(h({ "x-forwarded-for": CF, "cf-connecting-ip": "203.0.113.9" }))).toBe(CF);
   });
 
   it("never returns junk", () => {

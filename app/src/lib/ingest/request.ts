@@ -15,7 +15,8 @@ export class IngestError extends Error {
   }
 }
 
-const MAX_UNPACKED = 64 * 1024 * 1024;
+// A large monorepo lockfile is a few MB; this leaves room and keeps one report's memory bounded.
+const MAX_UNPACKED = 16 * 1024 * 1024;
 const ACCEPTED = new Set<string>(["package.json", ...LOCKFILE_NAMES]);
 
 export interface IngestMeta {
@@ -96,7 +97,7 @@ export function extractFiles(body: Buffer): IngestFiles {
 
   let entries;
   try {
-    entries = readTar(archive);
+    entries = readTar(archive, (name) => ACCEPTED.has(name.replace(/^(\.\/)+/, "")));
   } catch (err) {
     throw new IngestError(400, err instanceof TarError ? err.message : "invalid tar archive");
   }

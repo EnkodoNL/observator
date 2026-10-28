@@ -6,7 +6,7 @@ import {
   checkSecondFactor,
   clearPending,
   completeLogin,
-  enableTotp,
+  enrollFirstTotp,
   getPending,
   MAX_ATTEMPTS,
 } from "@/lib/auth/two-factor";
@@ -34,7 +34,12 @@ export async function verifyCodeAction(_prev: FormState, data: FormData): Promis
 export async function enrollAction(_prev: FormState, data: FormData): Promise<FormState> {
   const pending = await getPending();
   if (!pending?.enrollSecret) redirect("/login?reason=expired");
-  const codes = await enableTotp(pending.userId, pending.enrollSecret, String(data.get("code") ?? ""));
+  const codes = await enrollFirstTotp(pending.userId, pending.enrollSecret, String(data.get("code") ?? ""));
+  if (codes === "exists") {
+    // Someone else linked a factor meanwhile; sign in with that one instead.
+    await clearPending();
+    redirect("/login?reason=expired");
+  }
   if (!codes)
     return wrong(
       pending,

@@ -88,7 +88,7 @@ export async function clearPending(): Promise<void> {
 
 /** The second factor passed: the password session becomes a real one. */
 export async function completeLogin(p: Pending): Promise<string> {
-  await setSessionCookie(p.token);
+  await setSessionCookie(p.token, { fresh: true });
   await clearPending();
   return p.next;
 }
@@ -114,11 +114,33 @@ export async function twoFactorStatus(userId: string): Promise<TwoFactorStatus> 
   };
 }
 
+const locks = ((
+  globalThis as typeof globalThis & { __userLocks?: Map<string, Promise<unknown>> }
+).__userLocks ??= new Map());
+
+/**
+ * Runs fn after any earlier call for the same user has finished. Checking a code and marking it
+ * used are two steps; without this, two requests at once could both use the same code.
+ */
+function serialized<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const run = (locks.get(userId) ?? Promise.resolve()).catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined);
+  locks.set(userId, tail);
+  void tail.then(() => {
+    if (locks.get(userId) === tail) locks.delete(userId);
+  });
+  return run;
+}
+
 export type CodeResult =
   { ok: true; via: "totp" | "recovery"; recoveryLeft: number } | { ok: false; error: string };
 
 /** Checks an authenticator code or a recovery code; each works once. */
-export async function checkSecondFactor(userId: string, input: string): Promise<CodeResult> {
+export function checkSecondFactor(userId: string, input: string): Promise<CodeResult> {
+  return serialized(userId, () => checkCode(userId, input));
+}
+
+async function checkCode(userId: string, input: string): Promise<CodeResult> {
   // Counts wrong codes only: a success resets it, like the password limiter.
   if (!limiter.take(userId)) return { ok: false, error: "Too many attempts. Wait a few minutes." };
   const user = await loadUser(userId);
@@ -145,8 +167,28 @@ export async function checkSecondFactor(userId: string, input: string): Promise<
   return { ok: true, via: "recovery", recoveryLeft: codes.length - 1 };
 }
 
+/**
+ * The first authenticator of an account without any factor, at sign-in. Refused once the account
+ * has one: two half-finished sign-ins (after a 2FA reset) must not replace each other's.
+ */
+export function enrollFirstTotp(
+  userId: string,
+  secret: string,
+  code: string,
+): Promise<string[] | null | "exists"> {
+  return serialized(userId, async () => {
+    const status = await twoFactorStatus(userId);
+    if (status.totp || status.passkeys > 0) return "exists";
+    return saveTotp(userId, secret, code);
+  });
+}
+
 /** Saves a verified authenticator and returns fresh recovery codes (shown once). */
-export async function enableTotp(userId: string, secret: string, code: string): Promise<string[] | null> {
+export function enableTotp(userId: string, secret: string, code: string): Promise<string[] | null> {
+  return serialized(userId, () => saveTotp(userId, secret, code));
+}
+
+async function saveTotp(userId: string, secret: string, code: string): Promise<string[] | null> {
   const step = verifyTotp(secret, code, 0);
   if (step === null) return null;
   const recovery = newRecoveryCodes();

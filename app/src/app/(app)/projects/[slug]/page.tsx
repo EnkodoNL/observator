@@ -36,6 +36,7 @@ import { matchingIgnore } from "@/lib/issues/reconcile";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { formatDate } from "@/lib/time";
 import { pbDate } from "@/lib/pb/admin";
+import { requireUser } from "@/lib/auth/session";
 
 const TABS = ["overview", "packages", "builds", "setup"] as const;
 type Tab = (typeof TABS)[number];
@@ -45,6 +46,7 @@ export async function generateMetadata({ params }: PageProps<"/projects/[slug]">
 }
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projects/[slug]">) {
+  await requireUser();
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";

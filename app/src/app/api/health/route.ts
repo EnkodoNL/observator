@@ -10,6 +10,8 @@ export async function GET() {
     if (!res.ok) throw new Error(`pocketbase ${res.status}`);
     return Response.json({ status: "ok" });
   } catch (err) {
-    return Response.json({ status: "degraded", error: String(err) }, { status: 503 });
+    // Public route: the reason goes to the log, not to whoever asks.
+    console.error("[health] PocketBase unreachable", err);
+    return Response.json({ status: "degraded" }, { status: 503 });
   }
 }

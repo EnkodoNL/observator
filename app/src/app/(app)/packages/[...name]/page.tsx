@@ -9,12 +9,14 @@ import { packageDetail } from "@/lib/data/packages";
 import { outdatedLevel } from "@/lib/npm-latest";
 import { packageNameFromSegments } from "@/lib/package-href";
 import { cn } from "@/lib/utils";
+import { requireUser } from "@/lib/auth/session";
 
 export async function generateMetadata({ params }: PageProps<"/packages/[...name]">): Promise<Metadata> {
   return { title: packageNameFromSegments((await params).name) };
 }
 
 export default async function PackagePage({ params }: PageProps<"/packages/[...name]">) {
+  await requireUser();
   const name = packageNameFromSegments((await params).name);
   const pkg = await packageDetail(name);
   if (!pkg) notFound();

@@ -59,8 +59,10 @@ cp .env.example .env        # set APP_URL and the PocketBase superuser password
 docker compose up -d --build
 ```
 
-Open `APP_URL`, create the first account on the setup page (it only works once), and add a project
-under **Settings → Projects**. You get an API key, shown once, and the Dockerfile snippet below.
+Open `APP_URL` and create the first account on the setup page. It asks for the setup code that the
+web container prints to its log (`docker compose logs web`), so nobody else can claim a fresh
+install, and it only works once. `SETUP_CODE=off` skips the code, for an install nobody else can
+reach yet. Then add a project under **Settings → Projects**. You get an API key, shown once, and the Dockerfile snippet below.
 
 ## Reporting from a Dockerfile
 
@@ -159,11 +161,13 @@ into each Dockerfile, without the key check, as the allowlist dialog shows it. I
 without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Dockerfile works in CI.
 
 - **Which address.** Observator uses the address described under
-  [Client addresses](#client-addresses); behind Cloudflare that is your server's own address. A build
-  on the same server as Observator may arrive from the Docker gateway (such as `172.17.0.1`) instead.
-  Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log, with
-  the address. They are listed under *Not recorded* on the settings page and in the allowlist dialog
-  with an *Add* button, and the web container logs them as `[ingest] not recorded (401) from ...`.
+  [Client addresses](#client-addresses); behind Cloudflare (with `TRUST_CLOUDFLARE=on`) that is your
+  server's own address. A build on the same server that reports to the port directly (with
+  `WEB_BIND=0.0.0.0`) arrives from the Docker gateway (such as `172.17.0.1`) instead.
+  Reports from addresses on no allowlist get `Observator: not recorded: ...` in the build log. The
+  address itself is not in that answer, since it would confirm a forged one: it is listed under
+  *Not recorded* on the settings page and in the allowlist dialog with an *Add* button, and the web
+  container logs it as `[ingest] not recorded (401) from ...`.
 - **A wrong key** from an allowed address, such as a stale `OBSERVATOR_KEY` or an unresolved
   `{{team.OBSERVATOR_KEY}}`, does not block the report: it is recorded, with a warning in the build log.
 - **Ranges.** Single addresses or CIDR ranges, at most /8 for IPv4 and /32 for IPv6, each with an
@@ -465,11 +469,15 @@ The endpoint speaks both MCP protocol generations (2026-07-28 and the 2025 ones)
 ## Sign-in
 
 - **Passkey:** signs you in on its own. The device plus its PIN or biometrics already make two
-  factors.
+  factors, so a passkey must verify you (a security key without a PIN is refused).
 - **Password:** always followed by a second step: a code from an authenticator app, a recovery code,
   or one of your passkeys. There is no session until that step is done.
 - **First sign-in** (after `/setup`, an invite or a reset) links an authenticator app and shows ten
   recovery codes, each usable once. New codes and passkeys are under **Settings → Account**.
+- **Changing sign-in methods** (adding or removing a passkey, linking an authenticator app) needs a
+  sign-in from the last 10 minutes, so a stolen session cannot add a passkey of its own.
+- **Sign out everywhere** under **Settings → Account** ends every session at once; signing out only
+  forgets the current browser.
 - **No way back to password-only:** the authenticator app can only be turned off while a passkey
   remains, and the last passkey can only be removed once an authenticator app is linked.
 - **Lost device:** another user resets two-step verification under **Settings → Users**. That removes
@@ -513,14 +521,17 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `APP_URL` | (required) | Public URL; used for links and as passkey RP ID and origin |
 | `PB_SUPERUSER_EMAIL`, `PB_SUPERUSER_PASSWORD` | (required) | Created or updated on every PocketBase start |
 | `WEB_PORT` | `3000` | Host port (compose) |
+| `WEB_BIND` | `127.0.0.1` | Host address the port is published on (compose); see [Client addresses](#client-addresses) |
 | `TZ` | `UTC` | Default timezone for the digest |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | | For e-mail notifications |
 | `OBSERVATOR_JOBS` | `on` | Background checks |
 | `INGEST_MAX_BYTES` | `10485760` | Maximum report size |
 | `INGEST_RATE_LIMIT` | `60` | Reports per project per hour |
 | `TRUSTED_PROXIES` | `1` | Reverse proxies in front of Observator that add an `X-Forwarded-For` entry; see [Client addresses](#client-addresses) |
+| `TRUST_CLOUDFLARE` | `off` | Cloudflare proxies Observator: take the visitor from `CF-Connecting-IP` |
 | `REPORTER_IMAGE` | `ghcr.io/enkodonl/observator-reporter:1` | Where the snippet copies the reporter from, such as your own mirror |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
+| `SETUP_CODE` | `on` | The first account needs the setup code from the web container's log; `off` lets the first visitor of `/setup` create it |
 | `OBSERVATOR_SELF` | `on` | Observator reports its own Node.js version and packages as the "Observator" project |
 
 Stale days, reminders and the digest schedule are set in the UI under **Settings → General**.
@@ -532,16 +543,24 @@ expects a reverse proxy in front of it (Coolify's Traefik, Caddy, nginx) and tru
 `X-Forwarded-For` entry that proxy added, the last one; earlier entries come from the client and can
 say anything. With more proxies in a row, set `TRUSTED_PROXIES` to their number.
 
-Cloudflare in front of that proxy needs no setting. When the last hop is a
-[Cloudflare address](https://www.cloudflare.com/ips/), Observator takes the visitor from
-`CF-Connecting-IP`; a request that skips Cloudflare and goes to the server directly cannot fake
-that header.
+That only holds when clients cannot reach Observator past the proxy. Compose therefore publishes the
+port on `127.0.0.1`; the proxy reaches the container over the Docker network. A client that talks to
+the port directly writes its own `X-Forwarded-For` and passes as any address, IP allowlists included.
+Set `WEB_BIND=0.0.0.0` only when a firewall keeps everyone else off the port, for instance so builds
+on the same host can reach it through the Docker gateway.
+
+With Cloudflare in front of that proxy, set `TRUST_CLOUDFLARE=on`. When the last hop is a
+[Cloudflare address](https://www.cloudflare.com/ips/), Observator then takes the visitor from
+`CF-Connecting-IP`. It is off by default because any Cloudflare customer can reach your proxy from a
+Cloudflare address and set that header themselves; with it on, let only Cloudflare reach the proxy
+(a firewall on Cloudflare's ranges, or authenticated origin pulls).
 
 ## Deploying on Coolify
 
 1. Create a resource from this repository with the *Docker Compose* build pack.
 2. Give the `web` service a domain (port 3000) and set `APP_URL` to it, with `https://`.
-3. Set `PB_SUPERUSER_EMAIL` and a long `PB_SUPERUSER_PASSWORD`, plus SMTP if you want e-mail.
+3. Set `PB_SUPERUSER_EMAIL` and a long `PB_SUPERUSER_PASSWORD`, plus SMTP if you want e-mail. Behind
+   Cloudflare, also set `TRUST_CLOUDFLARE=on`.
 4. Deploy. The PocketBase data lives in the `pb_data` volume.
 
 To reach the PocketBase admin UI for debugging, uncomment the `127.0.0.1:8090:8090` port in

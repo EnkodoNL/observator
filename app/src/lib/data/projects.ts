@@ -5,6 +5,7 @@ import { adminPb, isNotFound } from "@/lib/pb/admin";
 import { newApiKey, randomToken, sha256 } from "@/lib/crypto";
 import type { ProjectRecord } from "@/lib/pb/types";
 import { slugify } from "@/lib/slug";
+import { urlOrigin } from "@/lib/url";
 
 export async function listProjects(): Promise<ProjectRecord[]> {
   const pb = await adminPb();
@@ -93,15 +94,20 @@ export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
 
 /**
  * Saves the name and the deploy webhook. Empty URL or token fields keep the stored values:
- * they are secrets the browser (or an MCP client) never sees.
+ * they are secrets the browser (or an MCP client) never sees. A new URL on another host drops
+ * the stored token, so it cannot be sent somewhere it was not meant for.
  */
 export async function saveProjectSettings(projectId: string, input: ProjectSettings): Promise<ProjectRecord> {
   const { name, deployWebhookUrl, deployWebhookMethod, deployWebhookToken, clearWebhook } = input;
   const data: Partial<ProjectRecord> = { name, deployWebhookMethod };
+  const previous = await (await adminPb()).collection("projects").getOne<ProjectRecord>(projectId);
   if (clearWebhook) Object.assign(data, { deployWebhookUrl: "", deployWebhookToken: "" });
   else {
     if (deployWebhookUrl) data.deployWebhookUrl = deployWebhookUrl;
     if (deployWebhookToken) data.deployWebhookToken = deployWebhookToken;
+    // A token never travels to a new host on its own: it was meant for the old one.
+    else if (deployWebhookUrl && urlOrigin(deployWebhookUrl) !== urlOrigin(previous.deployWebhookUrl))
+      data.deployWebhookToken = "";
   }
   return updateProject(projectId, data);
 }

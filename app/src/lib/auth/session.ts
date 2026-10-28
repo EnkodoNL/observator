@@ -4,7 +4,8 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminPb, userPb } from "@/lib/pb/admin";
-import { clientIpFrom } from "@/lib/client-ip";
+import { clientIpFrom, rateKey } from "@/lib/client-ip";
+import { sha256 } from "@/lib/crypto";
 import { env, secureCookies } from "@/lib/env";
 import type { UserRecord } from "@/lib/pb/types";
 
@@ -15,7 +16,22 @@ export interface Session {
   user: Pick<UserRecord, "id" | "email" | "name">;
 }
 
-export async function setSessionCookie(token: string): Promise<void> {
+/** How long after a full sign-in a session may change its sign-in factors. */
+const FRESH_MS = 10 * 60 * 1000;
+const g = globalThis as typeof globalThis & { __freshSessions?: Map<string, number> };
+// Kept in the server, by token hash: a copied cookie cannot carry freshness along.
+const fresh = (g.__freshSessions ??= new Map());
+
+/**
+ * Sets the session. `fresh`: it comes from a full sign-in (password plus second factor, or a
+ * passkey), so for a few minutes it may add or remove passkeys and authenticators.
+ */
+export async function setSessionCookie(token: string, { fresh: isFresh = false } = {}): Promise<void> {
+  if (isFresh) {
+    const now = Date.now();
+    for (const [k, until] of fresh) if (until < now) fresh.delete(k);
+    fresh.set(sha256(token), now + FRESH_MS);
+  }
   (await cookies()).set({
     name: SESSION_COOKIE,
     value: token,
@@ -53,6 +69,19 @@ export async function requireUser(): Promise<Session> {
 }
 
 /**
+ * Whether this session signed in fully in the last few minutes. Changing sign-in factors needs
+ * it, so a stolen session cannot add a passkey of its own that outlives a password change.
+ */
+export async function isFreshSession(): Promise<boolean> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const until = token ? fresh.get(sha256(token)) : undefined;
+  return until !== undefined && until > Date.now();
+}
+
+export const STALE_SESSION_ERROR =
+  "For your safety, sign out and in again first: changing sign-in methods needs a sign-in from the last 10 minutes.";
+
+/**
  * Checks a password and returns the PocketBase token. That token is not a session yet: a
  * password always needs a second factor first (see two-factor.ts).
  */
@@ -77,7 +106,7 @@ export async function hasUsers(): Promise<boolean> {
   return res.totalItems > 0;
 }
 
-/** Best-effort client IP for rate limiting; the app normally sits behind a reverse proxy. */
+/** Best-effort client address to rate-limit by (an IPv6 /64); the app sits behind a reverse proxy. */
 export async function clientIp(): Promise<string> {
-  return clientIpFrom(await headers(), env().TRUSTED_PROXIES);
+  return rateKey(clientIpFrom(await headers(), env().TRUSTED_PROXIES, env().TRUST_CLOUDFLARE));
 }

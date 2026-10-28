@@ -11,10 +11,12 @@ import { pbDate } from "@/lib/pb/admin";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { ChannelList } from "./channel-list";
+import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Notifications" };
 
 export default async function ChannelsPage() {
+  await requireUser();
   const [channels, projects, log] = await Promise.all([
     listChannels(),
     listProjects(),

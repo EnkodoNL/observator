@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { adminPb } from "@/lib/pb/admin";
 import { clearSessionCookie, clientIp, hasUsers, passwordLogin } from "@/lib/auth/session";
+import { checkSetupCode, clearSetupCode } from "@/lib/auth/setup-code";
 import { clearPending, startPending } from "@/lib/auth/two-factor";
+import { tryLock } from "@/lib/kv";
 import { RateLimiter } from "@/lib/rate-limit";
 import { type FormState, formObject, publicValues, safeNext, zodState } from "@/lib/forms";
 
@@ -44,6 +46,7 @@ export async function loginAction(_prev: FormState, data: FormData): Promise<For
 
 const setupSchema = z
   .object({
+    setupCode: z.string().trim().default(""),
     email: z.email("Enter a valid e-mail address.").toLowerCase(),
     password: z.string().min(10, "Use at least 10 characters."),
     passwordConfirm: z.string(),
@@ -58,13 +61,33 @@ export async function setupAction(_prev: FormState, data: FormData): Promise<For
   const values = formObject(data);
   const parsed = setupSchema.safeParse(values);
   if (!parsed.success) return zodState(parsed.error, values);
-  const { email, password, passwordConfirm } = parsed.data;
+  const { setupCode, email, password, passwordConfirm } = parsed.data;
 
-  const pb = await adminPb();
+  if (!limiter.take(`setup:${await clientIp()}`)) {
+    return { error: "Too many attempts. Try again in a few minutes.", values: publicValues(values) };
+  }
+  if (!(await checkSetupCode(setupCode))) {
+    return {
+      error: "Please check the highlighted fields.",
+      fieldErrors: { setupCode: "That is not the setup code from the log." },
+      values: publicValues(values),
+    };
+  }
+  // One account, also when two submissions race: the lock, then the check again.
+  const release = await tryLock("setup", 30_000);
+  if (!release)
+    return { error: "Setup is already running. Try again in a moment.", values: publicValues(values) };
   try {
-    await pb.collection("users").create({ email, password, passwordConfirm, verified: true });
-  } catch {
-    return { error: "Could not create the account.", values: publicValues(values) };
+    if (await hasUsers()) redirect("/login");
+    const pb = await adminPb();
+    try {
+      await pb.collection("users").create({ email, password, passwordConfirm, verified: true });
+    } catch {
+      return { error: "Could not create the account.", values: publicValues(values) };
+    }
+    await clearSetupCode();
+  } finally {
+    await release();
   }
   const login = await passwordLogin(email, password);
   await startPending(login.user, login.token, "/");

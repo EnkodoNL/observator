@@ -6,7 +6,12 @@ import { adminPb } from "@/lib/pb/admin";
 
 const KEY = "npm:latest";
 const MAX_AGE_MS = 24 * 3600 * 1000;
+// Names come from reported lockfiles; a report full of made-up names must not turn into
+// thousands of registry requests, every time.
+const MAX_PER_REFRESH = 500;
+const NPM_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
+/** version "" marks a name the registry does not know, so it is not asked again for a day. */
 type Latest = Record<string, { version: string; at: number }>;
 
 export type Outdated = "major" | "minor" | "patch" | null;
@@ -23,7 +28,11 @@ export function outdatedLevel(installed: string, latest: string | undefined): Ou
 
 export async function latestVersions(): Promise<Record<string, string>> {
   const stored = (await kvGet<Latest>(KEY)) ?? {};
-  return Object.fromEntries(Object.entries(stored).map(([name, v]) => [name, v.version]));
+  return Object.fromEntries(
+    Object.entries(stored)
+      .filter(([, v]) => v.version)
+      .map(([name, v]) => [name, v.version]),
+  );
 }
 
 async function fetchLatest(name: string): Promise<string | null> {
@@ -32,7 +41,8 @@ async function fetchLatest(name: string): Promise<string | null> {
     headers: { accept: "application/json", "user-agent": "observator" },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) return null;
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`npm registry: HTTP ${res.status}`);
   const data = (await res.json()) as { version?: string };
   return typeof data.version === "string" ? data.version : null;
 }
@@ -51,18 +61,24 @@ export async function refreshLatest(names?: string[]): Promise<number> {
   }
   const stored = (await kvGet<Latest>(KEY)) ?? {};
   const now = Date.now();
-  const due = [...new Set(names)].filter((n) => !stored[n] || now - stored[n].at > MAX_AGE_MS);
+  const due = [...new Set(names)]
+    .filter((n) => n.length <= 214 && NPM_NAME.test(n))
+    .filter((n) => !stored[n] || now - stored[n].at > MAX_AGE_MS)
+    .slice(0, MAX_PER_REFRESH);
   let fetched = 0;
+  let changed = false;
   for (let i = 0; i < due.length; i += 6) {
     const batch = due.slice(i, i + 6);
-    const results = await Promise.all(batch.map((n) => fetchLatest(n).catch(() => null)));
+    // undefined: the request failed (try again next time); null: the registry has no such package.
+    const results = await Promise.all(batch.map((n) => fetchLatest(n).catch(() => undefined)));
     batch.forEach((name, j) => {
-      if (results[j]) {
-        stored[name] = { version: results[j]!, at: now };
-        fetched++;
-      }
+      const version = results[j];
+      if (version === undefined) return;
+      stored[name] = { version: version ?? "", at: now };
+      changed = true;
+      if (version) fetched++;
     });
   }
-  if (fetched) await kvSet(KEY, stored);
+  if (changed) await kvSet(KEY, stored);
   return fetched;
 }
