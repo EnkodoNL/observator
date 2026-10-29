@@ -14,11 +14,13 @@ import { MAX_ITEMS, type Message, type MessageItem } from "./message";
 import { enqueue } from "./publish";
 import { processQueue } from "./queue";
 import { digestDue } from "./schedule";
+import { listDomains } from "@/lib/domains/data";
+import { domainAttention, domainDetail } from "@/lib/domains/phase";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export async function buildDigest(now = new Date()): Promise<Message> {
-  const [items, settings] = await Promise.all([getOverview(), getSettings()]);
+  const [items, settings, watched] = await Promise.all([getOverview(), getSettings(), listDomains()]);
   const pb = await adminPb();
   const weekAgo = toPbDate(new Date(now.getTime() - 7 * 86_400_000));
   const resolved = await pb.collection("issues").getFullList<IssueRecord>({
@@ -65,6 +67,19 @@ export async function buildDigest(now = new Date()): Promise<Message> {
     }
   }
 
+  const domains = domainAttention(
+    watched,
+    { warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays },
+    now,
+  );
+  for (const d of domains)
+    attention.push({
+      severity: d.phase === "remind" ? undefined : d.phase === "warn" ? "moderate" : "high",
+      title: d.name,
+      detail: [domainDetail(d, now), d.note].filter(Boolean).join(" · "),
+      url: `${env().APP_URL}/domains`,
+    });
+
   const versions = new Map<string, number>();
   for (const { latest } of items)
     for (const r of latest?.runtimes ?? []) {
@@ -80,10 +95,11 @@ export async function buildDigest(now = new Date()): Promise<Message> {
     `${plural(items.length, "project")} watched.`,
     attention.length
       ? `${attention.length} need${attention.length === 1 ? "s" : ""} attention${
-          runtimeUpdates || advisories
+          runtimeUpdates || advisories || domains.length
             ? `: ${[
                 runtimeUpdates && plural(runtimeUpdates, "runtime security update"),
                 advisories && plural(advisories, "open advisory", "open advisories"),
+                domains.length && plural(domains.length, "domain or certificate", "domains and certificates"),
               ]
                 .filter(Boolean)
                 .join(", ")}`
@@ -100,7 +116,7 @@ export async function buildDigest(now = new Date()): Promise<Message> {
     event: "digest.weekly",
     tone: attention.length ? "moderate" : "ok",
     title: attention.length
-      ? `Weekly digest: ${plural(attention.length, "project")} need${attention.length === 1 ? "s" : ""} attention`
+      ? `Weekly digest: ${plural(attention.length, "thing")} need${attention.length === 1 ? "s" : ""} attention`
       : "Weekly digest: all clear",
     summary,
     items: attention.slice(0, MAX_ITEMS),

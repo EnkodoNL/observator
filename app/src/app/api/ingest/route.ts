@@ -14,6 +14,8 @@ import { renderReport } from "@/lib/ingest/report";
 import { extractFiles, IngestError, parseMeta, readBody } from "@/lib/ingest/request";
 import { RateLimiter } from "@/lib/rate-limit";
 import { Semaphore } from "@/lib/semaphore";
+import { checkDomains } from "@/lib/domains/check";
+import { syncHosts } from "@/lib/domains/data";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +144,8 @@ export async function POST(request: Request) {
     } finally {
       release();
     }
+    // The names this build is served on: their certificates and registrations are watched.
+    const newDomains = meta.domains ? await syncHosts(project.id, "build", meta.domains.names) : [];
     const analysis = await analyzeInline(project, outcome, meta);
 
     // Notifications never hold up the build: OSV lookups and sending happen after the response.
@@ -149,6 +153,7 @@ export async function POST(request: Request) {
     after(async () => {
       try {
         await publish(await analyzeInBackground(projectId, analysis));
+        for (const domainId of newDomains) await checkDomains({ domainId });
         if (outcome.lockfileChanged) await refreshLatest(outcome.directNames);
       } catch (err) {
         console.error("[ingest] background analysis failed", err);
@@ -171,6 +176,11 @@ export async function POST(request: Request) {
           warnings: [
             ...(meta.invalidRuntimes.length
               ? [`runtimes ignored: ${meta.invalidRuntimes.join(", ")} (expected name/version)`]
+              : []),
+            ...(meta.domains?.invalid.length
+              ? [
+                  `domains ignored: ${meta.domains.invalid.join(", ")} (use host names, such as app.example.com)`,
+                ]
               : []),
             ...(meta.labels?.invalid.length
               ? [

@@ -28,6 +28,8 @@ import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
 import { isStale } from "@/lib/status";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
+import { listDomains, type WatchedDomain } from "@/lib/domains/data";
+import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
 
 const STATUSES = ["none", "ok", "update", "vulnerable"] as const;
 
@@ -75,6 +77,40 @@ function describeRuntimes(
       endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
     };
   });
+}
+
+/** A watched domain as MCP shows it; `slugs` maps project ids to slugs. */
+export function describeDomain(
+  { domain, hosts }: WatchedDomain,
+  settings: { domainWarnDays: number; domainUrgentDays: number },
+  slugs: Map<string, string>,
+  now = new Date(),
+) {
+  const limits = { warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays };
+  return {
+    name: domain.name,
+    registration: {
+      expiresAt: registrationExpiry(domain),
+      enteredByHand: Boolean(domain.manualExpiresAt),
+      lookup: domain.registration?.source ?? "not checked yet",
+      error: domain.registration?.error ?? null,
+      phase: registrationPhase(domain, limits, now),
+      remindDaysAhead: domain.remindDays || null,
+      note: domain.note || null,
+    },
+    hosts: hosts.map((h) => ({
+      name: h.name,
+      project: slugs.get(h.project) ?? null,
+      from: h.sources ?? [],
+      certificate: {
+        expiresAt: h.cert?.expiresAt ?? null,
+        issuer: h.cert?.issuer || null,
+        error: h.cert?.error || null,
+        unreachable: h.cert?.unreachable || null,
+        phase: certPhase(h.cert, now),
+      },
+    })),
+  };
 }
 
 export const readTools: Record<string, Tool> = {
@@ -125,7 +161,7 @@ export const readTools: Record<string, Tool> = {
   get_project: defineTool({
     title: "Project details",
     description:
-      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup, the latest build, and README badges as Markdown (badge.app covers every project of the app and suits a repository's README; badge.project is this project or server alone). Badges are public through the token in their link; new tokens are made in the web UI.",
+      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup, the latest build, its domains (certificates and registrations, see list_domains), and README badges as Markdown (badge.app covers every project of the app and suits a repository's README; badge.project is this project or server alone). Badges are public through the token in their link; new tokens are made in the web UI.",
     input: z.object({ project: projectRef }),
     run: async ({ project: ref }) => {
       const found = await resolveProject(ref);
@@ -135,6 +171,11 @@ export const readTools: Record<string, Tool> = {
       const appUrl = env().APP_URL;
       const app = appId(p);
       const appToken = await appBadgeToken(app);
+      const [watched, settings] = await Promise.all([listDomains(), getSettings()]);
+      const domains = watched
+        .map((w) => ({ ...w, hosts: w.hosts.filter((h) => h.project === p.id) }))
+        .filter((w) => w.hosts.length)
+        .map((w) => describeDomain(w, settings, new Map([[p.id, p.slug]])));
       const lockfile = latest?.lockfileType && latest.lockfileType !== "none" ? latest.lockfileType : "npm";
       const vulns = issues
         .filter((i) => i.kind === "vuln")
@@ -165,6 +206,7 @@ export const readTools: Record<string, Tool> = {
         url: projectUrl(p.slug),
         status: summary.status,
         labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
+        domains,
         badge: {
           app: appBadge(appUrl, app, appToken).markdown,
           project: projectBadge(appUrl, p).markdown,
@@ -216,7 +258,7 @@ export const readTools: Record<string, Tool> = {
           sharedKey: Boolean(p.ingestKey),
           reportedName: p.sourceName || null,
           server: p.instance || null,
-          deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "GET" } : null,
+          deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "POST" } : null,
         },
       };
     },
@@ -328,9 +370,24 @@ export const readTools: Record<string, Tool> = {
     }),
   }),
 
+  list_domains: defineTool({
+    title: "Domains",
+    description:
+      "Watched domains: each registered domain's registration expiry (from the registry's RDAP, or a date entered by hand where the registry publishes none, such as .nl), its reminder and note, and its hosts with their TLS certificate and project. phase is ok, remind (the user's own reminder), warn, urgent or expired. Domains need no project.",
+    input: z.object({ project: projectRef.optional().describe("Only domains with a host in this project") }),
+    run: async ({ project: ref }) => {
+      const [watched, settings, projects] = await Promise.all([listDomains(), getSettings(), listProjects()]);
+      const only = ref ? await resolveProject(ref) : null;
+      const names = new Map(projects.map((p) => [p.id, p.slug]));
+      const shown = only ? watched.filter((w) => w.hosts.some((h) => h.project === only.id)) : watched;
+      return { domains: shown.map((w) => describeDomain(w, settings, names)) };
+    },
+  }),
+
   get_settings: defineTool({
     title: "Settings and checks",
-    description: "Stale days, reminders and digest schedule, plus when each background check last ran.",
+    description:
+      "Stale days, reminders, digest schedule and domain warning days, plus when each background check last ran.",
     input: z.object({}),
     run: async () => {
       const [settings, jobs] = await Promise.all([getSettings(), jobStates()]);
@@ -387,7 +444,7 @@ export const readTools: Record<string, Tool> = {
   upgrade_snippet: defineTool({
     title: "Upgrade the Observator snippet in a Dockerfile",
     description: [
-      "Replaces the Observator snippet that is already in a Dockerfile with the current one, in the form you choose, and keeps what the old one was set to: the key, project, labels, OBSERVATOR_FAIL_ON, the URL and keyless. Write the returned dockerfile back as is.",
+      "Replaces the Observator snippet that is already in a Dockerfile with the current one, in the form you choose, and keeps what the old one was set to: the key, project, labels, domains, OBSERVATOR_FAIL_ON, the URL and keyless. Write the returned dockerfile back as is.",
       "form image (default): the reporter binary from its image, a few lines, also for images without a shell. form shell: plain sh with curl, wget, node or python3, nothing pulled from a registry; for builds that cannot reach it, or teams that would rather not run a binary they did not build.",
       "For a Dockerfile without the snippet, use setup_dockerfile.",
     ].join("\n"),
@@ -408,6 +465,7 @@ export const readTools: Record<string, Tool> = {
         key: old.key,
         project: old.project,
         labels: old.labels,
+        domains: old.domains,
         failOn: old.failOn,
         keyless: old.keyless,
       });
@@ -447,6 +505,7 @@ export const readTools: Record<string, Tool> = {
           key: old.key ? `${old.key.slice(0, 8)}…` : null,
           project: old.project || null,
           labels: old.labels || null,
+          domains: old.domains || null,
           failOn: old.failOn || null,
           keyless: old.keyless,
           url: old.url ?? null,

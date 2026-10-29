@@ -9,6 +9,8 @@ import { appBoard } from "@/lib/app-board";
 import { getOverview, type ProjectSummary } from "@/lib/data/views";
 import { effectiveLabels, hasLabels } from "@/lib/labels";
 import { getSettings } from "@/lib/settings";
+import { listDomains } from "@/lib/domains/data";
+import { domainAttention } from "@/lib/domains/phase";
 import { triage } from "@/lib/triage";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
@@ -35,13 +37,20 @@ function dashboardHref(labels: string[]): string {
 export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   await requireUser();
   const params = await searchParams;
-  const [all, settings] = await Promise.all([getOverview(), getSettings()]);
+  const [all, settings, watched] = await Promise.all([getOverview(), getSettings(), listDomains()]);
 
   const wanted = [params.label ?? []].flat().map(String);
   const allLabels = [...new Set(all.flatMap(labelsOf))].sort();
   const items = all.filter((i) => hasLabels(labelsOf(i), wanted));
-  const apps = appBoard(items, settings.staleDays);
-  const causes = triage(items, settings.staleDays);
+  const shown = new Set(items.map((i) => i.project.id));
+  // With a label filter, only domains of the projects shown; without one, the standalone ones too.
+  const domains = domainAttention(
+    watched,
+    { warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays },
+    new Date(),
+  ).filter((d) => (wanted.length ? d.projectIds.some((id) => shown.has(id)) : true));
+  const apps = appBoard(items, settings.staleDays, domains);
+  const causes = triage(items, settings.staleDays, domains);
 
   const vulnerable = apps.filter((a) => a.advisories > 0).length;
   const runtimeFixes = causes.filter((c) => c.kind === "runtime_security").length;
@@ -65,6 +74,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
                 ? `${plural(runtimeFixes, "runtime")} ${runtimeFixes === 1 ? "has" : "have"} a security release waiting. `
                 : "Runtimes are all patched. "}
               {stale > 0 && `${plural(stale, "project")} stopped reporting. `}
+              {domains.length > 0 &&
+                `${plural(domains.length, "domain or certificate", "domains and certificates")} ${domains.length === 1 ? "needs" : "need"} renewing. `}
               {buildOnly > 0 && (
                 <>
                   <b className="text-foreground">{plural(buildOnly, "advisory", "advisories")}</b> sit in

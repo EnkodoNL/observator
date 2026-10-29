@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ProjectSummary } from "@/lib/data/views";
+import type { DomainAttention } from "@/lib/domains/phase";
 import { effectiveLabels, labelValue } from "@/lib/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity } from "@/lib/severity";
@@ -33,7 +34,9 @@ export interface App {
   advisories: number;
   worstSeverity: Severity | null;
   buildOnly: number;
-  /** Something to do: open advisories, a runtime update, or builds that stopped. */
+  /** Registrations and certificates of its hosts that need attention. */
+  domains: DomainAttention[];
+  /** Something to do: open advisories, a runtime update, a domain, or builds that stopped. */
   needsWork: boolean;
 }
 
@@ -85,7 +88,7 @@ const STATUS_ORDER: Record<ProjectStatus, number> = { vulnerable: 0, update: 1, 
  * shared key's servers land together), otherwise one app per project. Within an app, one
  * service per role:* label or reported name. Apps that need work come first.
  */
-export function appBoard(items: ProjectSummary[], staleDays: number): App[] {
+export function appBoard(items: ProjectSummary[], staleDays: number, domains: DomainAttention[] = []): App[] {
   const apps = new Map<string, { name: string; items: ProjectSummary[] }>();
   for (const item of items) {
     const label = labelValue(effectiveLabels(item.project), "app");
@@ -110,6 +113,8 @@ export function appBoard(items: ProjectSummary[], staleDays: number): App[] {
         .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name));
       const status = worstStatus(services.map((s) => s.status));
       const stale = services.some((s) => s.stale);
+      const ids = new Set(members.map((m) => m.project.id));
+      const appDomains = domains.filter((d) => d.projectIds.some((id) => ids.has(id)));
       return {
         key,
         id: appId(members[0].project),
@@ -125,7 +130,8 @@ export function appBoard(items: ProjectSummary[], staleDays: number): App[] {
             .filter((x): x is Severity => x !== null),
         ),
         buildOnly: services.reduce((n, s) => n + s.buildOnly, 0),
-        needsWork: status === "vulnerable" || status === "update" || stale,
+        domains: appDomains,
+        needsWork: status === "vulnerable" || status === "update" || stale || appDomains.length > 0,
       };
     })
     .sort(

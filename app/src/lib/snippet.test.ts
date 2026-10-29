@@ -92,7 +92,7 @@ describe("dockerSnippet, reporter image", () => {
     expect(snippet).toContain(`FROM ${DEFAULT_REPORTER_IMAGE} AS observator-reporter`);
     expect(snippet).toContain("COPY --from=observator-reporter /reporter /tmp/observator");
     expect(runCommand(snippet)).toBe('["/tmp/observator"]');
-    expect(snippet.split("\n")).toHaveLength(13);
+    expect(snippet.split("\n")).toHaveLength(14);
   });
 
   it("passes --keyless instead of a key check", () => {

@@ -47,6 +47,8 @@ const EVENT_HINT: Record<EventType, string> = {
   "vuln.new": "New advisories in a project's packages",
   "vuln.resolved": "A reported advisory is gone after a new build",
   "project.stale": "A project has not reported for a while",
+  "domain.expiring":
+    "A domain registration or TLS certificate is close to expiring, or a domain reminder is due",
   "digest.weekly": "Summary of everything, once a week",
 };
 

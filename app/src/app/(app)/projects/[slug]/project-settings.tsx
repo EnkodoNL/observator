@@ -68,8 +68,8 @@ export function ProjectSettings({
           />
           <FieldDescription>
             Adds a Redeploy button here and in notifications. Coolify: the deploy webhook URL from the
-            resource, with an API token below and method GET. Dokploy and Portainer: the webhook URL, method
-            POST, no token.
+            resource, method POST, and an API token below with the deploy permission (plus read, to watch the
+            resource&rsquo;s domains). Dokploy and Portainer: the webhook URL, method POST, no token.
           </FieldDescription>
           {errors.deployWebhookUrl && <FieldError>{errors.deployWebhookUrl}</FieldError>}
         </Field>

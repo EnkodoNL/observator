@@ -39,6 +39,7 @@ export interface SnippetSettings {
   failOn: string;
   project: string;
   labels: string;
+  domains: string;
   keyless: boolean;
 }
 
@@ -327,6 +328,7 @@ function readSnippet(snippet: Instruction[], stages: Stage[], from: Stage): Snip
     failOn: args.get("OBSERVATOR_FAIL_ON") ?? "",
     project: args.get("OBSERVATOR_PROJECT") ?? "",
     labels: args.get("OBSERVATOR_LABELS") ?? "",
+    domains: args.get("OBSERVATOR_DOMAINS") ?? "",
     keyless,
   };
 }
@@ -341,7 +343,10 @@ const describe = (o: Origin) =>
 export function analyzeDockerfile(
   text: string,
   url: string,
-  options: Pick<SnippetOptions, "form" | "image" | "keyless" | "key" | "project" | "labels" | "failOn"> = {},
+  options: Pick<
+    SnippetOptions,
+    "form" | "image" | "keyless" | "key" | "project" | "labels" | "domains" | "failOn"
+  > = {},
 ): DockerfileAnalysis {
   const all = instructions(text);
   const stages: Stage[] = [];

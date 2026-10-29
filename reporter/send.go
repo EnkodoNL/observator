@@ -20,6 +20,7 @@ type Report struct {
 	FailOn   string
 	Project  string
 	Labels   string
+	Domains  string
 	Body     []byte
 }
 
@@ -41,6 +42,7 @@ func send(ctx context.Context, url string, r Report) (string, error) {
 		"X-Fail-On":    r.FailOn,
 		"X-Project":    r.Project,
 		"X-Labels":     r.Labels,
+		"X-Domains":    r.Domains,
 		"X-Reporter":   agent,
 		"User-Agent":   agent,
 		"Content-Type": "application/gzip",

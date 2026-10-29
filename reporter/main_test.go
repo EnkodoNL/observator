@@ -145,14 +145,14 @@ func TestRunSendsTheReport(t *testing.T) {
 	var out bytes.Buffer
 	code := run(nil, env(map[string]string{
 		"OBSERVATOR_URL": s.URL + "/", "OBSERVATOR_KEY": "obs_secret", "OBSERVATOR_PROJECT": "api",
-		"OBSERVATOR_LABELS": "env:prod", "OBSERVATOR_FAIL_ON": "high", "PATH": "",
+		"OBSERVATOR_LABELS": "env:prod", "OBSERVATOR_DOMAINS": "api.example.com", "OBSERVATOR_FAIL_ON": "high", "PATH": "",
 	}), &out, cfg)
 	if code != 0 || !marked(cfg) {
 		t.Fatalf("code %d, marker %v, output %q", code, marked(cfg), out.String())
 	}
 	h := s.got.Header
 	if s.got.URL.Path != "/api/ingest" || h.Get("Authorization") != "Bearer obs_secret" || h.Get("X-Project") != "api" ||
-		h.Get("X-Labels") != "env:prod" || h.Get("X-Fail-On") != "high" || !strings.HasPrefix(h.Get("X-Reporter"), "observator-reporter/") {
+		h.Get("X-Labels") != "env:prod" || h.Get("X-Domains") != "api.example.com" || h.Get("X-Fail-On") != "high" || !strings.HasPrefix(h.Get("X-Reporter"), "observator-reporter/") {
 		t.Errorf("request %s %v", s.got.URL.Path, h)
 	}
 	// Sent even when empty: no runtime found.

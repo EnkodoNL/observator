@@ -24,6 +24,10 @@ import { SEVERITIES } from "@/lib/pb/types";
 import { getSettings, saveSettings, settingsSchema } from "@/lib/settings";
 import { buildCommand } from "@/lib/snippet";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
+import { checkDomains } from "@/lib/domains/check";
+import { addName, listDomains, updateDomain } from "@/lib/domains/data";
+import { parseName } from "@/lib/domains/names";
+import { describeDomain } from "./read-tools";
 
 const labelsInput = z
   .string()
@@ -45,6 +49,13 @@ async function resolveSharedKey(ref: string) {
     keys.find((k) => k.id === ref) ?? keys.find((k) => k.name.toLowerCase() === ref.trim().toLowerCase());
   if (!key) throw new ToolError(`No shared key with id or name "${ref}". list_shared_keys shows them.`);
   return key;
+}
+
+async function domainResult(domainId: string) {
+  const [watched, settings, projects] = await Promise.all([listDomains(), getSettings(), listProjects()]);
+  const found = watched.find((w) => w.domain.id === domainId);
+  if (!found) throw new ToolError("The domain disappeared while it was being saved.");
+  return describeDomain(found, settings, new Map(projects.map((p) => [p.id, p.slug])));
 }
 
 export const writeTools: Record<string, Tool> = {
@@ -95,7 +106,7 @@ export const writeTools: Record<string, Tool> = {
         const settings = projectSettingsSchema.parse({
           name: name ?? p.name,
           deployWebhookUrl: deployWebhook?.url ?? "",
-          deployWebhookMethod: deployWebhook?.method ?? (p.deployWebhookMethod || "GET"),
+          deployWebhookMethod: deployWebhook?.method ?? (p.deployWebhookMethod || "POST"),
           deployWebhookToken: deployWebhook?.token ?? "",
           clearWebhook: Boolean(deployWebhook?.clear),
         });
@@ -108,8 +119,63 @@ export const writeTools: Record<string, Tool> = {
         name: p.name,
         url: projectUrl(p.slug),
         labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
-        deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "GET" } : null,
+        deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "POST" } : null,
       };
+    },
+  }),
+
+  add_domain: defineTool({
+    title: "Watch a domain",
+    description:
+      "Starts watching a domain or hostname. A subdomain (app.example.com) gets its TLS certificate checked and its registered domain (example.com) its registration; a registered domain is watched for its registration, and for its certificate unless checkCertificate is false. Optionally tied to a project; domains need none. Checked right away.",
+    input: z.object({
+      name: z.string().trim().min(1).max(300).describe("Domain or hostname, or a URL"),
+      project: projectRef.optional(),
+      checkCertificate: z
+        .boolean()
+        .optional()
+        .describe("For a registered domain: also check its certificate (default true)"),
+    }),
+    write: true,
+    run: async ({ name, project: ref, checkCertificate }) => {
+      const parsed = parseName(name);
+      if (!parsed)
+        throw new ToolError(`"${name}" is not a domain or hostname (an IP address or a bare suffix is not).`);
+      const project = ref ? await resolveProject(ref) : null;
+      const { domain } = await addName({
+        name: parsed,
+        checkCert: checkCertificate ?? true,
+        project: project?.id,
+      });
+      await checkDomains({ domainId: domain.id });
+      changed();
+      return domainResult(domain.id);
+    },
+  }),
+
+  update_domain: defineTool({
+    title: "Domain reminder, note and date",
+    description:
+      "Sets a watched registered domain's own reminder (days before expiry, for something to do in time such as moving registrar; 0 removes it), its note (shown with every warning), and its expiry date by hand (yyyy-mm-dd, for registries that publish none such as .nl; empty removes it). Fields left out stay as they are. Removing a domain is done in the web UI.",
+    input: z.object({
+      name: z.string().trim().min(1).max(300).describe("The registered domain, such as example.com"),
+      remindDays: z.number().int().min(0).max(3650).optional(),
+      note: z.string().max(1000).optional(),
+      expiresOn: z.union([z.literal(""), z.iso.date()]).optional(),
+    }),
+    write: true,
+    run: async ({ name, remindDays, note, expiresOn }) => {
+      const parsed = parseName(name);
+      const watched = parsed ? (await listDomains()).find((w) => w.domain.name === parsed.domain) : undefined;
+      if (!watched) throw new ToolError(`${name} is not watched; add it with add_domain first.`);
+      await updateDomain(watched.domain.id, {
+        ...(remindDays !== undefined ? { remindDays } : {}),
+        ...(note !== undefined ? { note: note.trim() } : {}),
+        ...(expiresOn !== undefined ? { manualExpiresAt: expiresOn } : {}),
+      });
+      await checkDomains({ domainId: watched.domain.id });
+      changed();
+      return domainResult(watched.domain.id);
     },
   }),
 

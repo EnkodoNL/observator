@@ -68,8 +68,9 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     ...normalizePlatform(`${process.platform}/${process.arch}`),
     os: osId(),
     failOn: { severity: null, runtimes: [] },
-    // Observator's own project: labels only by hand.
+    // Observator's own project: labels and domains only by hand.
     labels: null,
+    domains: null,
   };
 
   const project = await selfProject();

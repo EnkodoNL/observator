@@ -79,6 +79,7 @@ func run(args []string, getenv func(string) string, out io.Writer, cfg config) i
 		FailOn:   getenv("OBSERVATOR_FAIL_ON"),
 		Project:  getenv("OBSERVATOR_PROJECT"),
 		Labels:   getenv("OBSERVATOR_LABELS"),
+		Domains:  getenv("OBSERVATOR_DOMAINS"),
 		Body:     body,
 	}
 	answer, err := send(ctx, url+"/api/ingest", report)

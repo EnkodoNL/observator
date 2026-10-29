@@ -10,6 +10,7 @@ import { refreshLatest } from "@/lib/npm-latest";
 import { checkAllProjects } from "@/lib/osv/check";
 import { reportSelf } from "@/lib/self-report";
 import { cleanup } from "./cleanup";
+import { checkDomains } from "@/lib/domains/check";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -41,6 +42,15 @@ export const JOBS = {
     run: async () => {
       await checkAllProjects();
       await publish(await evaluateAll());
+    },
+  },
+  /** TLS certificates of watched hosts, and domain registrations when due (see lib/domains/check.ts). */
+  domains: {
+    label: "Domains and certificates",
+    intervalMs: DAY,
+    lockTtlMs: 30 * MINUTE,
+    run: async () => {
+      await checkDomains();
     },
   },
   /** Retries for notifications that could not be delivered right away. */

@@ -6,6 +6,7 @@ import { getVuln, osvUrl, queryBatch, type OsvQuery } from "./client";
 import { fixedIn } from "./fixed";
 import { osvSeverity } from "./severity";
 import type { OsvVuln } from "./types";
+import { mapLimit } from "@/lib/map-limit";
 
 const g = globalThis as typeof globalThis & { __osvDetails?: Map<string, OsvVuln> };
 const details = (g.__osvDetails ??= new Map());
@@ -18,20 +19,6 @@ async function detail(id: string, modified: string, signal?: AbortSignal): Promi
   if (details.size > 5000) details.clear();
   details.set(key, vuln);
   return vuln;
-}
-
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i]);
-      }
-    }),
-  );
-  return out;
 }
 
 const pairKey = (p: OsvQuery) => `${p.ecosystem}:${p.name}@${p.version}`;

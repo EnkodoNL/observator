@@ -130,6 +130,19 @@ function headline(app: App): { text: string; className: string } {
       className: SEVERITY_TEXT[app.worstSeverity ?? "unknown"],
     };
   if (app.status === "update") return { text: "Runtime update", className: "text-warn" };
+  if (app.domains.length) {
+    const d = app.domains[0];
+    return {
+      text:
+        d.target === "certificate"
+          ? "Certificate"
+          : d.phase === "remind"
+            ? "Domain reminder"
+            : "Domain expiring",
+      className:
+        d.phase === "remind" ? "text-muted-foreground" : d.phase === "warn" ? "text-warn" : "text-danger",
+    };
+  }
   if (app.stale) return { text: "Stale", className: "text-warn" };
   return { text: "", className: "" };
 }

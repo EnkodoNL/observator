@@ -24,6 +24,10 @@ import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
 import { BuildsList } from "./builds-list";
 import { RuntimePanel } from "./runtime-panel";
+import { DomainsPanel } from "./domains-panel";
+import { listDomains } from "@/lib/domains/data";
+import { coolifyStatus } from "@/lib/domains/coolify";
+import { getSettings } from "@/lib/settings";
 import { ProjectSettings } from "./project-settings";
 import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
@@ -50,15 +54,18 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const { slug } = await params;
   const query = await searchParams;
   const tab: Tab = TABS.includes(query.tab as Tab) ? (query.tab as Tab) : "overview";
-  const [view, evaluators, latestByName, allProjects] = await Promise.all([
+  const [view, evaluators, latestByName, allProjects, watched, settings] = await Promise.all([
     getProjectView(slug),
     loadEvaluators(),
     latestVersions(),
     listProjects(),
+    listDomains(),
+    getSettings(),
   ]);
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
+  const coolify = project.deployWebhookUrl ? await coolifyStatus(project.id) : null;
   const appUrl = env().APP_URL;
   // The app badge is worth showing once the app is more than this project.
   const app = {
@@ -204,6 +211,14 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
       {tab === "overview" && (
         <div className="space-y-6">
           <RuntimePanel latest={latest} summary={summary} evaluations={evaluations} />
+          <DomainsPanel
+            slug={project.slug}
+            domains={watched
+              .map((w) => ({ ...w, hosts: w.hosts.filter((h) => h.project === project.id) }))
+              .filter((w) => w.hosts.length)}
+            limits={{ warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays }}
+            coolifyError={coolify?.error}
+          />
           <section className="space-y-3" aria-labelledby="production">
             <h2 id="production" className="flex flex-wrap items-baseline gap-x-3">
               <span className="font-display text-xl font-bold tracking-tight">In production</span>

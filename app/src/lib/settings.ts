@@ -7,6 +7,9 @@ import { kvGet, kvSet } from "@/lib/kv";
 export const settingsSchema = z.object({
   /** A project without a build for this many days counts as stale. */
   staleDays: z.coerce.number().int().min(1).max(365),
+  /** Days before a domain registration expires to warn, and to call it urgent. */
+  domainWarnDays: z.coerce.number().int().min(1).max(365),
+  domainUrgentDays: z.coerce.number().int().min(1).max(365),
   /** Remind about issues that are still open after this many days; 0 disables reminders. */
   renotifyDays: z.coerce.number().int().min(0).max(365),
   digestEnabled: z.boolean(),
@@ -33,6 +36,8 @@ function defaults(): Settings {
   const tz = env().TZ;
   return {
     staleDays: 14,
+    domainWarnDays: 30,
+    domainUrgentDays: 7,
     renotifyDays: 0,
     digestEnabled: true,
     digestDay: 1,

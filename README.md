@@ -98,6 +98,7 @@ ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
+ARG OBSERVATOR_DOMAINS=""
 RUN ["/tmp/observator"]
 
 FROM app
@@ -221,6 +222,7 @@ ARG OBSERVATOR_KEY=""
 ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
+ARG OBSERVATOR_DOMAINS=""
 RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
       rt=""; \
       v="$(node -v 2>/dev/null)" && rt="$rt,node/${v#v}"; \
@@ -242,6 +244,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           -H "X-Fail-On: $OBSERVATOR_FAIL_ON" \
           -H "X-Project: $OBSERVATOR_PROJECT" \
           -H "X-Labels: $OBSERVATOR_LABELS" \
+          -H "X-Domains: $OBSERVATOR_DOMAINS" \
           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest"; \
       elif command -v wget >/dev/null; then \
         base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30 \
@@ -252,6 +255,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           --header "X-Fail-On: $OBSERVATOR_FAIL_ON" \
           --header "X-Project: $OBSERVATOR_PROJECT" \
           --header "X-Labels: $OBSERVATOR_LABELS" \
+          --header "X-Domains: $OBSERVATOR_DOMAINS" \
           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest"; \
       elif command -v node >/dev/null; then \
         node -e 'const fs = require("fs"), e = process.env; \
@@ -264,6 +268,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             "X-Fail-On": e.OBSERVATOR_FAIL_ON || "", \
             "X-Project": e.OBSERVATOR_PROJECT || "", \
             "X-Labels": e.OBSERVATOR_LABELS || "", \
+            "X-Domains": e.OBSERVATOR_DOMAINS || "", \
           } }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
           fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); }) \
         '; \
@@ -276,6 +281,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             ("X-Fail-On", "OBSERVATOR_FAIL_ON"), \
             ("X-Project", "OBSERVATOR_PROJECT"), \
             ("X-Labels", "OBSERVATOR_LABELS"), \
+            ("X-Domains", "OBSERVATOR_DOMAINS"), \
           ]}; \
           h["Authorization"] = "Bearer " + e["OBS_KEY"]; \
           r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30); \
@@ -296,7 +302,7 @@ prints `RUN` commands with build arguments filled in, which would put the key in
 BusyBox `wget` the archive is base64-encoded, because `wget --post-file` stops at the first NUL byte
 and would truncate a binary upload. Over MCP, `setup_dockerfile` gives this form with
 `form: "shell"`, and `upgrade_snippet` switches an existing snippet either way, keeping its key,
-project, labels and `OBSERVATOR_FAIL_ON`.
+project, labels, domains and `OBSERVATOR_FAIL_ON`.
 
 ### Multi-stage builds
 
@@ -333,8 +339,8 @@ Exactly this, and nothing else:
 - the version of each runtime it finds (`node -v`, `python3 -c '...python_version()'`, ...), the
   platform (`linux/arm64`), and the `ID` from `/etc/os-release`
 - the reporter's version (`X-Reporter: observator-reporter/1.0.0`), for the reporter image
-- the gate setting, the project name (`OBSERVATOR_PROJECT`) and the labels (`OBSERVATOR_LABELS`), if
-  set
+- the gate setting, the project name (`OBSERVATOR_PROJECT`), the labels (`OBSERVATOR_LABELS`) and the
+  domains it is served on (`OBSERVATOR_DOMAINS`), if set
 
 No source code, no environment variables, no other files. The raw files are parsed in memory and not
 stored; Observator keeps the resulting package list, and the `name` and `version` from
@@ -353,8 +359,10 @@ On a project's *Setup* tab you can store a deploy webhook. Observator calls it w
 *Redeploy* on the project page or in a notification, always after a confirmation.
 
 - **Coolify:** the resource's deploy webhook URL (`https://coolify.example.com/api/v1/deploy?uuid=...`),
-  method `GET`, and a Coolify API token as bearer token. Give that token only the `deploy` permission
-  (*Keys & Tokens → API Tokens*): leaked, it can then start redeploys but change nothing.
+  method `POST` (Coolify answers `GET` with 405 since v4.2), and a Coolify API token as bearer token.
+  Give that token the `deploy` permission, and `read` if Observator should watch the resource's
+  domains (see [Domains](#domains)); nothing more (*Keys & Tokens → API Tokens*). Leaked, it can then
+  start redeploys and read resource settings, but change nothing.
 - **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
 
 The URL and the token are stored encrypted, so this needs `SECRETS_KEY` (see
@@ -392,9 +400,38 @@ digits and `. _ - /`, at most 20 per project. A project has two kinds:
   Coolify, or the default in the snippet's `ARG`). They follow the latest report.
 - **By hand:** on the project's *Setup* tab, or through MCP. They stay until you change them.
 
-The overview groups by *Servers* (default: the per-server projects of one shared-key app become one
-card, with the worst status on top), by nothing, or by any label key (`app`, `env`, ...), and filters
-on labels (all selected labels must match).
+The overview groups projects into apps by their `app:` label (otherwise by the name the build
+reported, so the per-server projects of a shared key stay together) and names their parts by `role:`.
+It filters on labels: all selected labels must match.
+
+## Domains
+
+Under **Domains**, Observator watches when domains and their certificates run out. A domain can belong
+to a project or be watched on its own, such as a parked one.
+
+- **Certificates.** Each hostname (`app.example.com`) is checked daily over TLS: the expiry date, the
+  issuer, and whether the certificate is valid for the name. It warns once less than a third of its
+  lifetime is left, the point where an automatic renewal should have happened (with Let's Encrypt's
+  shorter certificates, a fixed 30 days would always be on), and is urgent at 7 days or when invalid.
+- **Registrations.** A hostname's registered domain (`example.com`, from the
+  [Public Suffix List](https://publicsuffix.org)) is looked up at its registry over
+  [RDAP](https://about.rdap.org), weekly, or daily once the date is near. It warns 30 days ahead and
+  is urgent at 7 (both under **Settings → General**). Some registries publish no expiry date (.nl,
+  .de) or have no RDAP (.eu, .be): enter the date from your registrar with *Edit*, and it counts like
+  the registry's.
+- **Where they come from.** Added by hand under *Domains* or over MCP; from the build:
+  `--build-arg OBSERVATOR_DOMAINS=app.example.com,api.example.com` (or a build variable in Coolify)
+  ties those names to the project and follows each report, like `OBSERVATOR_LABELS`; or from Coolify:
+  a project whose deploy webhook points at Coolify gets the resource's domains daily, when the
+  webhook's token has the `read` permission. Names added by hand stay until you remove them.
+- **Reminder and note.** Per domain, a reminder of your own some days before expiry, with a note, for
+  something to do in time: moving a .nl domain to another registrar before it renews, say, so you do
+  not pay for the same year twice.
+
+What needs attention shows under *To do* on the overview and on the project's page, and goes out as
+`domain.expiring` to the channels that want it; a domain without a project only to channels without
+a project filter. Each phase (reminder, warning, urgent, expired) is sent once; a renewal starts over.
+Over MCP: `list_domains`, `add_domain`, `update_domain`.
 
 ## Notifications
 
@@ -413,7 +450,7 @@ Add channels under **Settings → Notifications**. Each has a *Send test* button
 | Webhook | Any URL; optional HMAC-SHA256 signature |
 
 Events: `runtime.security_update`, `runtime.eol` (end-of-life, or within 30 days), `vuln.new`,
-`vuln.resolved`, `project.stale` and `digest.weekly`. Per channel you choose the events, the
+`vuln.resolved`, `project.stale`, `domain.expiring` (see [Domains](#domains)) and `digest.weekly`. Per channel you choose the events, the
 projects, and a minimum severity for package advisories. Runtime security updates are always sent.
 
 The rules:

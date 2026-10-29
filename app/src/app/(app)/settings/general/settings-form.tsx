@@ -52,6 +52,41 @@ export function SettingsForm({ initial, timezones }: { initial: Settings; timezo
           {errors.staleDays && <FieldError>{errors.staleDays}</FieldError>}
         </Field>
 
+        <Field data-invalid={errors.domainWarnDays || errors.domainUrgentDays ? true : undefined}>
+          <FieldLabel htmlFor="domainWarnDays">Domain registrations</FieldLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">warn</span>
+            <Input
+              id="domainWarnDays"
+              type="number"
+              min={1}
+              max={365}
+              className="w-20"
+              value={value.domainWarnDays}
+              onChange={(e) => set("domainWarnDays", Number(e.target.value))}
+            />
+            <span className="text-sm text-muted-foreground">days ahead, urgent at</span>
+            <Input
+              id="domainUrgentDays"
+              type="number"
+              min={1}
+              max={365}
+              className="w-20"
+              aria-label="Urgent, days ahead"
+              value={value.domainUrgentDays}
+              onChange={(e) => set("domainUrgentDays", Number(e.target.value))}
+            />
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+          <FieldDescription>
+            Certificates follow their own lifetime: they warn once a third is left, when they should have
+            renewed.
+          </FieldDescription>
+          {(errors.domainWarnDays || errors.domainUrgentDays) && (
+            <FieldError>{errors.domainWarnDays ?? errors.domainUrgentDays}</FieldError>
+          )}
+        </Field>
+
         <Field data-invalid={errors.renotifyDays ? true : undefined}>
           <FieldLabel htmlFor="renotifyDays">Remind about open issues</FieldLabel>
           <div className="flex items-center gap-2">

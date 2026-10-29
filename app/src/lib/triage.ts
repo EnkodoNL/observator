@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ProjectSummary } from "@/lib/data/views";
+import type { DomainAttention } from "@/lib/domains/phase";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
 import { vulnVersions } from "@/lib/issues/types";
 import { packageHref } from "@/lib/package-href";
@@ -14,7 +15,7 @@ export interface ProjectRef {
 
 /**
  * One thing to do, with every project it applies to: a package to update, a runtime to
- * patch or replace, or builds that stopped reporting.
+ * patch or replace, a domain or certificate to renew, or builds that stopped reporting.
  */
 export type Cause = { key: string; severity: Severity; projects: ProjectRef[]; href: string } & (
   | {
@@ -34,6 +35,7 @@ export type Cause = { key: string; severity: Severity; projects: ProjectRef[]; h
       end: string;
       phase: "soon" | "eol";
     }
+  | ({ kind: "domain" } & Omit<DomainAttention, "projectIds">)
   | { kind: "stale" }
 );
 
@@ -41,7 +43,8 @@ const KIND_ORDER: Record<Cause["kind"], number> = {
   runtime_security: 0,
   package: 1,
   runtime_eol: 2,
-  stale: 3,
+  domain: 3,
+  stale: 4,
 };
 
 /**
@@ -55,9 +58,29 @@ const data = <T>(issue: IssueRecord) => issue.data as unknown as T;
 const projectHref = (projects: ProjectRef[]) =>
   projects.length === 1 ? `/projects/${projects[0].slug}` : "";
 
-/** What needs doing across all projects, the heaviest first: tier, severity, then reach. */
-export function triage(items: ProjectSummary[], staleDays: number): Cause[] {
+const DOMAIN_SEVERITY: Record<DomainAttention["phase"], Severity> = {
+  remind: "low",
+  warn: "moderate",
+  urgent: "high",
+  expired: "critical",
+};
+
+/**
+ * What needs doing across all projects, the heaviest first: tier, severity, then reach.
+ * Domains come along as they are; one watched on its own has no projects.
+ */
+export function triage(items: ProjectSummary[], staleDays: number, domains: DomainAttention[] = []): Cause[] {
   const causes = new Map<string, Cause>();
+  const refs = new Map(items.map((i) => [i.project.id, ref(i)]));
+  for (const { projectIds, ...d } of domains)
+    causes.set(`domain:${d.target}:${d.name}`, {
+      key: "",
+      kind: "domain",
+      severity: DOMAIN_SEVERITY[d.phase],
+      projects: projectIds.flatMap((id) => refs.get(id) ?? []),
+      href: "/domains",
+      ...d,
+    });
   const add = (key: string, make: () => Cause, item: ProjectSummary, severity: Severity) => {
     const cause = causes.get(key) ?? make();
     causes.set(key, cause);
