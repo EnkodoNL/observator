@@ -24,6 +24,7 @@ const HEADERS: [header: string, value: string][] = [
   ["X-Fail-On", "$OBSERVATOR_FAIL_ON"],
   ["X-Project", "$OBSERVATOR_PROJECT"],
   ["X-Labels", "$OBSERVATOR_LABELS"],
+  ["X-Domains", "$OBSERVATOR_DOMAINS"],
 ];
 
 // node and python3 read the same values from the environment (OBS_KEY instead of $key).
@@ -127,6 +128,8 @@ export interface SnippetOptions {
   project?: string;
   /** Default for OBSERVATOR_LABELS, such as "app:heatwave,role:web". */
   labels?: string;
+  /** Default for OBSERVATOR_DOMAINS: the names the app is served on, to watch their certificates. */
+  domains?: string;
   /** Default for OBSERVATOR_FAIL_ON: the severity from which the build fails. */
   failOn?: string;
 }
@@ -190,6 +193,7 @@ export function dockerSnippet(
     key,
     project,
     labels,
+    domains,
     failOn,
   }: SnippetOptions = {},
 ): string {
@@ -207,6 +211,7 @@ export function dockerSnippet(
     `ARG OBSERVATOR_FAIL_ON="${argValue(failOn)}"`,
     `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
     `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
+    `ARG OBSERVATOR_DOMAINS="${argValue(domains)}"`,
     ...(reporter ? [imageRun(keyless)] : shellRun(keyless)),
     "",
     `FROM ${stage}`,

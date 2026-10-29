@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   GearIcon,
+  GlobeIcon,
   MonitorIcon,
   MoonIcon,
   SignInIcon,
@@ -33,7 +34,8 @@ const NAV = [
   { href: "/", label: "Overview", match: (p: string) => p === "/" || p.startsWith("/projects") },
   { href: "/runtimes", label: "Runtimes", match: (p: string) => p.startsWith("/runtimes") },
   { href: "/packages", label: "Packages", match: (p: string) => p.startsWith("/packages") },
-  // On a phone Settings moves into the account menu, so the rest fits without scrolling.
+  // On a phone Domains and Settings move into the account menu, so the rest fits without scrolling.
+  { href: "/domains", label: "Domains", match: (p: string) => p.startsWith("/domains"), wide: true },
   { href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings"), wide: true },
 ] as const;
 
@@ -109,6 +111,9 @@ export function AppHeader({
                   <UserIcon /> Account
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem className="sm:hidden" render={<Link href="/domains" />}>
+                <GlobeIcon /> Domains
+              </DropdownMenuItem>
               <DropdownMenuItem className="sm:hidden" render={<Link href="/settings" />}>
                 <GearIcon /> Settings
               </DropdownMenuItem>

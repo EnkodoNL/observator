@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import type { EventType, IssueEvent } from "@/lib/issues/events";
+import type { DomainEvent, IssueEvent } from "@/lib/issues/events";
+import { domainDetail, worse } from "@/lib/domains/phase";
+import type { ExpiryPhase } from "@/lib/pb/types";
 import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "@/lib/issues/types";
 import { pinFor, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
@@ -49,11 +51,7 @@ function severityCounts(events: IssueEvent[]): string {
  * One message for all events of one type in one run, so ten new advisories in a build,
  * or one Node.js security release that affects four projects, become a single message.
  */
-export function renderEvents(
-  type: Exclude<EventType, "digest.weekly">,
-  events: IssueEvent[],
-  ctx: RenderContext,
-): Message {
+export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx: RenderContext): Message {
   const projectIds = events.map((e) => e.projectId);
   const projects = [...new Set(projectIds)];
   const reminder = events.every((e) => e.reminder);
@@ -210,5 +208,44 @@ export function testMessage(appUrl: string): Message {
     ],
     more: 0,
     actions: [{ label: "Open Observator", url: appUrl }],
+  };
+}
+
+const PHASE_TONE: Record<ExpiryPhase, Message["tone"]> = {
+  ok: "ok",
+  remind: "info",
+  warn: "moderate",
+  urgent: "high",
+  expired: "critical",
+};
+const PHASE_SEVERITY: Record<ExpiryPhase, Severity | undefined> = {
+  ok: undefined,
+  remind: undefined,
+  warn: "moderate",
+  urgent: "high",
+  expired: "critical",
+};
+
+/** One message for the domains and certificates that reached a worse phase in one run. */
+export function renderDomainEvents(events: DomainEvent[], ctx: RenderContext): Message {
+  const worst = events.reduce<ExpiryPhase>((a, e) => (worse(e.phase, a) ? e.phase : a), "ok");
+  const items = events.map((e) => ({
+    severity: PHASE_SEVERITY[e.phase],
+    title: e.name,
+    detail: [domainDetail(e), e.note, ...e.projectIds.map((id) => name(ctx, id))].filter(Boolean).join(" · "),
+  }));
+  const reminders = events.every((e) => e.phase === "remind");
+  const one = events.length === 1 ? events[0] : null;
+  return {
+    event: "domain.expiring",
+    tone: PHASE_TONE[worst],
+    title: one
+      ? `${one.name}: ${domainDetail(one)}`
+      : `${plural(events.length, "domain or certificate", "domains and certificates")} need attention`,
+    summary: reminders
+      ? "The reminder you set for this domain is due."
+      : "Renew in time, or check why the certificate did not renew itself.",
+    ...cap(items),
+    actions: [{ label: "Domains", url: `${ctx.appUrl}/domains` }],
   };
 }

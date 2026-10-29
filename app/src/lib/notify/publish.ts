@@ -3,7 +3,7 @@ import "server-only";
 import { channelEvents, listChannels } from "@/lib/data/channels";
 import { sha256 } from "@/lib/crypto";
 import { env } from "@/lib/env";
-import type { EventType, IssueEvent } from "@/lib/issues/events";
+import type { DomainEvent, EventType, IssueEvent } from "@/lib/issues/events";
 import { adminPb, isUniqueViolation, toPbDate } from "@/lib/pb/admin";
 import type { ChannelRecord, ProjectRecord } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
@@ -11,7 +11,7 @@ import { atLeast } from "@/lib/severity";
 import { isDevVuln } from "@/lib/status";
 import type { Message } from "./message";
 import { processQueue } from "./queue";
-import { renderEvents, type ProjectInfo, type RenderContext } from "./render";
+import { renderDomainEvents, renderEvents, type ProjectInfo, type RenderContext } from "./render";
 
 export async function renderContext(): Promise<RenderContext> {
   const pb = await adminPb();
@@ -114,6 +114,37 @@ export async function publish(all: IssueEvent[]): Promise<void> {
         .catch(() => null);
       if (issue) await pb.collection("issues").update(issue.id, { notifiedAt: now });
     }
+  }
+  void processQueue();
+}
+
+/** Which domain events a channel wants: the event type, and its projects when it has a project filter. */
+export function domainEventsForChannel(
+  channel: Pick<ChannelRecord, "events" | "projects">,
+  events: DomainEvent[],
+): DomainEvent[] {
+  if (!channelEvents(channel).includes("domain.expiring")) return [];
+  const projects = channel.projects ?? [];
+  // A domain watched on its own belongs to no project, so only channels without a filter get it.
+  return projects.length ? events.filter((e) => e.projectIds.some((id) => projects.includes(id))) : events;
+}
+
+/** Hands domain events to the notification pipeline: one message per channel. */
+export async function publishDomainEvents(events: DomainEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const channels = (await listChannels()).filter((c) => c.enabled);
+  if (channels.length === 0) return;
+  const ctx = await renderContext();
+  for (const channel of channels) {
+    const wanted = domainEventsForChannel(channel, events);
+    if (!wanted.length) continue;
+    const key = `domain.expiring:${sha256(
+      wanted
+        .map((e) => `${e.target}/${e.name}/${e.phase}/${e.occurredAt}`)
+        .sort()
+        .join("\n"),
+    ).slice(0, 32)}`;
+    await enqueue(channel, "domain.expiring", key, renderDomainEvents(wanted, ctx));
   }
   void processQueue();
 }

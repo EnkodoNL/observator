@@ -115,7 +115,13 @@ COPY --from=build /app /app`;
   });
 
   it("reads what an earlier snippet was set to, in both forms", () => {
-    const settings = { key: "obss_abc123", project: "web", labels: "app:heatwave,env:prod", failOn: "high" };
+    const settings = {
+      key: "obss_abc123",
+      project: "web",
+      labels: "app:heatwave,env:prod",
+      domains: "heatwave.example.com",
+      failOn: "high",
+    };
     for (const form of ["image", "shell"] as const)
       for (const keyless of [false, true]) {
         const text = `${NEXT_STANDALONE}\n\n${dockerSnippet(URL, { form, keyless, stage: "runner", ...settings })}`;
@@ -133,7 +139,14 @@ COPY --from=build /app /app`;
   });
 
   it("keeps the settings when switching forms", () => {
-    const settings = { key: "obs_k", project: "web", labels: "role:web", failOn: "critical", keyless: true };
+    const settings = {
+      key: "obs_k",
+      project: "web",
+      labels: "role:web",
+      domains: "",
+      failOn: "critical",
+      keyless: true,
+    };
     const v1 = analyzeDockerfile(`${NEXT_STANDALONE}\n`, URL, { form: "shell", ...settings });
     if (!v1.ok) throw new Error(v1.error);
     const text = v1.lines.map((l) => l.text).join("\n");

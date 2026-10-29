@@ -5,6 +5,7 @@ import { LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
 import { runtimeLabel } from "@/lib/runtimes/labels";
 import type { Runtime } from "@/lib/runtimes/types";
 import { readTar, TarError } from "./tar";
+import { parseNames, type ParsedName } from "@/lib/domains/names";
 
 export class IngestError extends Error {
   constructor(
@@ -30,6 +31,8 @@ export interface IngestMeta {
   failOn: FailOn;
   /** OBSERVATOR_LABELS; null when the header is absent (older snippets), so labels stay. */
   labels: { labels: string[]; invalid: string[] } | null;
+  /** OBSERVATOR_DOMAINS: names to watch for this project; null when absent, so they stay. */
+  domains: { names: ParsedName[]; invalid: string[] } | null;
 }
 
 export interface FailOn {
@@ -182,6 +185,13 @@ export function normalizePlatform(header: string): { platform: string; arch: str
   return { platform, arch: ARCH[arch] ?? arch };
 }
 
+/** A build names a handful of hosts; more than this is a mistake, not a configuration. */
+const MAX_DOMAINS = 20;
+const limitNames = ({ names, invalid }: { names: ParsedName[]; invalid: string[] }) => ({
+  names: names.slice(0, MAX_DOMAINS),
+  invalid: [...invalid, ...names.slice(MAX_DOMAINS).map((n) => `${n.host} (more than ${MAX_DOMAINS})`)],
+});
+
 export function parseMeta(headers: Headers): IngestMeta {
   const runtimeHeader = headers.get("x-runtime");
   if (runtimeHeader === null) {
@@ -199,6 +209,7 @@ export function parseMeta(headers: Headers): IngestMeta {
   const os = /^[a-z0-9._-]{1,32}$/.test(osHeader) ? osHeader : "";
 
   const labelHeader = headers.get("x-labels");
+  const domainHeader = headers.get("x-domains");
   return {
     runtimes,
     invalidRuntimes: invalid,
@@ -207,5 +218,6 @@ export function parseMeta(headers: Headers): IngestMeta {
     os,
     failOn: parseFailOn(headers.get("x-fail-on")),
     labels: labelHeader === null ? null : parseLabels(labelHeader.slice(0, 2000)),
+    domains: domainHeader === null ? null : limitNames(parseNames(domainHeader.slice(0, 2000))),
   };
 }

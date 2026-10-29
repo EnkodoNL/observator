@@ -123,6 +123,7 @@ describe("headers", () => {
       os: "alpine",
       failOn: { severity: null, runtimes: [] },
       labels: null,
+      domains: null,
     });
     // An empty header clears the build labels; a missing one leaves them.
     const base = { "x-runtime": "node/22.11.0" };
@@ -130,6 +131,18 @@ describe("headers", () => {
     expect(parseMeta(new Headers({ ...base, "x-labels": "App:Heatwave, role:web, bad!" })).labels).toEqual({
       labels: ["app:heatwave", "role:web"],
       invalid: ["bad!"],
+    });
+    // Domains likewise; IPs and junk are set apart for a warning in the build log.
+    expect(parseMeta(new Headers({ ...base, "x-domains": "" })).domains).toEqual({ names: [], invalid: [] });
+    expect(
+      parseMeta(new Headers({ ...base, "x-domains": "App.Example.com, 10.0.0.1 https://api.example.com/" }))
+        .domains,
+    ).toEqual({
+      names: [
+        { host: "app.example.com", domain: "example.com" },
+        { host: "api.example.com", domain: "example.com" },
+      ],
+      invalid: ["10.0.0.1"],
     });
     expect(
       parseMeta(new Headers({ "x-runtime": "node/22.1.0", "x-platform": "../etc", "x-os": "a b" })),

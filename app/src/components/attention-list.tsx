@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { SEVERITY_TEXT } from "@/components/status";
 import { runtimeLabel } from "@/lib/runtimes/labels";
+import { domainDetail } from "@/lib/domains/phase";
 import { SEVERITY_LABEL } from "@/lib/severity";
 import type { Cause, ProjectRef } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,8 @@ function kind(c: Cause): string {
       return "Security";
     case "runtime_eol":
       return c.phase === "eol" ? "End of life" : "EOL soon";
+    case "domain":
+      return c.phase === "remind" ? "Reminder" : c.target === "certificate" ? "Certificate" : "Domain";
     case "stale":
       return "Stale";
   }
@@ -57,6 +60,13 @@ function what(c: Cause): React.ReactNode {
           <span className="ml-2 text-muted-foreground">
             {c.phase === "eol" ? "is past end of life" : `reaches end of life on ${c.end}`}
           </span>
+        </>
+      );
+    case "domain":
+      return (
+        <>
+          <b>{c.name}</b>
+          <span className="ml-2 text-muted-foreground">{domainDetail(c)}</span>
         </>
       );
     case "stale":
@@ -104,7 +114,7 @@ function Row({ cause, staleDays }: { cause: Cause; staleDays: number }) {
       <span
         className={cn(
           "text-sm font-bold",
-          cause.kind === "package" || cause.kind === "runtime_security"
+          cause.kind === "package" || cause.kind === "runtime_security" || cause.kind === "domain"
             ? SEVERITY_TEXT[cause.severity]
             : "text-warn",
         )}
@@ -122,8 +132,18 @@ function Row({ cause, staleDays }: { cause: Cause; staleDays: number }) {
         </Link>
       )}
       <span className="col-start-2 text-sm text-muted-foreground">
-        {reason && `${reason} in `}
-        <Projects projects={cause.projects} />
+        {cause.kind === "domain" ? (
+          <>
+            {cause.note}
+            {cause.note && cause.projects.length > 0 && " · "}
+            <Projects projects={cause.projects} />
+          </>
+        ) : (
+          <>
+            {reason && `${reason} in `}
+            <Projects projects={cause.projects} />
+          </>
+        )}
       </span>
     </li>
   );

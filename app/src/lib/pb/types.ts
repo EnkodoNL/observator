@@ -147,6 +147,60 @@ export interface IgnoreRecord extends BaseRecord {
   createdBy: string;
 }
 
+/** How close something is to expiring; see lib/domains/phase.ts. */
+export type ExpiryPhase = "ok" | "remind" | "warn" | "urgent" | "expired";
+
+/** What has been sent for a domain or host: a notification goes out when phase gets worse. */
+export interface AlertState {
+  phase: ExpiryPhase;
+  notifiedPhase: ExpiryPhase;
+}
+
+export interface RegistrationInfo {
+  /** From RDAP; null when the registry publishes none or the check failed. */
+  expiresAt: string | null;
+  source: "rdap" | "unpublished" | "unsupported" | "failed";
+  error?: string;
+  checkedAt: string;
+}
+
+export interface CertInfo {
+  expiresAt: string | null;
+  validFrom: string | null;
+  issuer: string;
+  /** Why the certificate is not valid for this name (CERT_HAS_EXPIRED, ERR_TLS_CERT_ALTNAME_INVALID). */
+  error: string;
+  /** The host could not be reached at all (ECONNREFUSED, a timeout): no verdict on the certificate. */
+  unreachable: string;
+  checkedAt: string;
+}
+
+/** A registered domain, such as enkodo.dev: its registration expires. */
+export interface DomainRecord extends BaseRecord {
+  name: string;
+  /** Added by hand; otherwise it is there for its hosts and goes when the last one does. */
+  manual: boolean;
+  note: string;
+  /** Days before expiry for a reminder of one's own; 0 is none. */
+  remindDays: number;
+  /** For registries that publish no expiry: the date from the registrar. */
+  manualExpiresAt: string;
+  registration: RegistrationInfo | null;
+  alert: AlertState | null;
+}
+
+export type HostSource = "manual" | "build" | "coolify";
+
+/** A name whose TLS certificate is checked, such as app.enkodo.dev, under its registered domain. */
+export interface HostRecord extends BaseRecord {
+  name: string;
+  domain: string;
+  project: string;
+  sources: HostSource[] | null;
+  cert: CertInfo | null;
+  alert: AlertState | null;
+}
+
 export type IssueKind = "runtime_security" | "runtime_eol" | "vuln" | "stale";
 export type IssueStatus = "open" | "ignored" | "resolved";
 

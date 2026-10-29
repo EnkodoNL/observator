@@ -7,6 +7,7 @@ import { createProject, rotateApiKey, setLabels } from "@/lib/data/projects";
 import { analyzeDockerfile, type DockerfileNote } from "@/lib/dockerfile";
 import { env } from "@/lib/env";
 import { matchKey, sharedNameStatus } from "@/lib/ingest/resolve";
+import { parseNames } from "@/lib/domains/names";
 import { parseLabels } from "@/lib/labels";
 import { defineTool, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
 
@@ -26,7 +27,7 @@ export const installTools: Record<string, Tool> = {
       "- newProject: creates a project with its own key and writes that key in.",
       "- project + rotateKey: gives an existing project a new key (the old one stops working) and writes it in.",
       "- keyless: the snippet without the key check, for servers on a shared key's IP allowlist; give project as the name.",
-      "labels become the default for OBSERVATOR_LABELS, such as app:heatwave,role:web.",
+      "labels become the default for OBSERVATOR_LABELS, such as app:heatwave,role:web; domains the default for OBSERVATOR_DOMAINS, the names the app is served on (app.example.com), whose certificates and registrations are then watched.",
       "To switch an existing snippet between the image and shell form while keeping its settings, use upgrade_snippet instead.",
     ].join("\n"),
     input: z.object({
@@ -39,6 +40,7 @@ export const installTools: Record<string, Tool> = {
       rotateKey: z.boolean().optional(),
       keyless: z.boolean().optional(),
       labels: z.string().max(2000).optional(),
+      domains: z.string().max(2000).optional().describe("Comma-separated names the app is served on"),
       form: z
         .enum(["image", "shell"])
         .default("image")
@@ -52,6 +54,9 @@ export const installTools: Record<string, Tool> = {
       if (ways > 1) throw new ToolError("Pick one of key, newProject, project + rotateKey or keyless.");
       const { labels, invalid } = parseLabels(args.labels ?? "");
       if (invalid.length) throw new ToolError(`Not a label: ${invalid.join(", ")}`);
+      const domains = parseNames(args.domains ?? "");
+      if (domains.invalid.length)
+        throw new ToolError(`Not a domain or hostname: ${domains.invalid.join(", ")}`);
 
       const notes: DockerfileNote[] = [];
       let key: string | undefined;
@@ -157,6 +162,7 @@ export const installTools: Record<string, Tool> = {
         key: embed ? key : undefined,
         project: reportAs,
         labels: labels.join(","),
+        domains: domains.names.map((n) => n.host).join(","),
         keyless: args.keyless,
         form: args.form,
         image: env().REPORTER_IMAGE,
@@ -179,6 +185,7 @@ export const installTools: Record<string, Tool> = {
         project,
         reportsAs: reportAs ?? null,
         labels,
+        domains: domains.names.map((n) => n.host),
         ...(newKey && !embed ? { apiKey: newKey } : {}),
       };
     },

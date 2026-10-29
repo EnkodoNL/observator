@@ -2,12 +2,13 @@
 import "server-only";
 import { runJob } from "@/lib/jobs/scheduler";
 
-/** "Run checks now": runtime releases, OSV and npm latest, one after the other. */
+/** "Run checks now": runtime releases, OSV, npm latest and domains, one after the other. */
 export async function runAllChecks(): Promise<{ ok: boolean; error?: string }> {
   const results = [
     await runJob("runtime-releases", { force: true }),
     await runJob("osv-recheck", { force: true }),
     await runJob("npm-latest", { force: true }),
+    await runJob("domains", { force: true }),
   ];
   if (results.some((r) => r === null))
     return { ok: false, error: "A check is already running; try again in a minute." };

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { IssueEvent } from "@/lib/issues/events";
+import type { DomainEvent, IssueEvent } from "@/lib/issues/events";
 import { describeFetchError, request } from "./channels/types";
 import { signWebhook } from "./channels/webhook";
 import { toMarkdown, toPlainText } from "./message";
-import { countedEvents } from "./publish";
-import { renderEvents, type RenderContext } from "./render";
+import { countedEvents, domainEventsForChannel } from "./publish";
+import { renderDomainEvents, renderEvents, type RenderContext } from "./render";
 
 const ctx: RenderContext = {
   appUrl: "https://obs.example.com",
@@ -145,5 +145,56 @@ describe("countedEvents", () => {
   it("drops advisories in dev dependencies unless they count", () => {
     expect(countedEvents([prod, dev, runtime], false)).toEqual([prod, runtime]);
     expect(countedEvents([prod, dev, runtime], true)).toEqual([prod, dev, runtime]);
+  });
+});
+
+describe("domain events", () => {
+  const event = (extra: Partial<DomainEvent> = {}): DomainEvent => ({
+    type: "domain.expiring",
+    target: "registration",
+    name: "enkodo.nl",
+    phase: "remind",
+    expiresAt: new Date(Date.now() + 50 * 86_400_000).toISOString(),
+    error: "",
+    note: "Move to the new registrar first",
+    projectIds: [],
+    occurredAt: "2026-10-29T12:00:00Z",
+    ...extra,
+  });
+
+  it("renders the name, when, and the note", () => {
+    const msg = renderDomainEvents([event()], ctx);
+    expect(msg.title).toMatch(/^enkodo\.nl: registration expires in (49|50) days/);
+    expect(msg.summary).toContain("reminder");
+    expect(msg.items[0].detail).toContain("Move to the new registrar first");
+    expect(msg.tone).toBe("info");
+  });
+
+  it("names the certificate error and takes the tone of the worst", () => {
+    const msg = renderDomainEvents(
+      [
+        event(),
+        event({
+          target: "certificate",
+          name: "app.enkodo.dev",
+          phase: "urgent",
+          error: "CERT_HAS_EXPIRED",
+          projectIds: ["p1"],
+        }),
+      ],
+      ctx,
+    );
+    expect(msg.tone).toBe("high");
+    expect(msg.items[1].detail).toContain("certificate not valid: CERT_HAS_EXPIRED");
+    expect(msg.items[1].detail).toContain("api");
+  });
+
+  it("sends a domain on its own only to channels without a project filter", () => {
+    const own = event();
+    const linked = event({ name: "app.enkodo.dev", projectIds: ["p1"] });
+    const all = { events: [], projects: [] };
+    expect(domainEventsForChannel(all, [own, linked])).toHaveLength(2);
+    expect(domainEventsForChannel({ events: [], projects: ["p1"] }, [own, linked])).toEqual([linked]);
+    expect(domainEventsForChannel({ events: ["vuln.new"], projects: [] }, [own])).toEqual([]);
   });
 });
