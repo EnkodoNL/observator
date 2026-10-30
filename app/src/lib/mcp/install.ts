@@ -28,7 +28,7 @@ export const installTools: Record<string, Tool> = {
       "- project + rotateKey: gives an existing project a new key (the old one stops working) and writes it in.",
       "- keyless: the snippet without the key check, for servers on a shared key's IP allowlist; give project as the name.",
       "labels become the default for OBSERVATOR_LABELS, such as app:heatwave,role:web; domains the default for OBSERVATOR_DOMAINS, the names the app is served on (app.example.com), whose certificates and registrations are then watched.",
-      "To switch an existing snippet between the image and shell form while keeping its settings, use upgrade_snippet instead.",
+      "To bring an existing snippet up to date, or switch it between the image and shell form while keeping its settings, use upgrade_observator instead.",
     ].join("\n"),
     input: z.object({
       dockerfile: z.string().min(1).max(200_000).describe("The Dockerfile's full content"),
@@ -173,7 +173,7 @@ export const installTools: Record<string, Tool> = {
         notes.push(
           note(
             "warn",
-            "The snippet that was there had a key written in; the new one has none. Pass key again, or use upgrade_snippet to keep the old settings.",
+            "The snippet that was there had a key written in; the new one has none. Pass key again, or use upgrade_observator to keep the old settings.",
           ),
         );
 
@@ -243,9 +243,9 @@ export function registerUpgradePrompt(server: McpServer): void {
   server.registerPrompt(
     "upgrade",
     {
-      title: "Upgrade the Observator snippets in this repository",
+      title: "Upgrade Observator in this repository",
       description:
-        "Finds the Dockerfiles that already report to Observator and brings their snippet to the current version, as the reporter image or as plain sh.",
+        "Finds the Dockerfiles that already report to Observator, brings their snippet to the current version, and asks about settings they do not use yet, such as domains.",
       argsSchema: z.object({
         form: z
           .string()
@@ -262,11 +262,13 @@ export function registerUpgradePrompt(server: McpServer): void {
             content: {
               type: "text" as const,
               text: [
-                "Upgrade the Observator snippets in this repository.",
+                "Upgrade Observator in this repository.",
                 "",
                 '1. Find every Dockerfile (Dockerfile, Dockerfile.*, *.Dockerfile) with an Observator snippet: a "# --- Observator" line or a stage named observator.',
-                `2. Per Dockerfile, call upgrade_snippet with its content, path and form: "${shell ? "shell" : "image"}", and write the returned dockerfile back unchanged.`,
-                "3. Finish with a short overview per file: the form before and after, what was kept, and the notes (especially warnings).",
+                `2. Per Dockerfile, call upgrade_observator with its content, path and form: "${shell ? "shell" : "image"}".`,
+                "3. Collect the questions of all files. For each, work out a suggestion from what its lookIn names; never guess a domain that is not in the repository. Then ask me everything at once, per file, with your suggestions. An app without a public name, such as a worker, can leave domains empty.",
+                "4. Call upgrade_observator again per file with the same dockerfile and my answers, an empty string for what I left empty, and write the returned dockerfile back unchanged.",
+                "5. Finish with a short overview per file: the form before and after, what was added, what was kept, and the notes (especially warnings).",
               ].join("\n"),
             },
           },

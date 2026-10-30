@@ -41,6 +41,8 @@ export interface SnippetSettings {
   labels: string;
   domains: string;
   keyless: boolean;
+  /** The ARGs it has, set or empty: one that is missing predates that setting. */
+  declared: string[];
 }
 
 export type DockerfileAnalysis =
@@ -330,6 +332,7 @@ function readSnippet(snippet: Instruction[], stages: Stage[], from: Stage): Snip
     labels: args.get("OBSERVATOR_LABELS") ?? "",
     domains: args.get("OBSERVATOR_DOMAINS") ?? "",
     keyless,
+    declared: [...args.keys()],
   };
 }
 

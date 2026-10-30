@@ -12,6 +12,9 @@ import { analyzeDockerfile } from "@/lib/dockerfile";
 import { appId } from "@/lib/app-board";
 import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
 import { DEFAULT_REPORTER_IMAGE } from "@/lib/snippet";
+import { snippetQuestions, type SnippetField } from "@/lib/snippet-fields";
+import { parseNames } from "@/lib/domains/names";
+import { parseFailOn } from "@/lib/ingest/request";
 import { env } from "@/lib/env";
 import { displayEntry } from "@/lib/ingest/allowlist";
 import type { DesiredIssue } from "@/lib/issues/desired";
@@ -19,7 +22,7 @@ import { matchingIgnore } from "@/lib/issues/reconcile";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
 import { vulnVersions } from "@/lib/issues/types";
 import { jobStates } from "@/lib/jobs/scheduler";
-import { effectiveLabels, hasLabels } from "@/lib/labels";
+import { effectiveLabels, hasLabels, parseLabels } from "@/lib/labels";
 import type { BuildChanges, BuildRecord, IssueRecord } from "@/lib/pb/types";
 import { loadEvaluators } from "@/lib/runtimes";
 import { CHECKED_RUNTIMES, lineDescription, pinFor, runtimeLabel } from "@/lib/runtimes/labels";
@@ -441,10 +444,11 @@ export const readTools: Record<string, Tool> = {
     },
   }),
 
-  upgrade_snippet: defineTool({
-    title: "Upgrade the Observator snippet in a Dockerfile",
+  upgrade_observator: defineTool({
+    title: "Upgrade Observator in a Dockerfile",
     description: [
-      "Replaces the Observator snippet that is already in a Dockerfile with the current one, in the form you choose, and keeps what the old one was set to: the key, project, labels, domains, OBSERVATOR_FAIL_ON, the URL and keyless. Write the returned dockerfile back as is.",
+      "Replaces the Observator snippet that is already in a Dockerfile with the current one, in the form you choose, and keeps what the old one was set to: the key, project, labels, domains, OBSERVATOR_FAIL_ON, the URL and keyless.",
+      "It also checks for settings the snippet does not use yet. questions lists them, each with where the answer may be. Work out a suggestion from the repository, ask the user, and call again with the same dockerfile and the answers (domains, labels, failOn; an empty string means none, and stops the question). Write the returned dockerfile back as is once questions is empty.",
       "form image (default): the reporter binary from its image, a few lines, also for images without a shell. form shell: plain sh with curl, wget, node or python3, nothing pulled from a registry; for builds that cannot reach it, or teams that would rather not run a binary they did not build.",
       "For a Dockerfile without the snippet, use setup_dockerfile.",
     ].join("\n"),
@@ -452,22 +456,38 @@ export const readTools: Record<string, Tool> = {
       dockerfile: z.string().min(1).max(200_000).describe("The Dockerfile's full content"),
       path: z.string().max(500).optional().describe("Where the Dockerfile is, for the notes"),
       form: z.enum(["image", "shell"]).default("image"),
+      domains: z.string().max(2000).optional().describe("Answer: comma-separated names the app is served on"),
+      labels: z.string().max(2000).optional().describe("Answer: labels such as app:heatwave,role:web"),
+      failOn: z.string().max(100).optional().describe("Answer: such as high, or critical,runtime"),
     }),
-    run: async ({ dockerfile, path, form }) => {
+    run: async ({ dockerfile, path, form, ...answers }) => {
+      const domains = parseNames(answers.domains ?? "");
+      if (domains.invalid.length)
+        throw new ToolError(`Not a domain or hostname: ${domains.invalid.join(", ")}`);
+      const labels = parseLabels(answers.labels ?? "");
+      if (labels.invalid.length) throw new ToolError(`Not a label: ${labels.invalid.join(", ")}`);
+      const failOn = parseFailOn(answers.failOn ?? "");
+      if (answers.failOn?.trim() && !failOn.severity && failOn.runtimes.length === 0)
+        throw new ToolError(`Not a fail-on value: ${answers.failOn}`);
+
       const before = analyzeDockerfile(dockerfile, env().APP_URL);
       if (!before.ok) throw new ToolError(before.error);
       const old = before.existing;
       if (!old) throw new ToolError("This Dockerfile has no Observator snippet yet. Use setup_dockerfile.");
+      // A reporter image of its own (a mirror) stays; otherwise the configured one.
+      const image = old.image && old.image !== DEFAULT_REPORTER_IMAGE ? old.image : env().REPORTER_IMAGE;
+      const set = {
+        domains: answers.domains === undefined ? old.domains : domains.names.map((n) => n.host).join(","),
+        labels: answers.labels === undefined ? old.labels : labels.labels.join(","),
+        failOn: answers.failOn === undefined ? old.failOn : answers.failOn.trim(),
+      };
       const a = analyzeDockerfile(dockerfile, old.url ?? env().APP_URL, {
         form,
-        // A reporter image of its own (a mirror) stays; otherwise the configured one.
-        image: old.image && old.image !== DEFAULT_REPORTER_IMAGE ? old.image : env().REPORTER_IMAGE,
+        image,
         key: old.key,
         project: old.project,
-        labels: old.labels,
-        domains: old.domains,
-        failOn: old.failOn,
         keyless: old.keyless,
+        ...set,
       });
       if (!a.ok) throw new ToolError(a.error);
       const label = (f: string) => (f === "image" ? "the reporter image" : "plain sh");
@@ -495,21 +515,33 @@ export const readTools: Record<string, Tool> = {
               },
             ]
           : []),
+        ...(form === "image" && set.domains && !old.domains
+          ? [
+              {
+                level: "info" as const,
+                text: `Domains need reporter 1.1 or newer. If the build server has an older copy of ${image}, run docker pull ${image} there first; the build log warns when it is too old.`,
+              },
+            ]
+          : []),
         ...a.notes.filter((n) => !n.text.startsWith("This Dockerfile already reports")),
       ];
       return {
         path: path ?? null,
         from: old.form,
         form,
-        kept: {
+        settings: {
           key: old.key ? `${old.key.slice(0, 8)}…` : null,
           project: old.project || null,
-          labels: old.labels || null,
-          domains: old.domains || null,
-          failOn: old.failOn || null,
+          labels: set.labels || null,
+          domains: set.domains || null,
+          failOn: set.failOn || null,
           keyless: old.keyless,
           url: old.url ?? null,
         },
+        questions: snippetQuestions(
+          old,
+          (Object.keys(set) as SnippetField[]).filter((f) => answers[f] !== undefined),
+        ),
         notes,
         dockerfile: `${a.lines.map((l) => l.text).join("\n")}\n`,
       };
