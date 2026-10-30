@@ -10,6 +10,7 @@ import {
   parseMeta,
   parseRuntimes,
   readBody,
+  reporterOutdated,
 } from "./request";
 import { renderReport, type ReportInput } from "./report";
 import { RateLimiter } from "@/lib/rate-limit";
@@ -124,6 +125,7 @@ describe("headers", () => {
       failOn: { severity: null, runtimes: [] },
       labels: null,
       domains: null,
+      reporter: null,
     });
     // An empty header clears the build labels; a missing one leaves them.
     const base = { "x-runtime": "node/22.11.0" };
@@ -154,6 +156,18 @@ describe("headers", () => {
 
   it("records an image without a known runtime", () => {
     expect(parseMeta(new Headers({ "x-runtime": "" })).runtimes).toEqual([]);
+  });
+
+  it("reads the reporter's release, and knows which ones drop OBSERVATOR_DOMAINS", () => {
+    const reporter = (value: string) =>
+      parseMeta(new Headers({ "x-runtime": "node/22.11.0", "x-reporter": value })).reporter;
+    expect(reporter("observator-reporter/1.0.1")).toBe("1.0.1");
+    expect(reporter("observator-reporter/dev")).toBeNull();
+    expect(reporter("something-else/1.0.1")).toBeNull();
+    expect(reporterOutdated("1.0.1")).toBe(true);
+    expect(reporterOutdated("1.1.0")).toBe(false);
+    expect(reporterOutdated("2.0.0")).toBe(false);
+    expect(reporterOutdated(null)).toBe(false);
   });
 
   it("tells an outdated snippet apart from a request without the header", () => {

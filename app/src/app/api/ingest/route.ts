@@ -11,7 +11,7 @@ import { parsePackageJson } from "@/lib/lockfile";
 import { publish } from "@/lib/notify/publish";
 import { refreshLatest } from "@/lib/npm-latest";
 import { renderReport } from "@/lib/ingest/report";
-import { extractFiles, IngestError, parseMeta, readBody } from "@/lib/ingest/request";
+import { extractFiles, IngestError, parseMeta, readBody, reporterOutdated } from "@/lib/ingest/request";
 import { RateLimiter } from "@/lib/rate-limit";
 import { Semaphore } from "@/lib/semaphore";
 import { checkDomains } from "@/lib/domains/check";
@@ -176,6 +176,11 @@ export async function POST(request: Request) {
           warnings: [
             ...(meta.invalidRuntimes.length
               ? [`runtimes ignored: ${meta.invalidRuntimes.join(", ")} (expected name/version)`]
+              : []),
+            ...(reporterOutdated(meta.reporter)
+              ? [
+                  `reporter ${meta.reporter} is outdated and does not send OBSERVATOR_DOMAINS: run docker pull ${env().REPORTER_IMAGE} on the build server`,
+                ]
               : []),
             ...(meta.domains?.invalid.length
               ? [

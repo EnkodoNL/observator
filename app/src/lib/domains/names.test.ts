@@ -11,6 +11,7 @@ describe("parseName", () => {
     ["shop.bücher.de", "shop.xn--bcher-kva.de", "xn--bcher-kva.de"],
     ["my-app.vercel.app", "my-app.vercel.app", "vercel.app"],
     ["enkodo.nl.", "enkodo.nl", "enkodo.nl"],
+    ["www.designradiator.nl", "www.designradiator.nl", "designradiator.nl"],
   ])("%s -> host %s, domain %s", (input, host, domain) => {
     expect(parseName(input)).toEqual({ host, domain });
   });
