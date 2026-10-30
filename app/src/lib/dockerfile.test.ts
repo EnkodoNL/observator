@@ -132,6 +132,7 @@ COPY --from=build /app /app`;
           image: form === "image" ? "ghcr.io/enkodonl/observator-reporter:1" : undefined,
           url: URL,
           keyless,
+          declared: expect.arrayContaining(["OBSERVATOR_DOMAINS", "OBSERVATOR_LABELS"]),
           ...settings,
         });
       }
