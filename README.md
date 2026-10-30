@@ -680,6 +680,9 @@ Debian slim, distroless and `python:3.12-slim`, and the plain sh snippet on `nod
 publishes `ghcr.io/enkodonl/observator-reporter` as `1.2.3`, `1.2`, `1` and `latest` for amd64, arm64
 and arm/v7. After the very first release, set the package to *Public* (package settings on GitHub),
 so builds can pull it without logging in. Running the workflow by hand builds without publishing.
+A change in `reporter/` only reaches builds after a tag. When a release sends something new, also
+raise `MIN_REPORTER` in `app/src/lib/ingest/request.ts`, so older reporters get a warning in the build
+log instead of dropping it silently.
 
 ## Limitations
 

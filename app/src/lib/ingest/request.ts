@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { gunzipSync } from "node:zlib";
+import semver from "semver";
 import { parseLabels } from "@/lib/labels";
 import { LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
 import { runtimeLabel } from "@/lib/runtimes/labels";
@@ -33,6 +34,8 @@ export interface IngestMeta {
   labels: { labels: string[]; invalid: string[] } | null;
   /** OBSERVATOR_DOMAINS: names to watch for this project; null when absent, so they stay. */
   domains: { names: ParsedName[]; invalid: string[] } | null;
+  /** The reporter image's release; null for the sh snippet and for development builds. */
+  reporter: string | null;
 }
 
 export interface FailOn {
@@ -192,6 +195,16 @@ const limitNames = ({ names, invalid }: { names: ParsedName[]; invalid: string[]
   invalid: [...invalid, ...names.slice(MAX_DOMAINS).map((n) => `${n.host} (more than ${MAX_DOMAINS})`)],
 });
 
+/** The first reporter that sends X-Domains: older ones drop OBSERVATOR_DOMAINS without a word. */
+const MIN_REPORTER = "1.1.0";
+
+export const reporterOutdated = (version: string | null) =>
+  version !== null && semver.lt(version, MIN_REPORTER);
+
+/** "observator-reporter/1.1.0" to its release; anything else is not one. */
+const reporterRelease = (header: string | null) =>
+  /^observator-reporter\/(\d+\.\d+\.\d+)$/.exec(header?.trim() ?? "")?.[1] ?? null;
+
 export function parseMeta(headers: Headers): IngestMeta {
   const runtimeHeader = headers.get("x-runtime");
   if (runtimeHeader === null) {
@@ -219,5 +232,6 @@ export function parseMeta(headers: Headers): IngestMeta {
     failOn: parseFailOn(headers.get("x-fail-on")),
     labels: labelHeader === null ? null : parseLabels(labelHeader.slice(0, 2000)),
     domains: domainHeader === null ? null : limitNames(parseNames(domainHeader.slice(0, 2000))),
+    reporter: reporterRelease(headers.get("x-reporter")),
   };
 }

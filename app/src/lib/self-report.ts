@@ -71,6 +71,7 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     // Observator's own project: labels and domains only by hand.
     labels: null,
     domains: null,
+    reporter: null,
   };
 
   const project = await selfProject();
