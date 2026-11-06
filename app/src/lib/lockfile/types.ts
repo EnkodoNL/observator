@@ -8,6 +8,8 @@ export interface Component {
   dev: boolean;
   /** Up to three direct dependencies through which this package is pulled in. */
   via: string[];
+  /** OSV's ecosystem; absent means npm. */
+  ecosystem?: string;
 }
 
 export interface ParseResult {

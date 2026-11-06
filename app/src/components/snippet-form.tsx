@@ -66,9 +66,9 @@ export const useSnippetForm = () => useContext(Context);
 
 const DESCRIPTION: Record<SnippetForm, string> = {
   image:
-    "A few lines: copies the small Observator reporter from its image and runs it. Works on any image, also without a shell (distroless). The build pulls the reporter from a registry.",
+    "A few lines: copies the small Observator reporter from its image and runs it. Works on any image, also without a shell (distroless, scratch), and reads Go programs. The build pulls the reporter from a registry.",
   shell:
-    "Everything in plain sh, nothing to pull: works on any image with a shell and curl, wget, node or python3. It finds the runtimes (Node.js, Bun, Deno, Python, PHP, Ruby) itself.",
+    "Everything in plain sh, nothing to pull: works on any image with a shell and curl, wget, node or python3. It finds the runtimes (Node.js, Bun, Deno, Python, PHP, Ruby) itself, but cannot read Go programs.",
 };
 
 /** The switch between both forms, with what each one needs. */

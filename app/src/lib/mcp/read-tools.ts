@@ -25,7 +25,7 @@ import { jobStates } from "@/lib/jobs/scheduler";
 import { effectiveLabels, hasLabels, parseLabels } from "@/lib/labels";
 import type { BuildChanges, BuildRecord, IssueRecord } from "@/lib/pb/types";
 import { loadEvaluators } from "@/lib/runtimes";
-import { CHECKED_RUNTIMES, lineDescription, pinFor, runtimeLabel } from "@/lib/runtimes/labels";
+import { CHECKED_RUNTIMES, lineDescription, pinAdvice, pinLine, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Evaluator } from "@/lib/runtimes/types";
 import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
@@ -34,7 +34,7 @@ import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, typ
 import { listDomains, type WatchedDomain } from "@/lib/domains/data";
 import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
 
-const STATUSES = ["none", "ok", "update", "vulnerable"] as const;
+const STATUSES = ["none", "unchecked", "ok", "update", "vulnerable"] as const;
 
 /** At most `n` entries of a list, saying how many were left out. */
 function capped<T>(list: T[], n: number): { items: T[]; omitted: number } {
@@ -67,7 +67,7 @@ function describeRuntimes(
       .map((i) => i.data as unknown as RuntimeSecurityData)
       .find((d) => d.runtime === r.name);
     const eol = issues.eol.map((i) => i.data as unknown as RuntimeEolData).find((d) => d.runtime === r.name);
-    const pin = security ? pinFor(r.name, security.target, security.os) : null;
+    const pin = security ? pinLine(r.name, security.target, security.os) : null;
     return {
       name: r.name,
       label: runtimeLabel(r.name),
@@ -75,7 +75,7 @@ function describeRuntimes(
       checked: CHECKED_RUNTIMES.includes(r.name),
       ...(evaluators ? { line: lineDescription(evaluators.get(r.name)?.(r.version) ?? null) } : {}),
       securityUpdate: security
-        ? { target: security.target, ...(pin ? { pin: `FROM ${pin} AS app` } : {}) }
+        ? { target: security.target, ...(pin ? { pin, advice: pinAdvice(r.name) } : {}) }
         : null,
       endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
     };
@@ -120,7 +120,7 @@ export const readTools: Record<string, Tool> = {
   list_projects: defineTool({
     title: "List projects",
     description:
-      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, none = no build yet), runtimes (such as node 22.11.0; only Node.js is checked so far), app version, advisory counts, labels and last build. Advisories in packages only dev dependencies pull in are counted under buildOnly and do not make a project vulnerable, unless the countDevDependencies setting is on. Start here.",
+      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, unchecked = a build with nothing Observator can check, such as an unchecked runtime without a lockfile, none = no build yet), runtimes (such as node 22.11.0 or go 1.26.2; Node.js and Go are checked), app version, advisory counts, labels and last build. Advisories in packages only dev dependencies pull in are counted under buildOnly and do not make a project vulnerable, unless the countDevDependencies setting is on. Start here.",
     input: z.object({
       labels: z
         .array(z.string())
@@ -295,9 +295,9 @@ export const readTools: Record<string, Tool> = {
   list_packages: defineTool({
     title: "Packages across projects",
     description:
-      "Every npm package in the projects' lockfiles, one row per name: versions in use, number of projects and the worst open advisory. Vulnerable packages first.",
+      "Every npm package in the projects' lockfiles and every Go module in their programs, one row per name: versions in use, number of projects and the worst open advisory. Vulnerable packages first.",
     input: z.object({
-      query: z.string().max(214).optional().describe("Part of the package name"),
+      query: z.string().max(512).optional().describe("Part of the package name"),
       scope: z.enum(PACKAGE_SCOPES).default("direct"),
       limit: z.number().int().min(1).max(200).default(100),
     }),
@@ -312,7 +312,11 @@ export const readTools: Record<string, Tool> = {
     description:
       "Where one package is used: per project the version, whether it is direct or pulled in by another package, and the advisories that apply.",
     input: z.object({
-      name: z.string().min(1).max(214).describe("The npm name, such as lodash or @types/node"),
+      name: z
+        .string()
+        .min(1)
+        .max(512)
+        .describe("The npm name or Go module path, such as lodash, @types/node or golang.org/x/net"),
     }),
     run: async ({ name }) => {
       const detail = await packageDetail(name);
@@ -324,7 +328,7 @@ export const readTools: Record<string, Tool> = {
   runtime_overview: defineTool({
     title: "Runtime versions",
     description:
-      "All projects grouped per runtime and version. For checked runtimes (Node.js so far): the release line, the security release to move to and the image to pin.",
+      "All projects grouped per runtime and version. For checked runtimes (Node.js and Go): the release line, the security release to move to and the image to pin (for Go, in the stage that builds the program).",
     input: z.object({}),
     run: async () => ({
       runtimes: (await runtimeOverview()).map((section) => ({
@@ -340,12 +344,12 @@ export const readTools: Record<string, Tool> = {
             line: lineDescription(g.evaluation),
             securityUpdate: target,
             projects: g.projects.map((i) => {
-              const pin = target ? pinFor(section.runtime, target, i.latest?.os ?? "") : null;
+              const pin = target ? pinLine(section.runtime, target, i.latest?.os ?? "") : null;
               return {
                 slug: i.project.slug,
                 name: i.project.name,
                 os: i.latest?.os || null,
-                pin: pin ? `FROM ${pin} AS app` : null,
+                pin,
               };
             }),
           };

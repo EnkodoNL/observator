@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. The reporter image on distroless static.
+# There is no package.json: the reporter reads Go and the modules from the binary itself.
+ARG GO_IMAGE=golang:1.26-alpine
+
+FROM ${GO_IMAGE} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY main.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /server .
+
+FROM gcr.io/distroless/static-debian13 AS app
+COPY --from=build /server /server
+ENTRYPOINT ["/server"]
+
+# --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
+FROM ghcr.io/enkodonl/observator-reporter:1 AS observator-reporter
+FROM app AS observator
+COPY --from=observator-reporter /reporter /tmp/observator
+ARG OBSERVATOR_URL=https://observator.example.com
+ARG OBSERVATOR_KEY=""
+ARG OBSERVATOR_FAIL_ON=""
+ARG OBSERVATOR_PROJECT=""
+ARG OBSERVATOR_LABELS=""
+ARG OBSERVATOR_DOMAINS=""
+RUN ["/tmp/observator"]
+
+FROM app
+COPY --from=observator /tmp/.observator /tmp/.observator

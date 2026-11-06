@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRightIcon, ShieldCheckIcon, ShieldWarningIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import { runtimeOverview, type RuntimeSection, type VersionGroup } from "@/lib/data/runtime-overview";
-import { lineDescription, pinFor } from "@/lib/runtimes/labels";
+import { lineDescription, pinAdvice, pinLine } from "@/lib/runtimes/labels";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
@@ -18,7 +18,7 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
   const line = lineDescription(ev);
   const pins = security
     ? [
-        ...new Set(group.projects.map((p) => pinFor(section.runtime, security.target, p.latest?.os ?? ""))),
+        ...new Set(group.projects.map((p) => pinLine(section.runtime, security.target, p.latest?.os ?? ""))),
       ].filter((p): p is string => Boolean(p))
     : [];
   return (
@@ -86,10 +86,8 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
       </ul>
       {pins.length > 0 && (
         <div className="border-t bg-muted/30 p-4">
-          <p className="mb-2 text-sm text-muted-foreground">
-            Pin the patched image in these Dockerfiles and redeploy:
-          </p>
-          <CodeBlock code={pins.map((tag) => `FROM ${tag} AS app`).join("\n")} />
+          <p className="mb-2 text-sm text-muted-foreground">{pinAdvice(section.runtime)}</p>
+          <CodeBlock code={pins.join("\n")} />
         </div>
       )}
     </section>

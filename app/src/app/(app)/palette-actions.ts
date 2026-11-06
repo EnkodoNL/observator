@@ -8,7 +8,7 @@ import { adminPb } from "@/lib/pb/admin";
 /** Package names matching a query, with how many projects use them, for the command palette. */
 export async function searchPackageNamesAction(query: string): Promise<{ name: string; projects: number }[]> {
   await requireUser();
-  const q = z.string().trim().max(214).parse(query).toLowerCase();
+  const q = z.string().trim().max(512).parse(query).toLowerCase();
   if (q.length < 2) return [];
   const pb = await adminPb();
   const rows = await pb.collection("components").getList<{ name: string; project: string }>(1, 500, {

@@ -106,6 +106,41 @@ describe("computeDesired", () => {
     expect(issues.some((i) => i.kind === "vuln")).toBe(false);
   });
 
+  it("makes one issue of a Go advisory and its GHSA, rated by the GHSA", () => {
+    const go = { ecosystem: "Go", name: "golang.org/x/net", version: "v0.20.0", fixedIn: "0.23.0", url: "" };
+    const issues = computeDesired(
+      input({
+        components: [{ ...go, direct: false, dev: false, via: [] }],
+        vulns: [
+          {
+            ...go,
+            osvId: "GO-2024-2687",
+            aliases: ["CVE-2023-45288", "GHSA-4v7x-pqxf-cx7m"],
+            severity: "unknown",
+            summary: "HTTP/2 CONTINUATION flood in net/http",
+          },
+          {
+            ...go,
+            osvId: "GHSA-4v7x-pqxf-cx7m",
+            aliases: ["CVE-2023-45288", "GO-2024-2687"],
+            severity: "moderate",
+            summary: "net/http, x/net/http2: close connections when receiving too many headers",
+          },
+          { ...go, osvId: "GO-2026-0001", aliases: [], severity: "unknown", summary: "Unrated" },
+        ],
+      }),
+    ).filter((i) => i.kind === "vuln");
+    expect(issues.map((i) => [i.key, i.severity])).toEqual([
+      ["vuln:GHSA-4v7x-pqxf-cx7m:golang.org/x/net", "moderate"],
+      ["vuln:GO-2026-0001:golang.org/x/net", "unknown"],
+    ]);
+    expect(issues[0].data).toMatchObject({
+      aliases: ["CVE-2023-45288", "GO-2024-2687"],
+      // go get needs the v that OSV leaves off.
+      fixedIn: "v0.23.0",
+    });
+  });
+
   it("matches advisories within their own ecosystem", () => {
     const issues = computeDesired(input({ vulns: [{ ...lodashVuln, ecosystem: "PyPI" }] }));
     expect(issues.some((i) => i.kind === "vuln")).toBe(false);

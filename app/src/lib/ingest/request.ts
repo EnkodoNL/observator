@@ -2,7 +2,7 @@
 import { gunzipSync } from "node:zlib";
 import semver from "semver";
 import { parseLabels } from "@/lib/labels";
-import { LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
+import { GO_BINARIES, LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
 import { runtimeLabel } from "@/lib/runtimes/labels";
 import type { Runtime } from "@/lib/runtimes/types";
 import { readTar, TarError } from "./tar";
@@ -19,7 +19,7 @@ export class IngestError extends Error {
 
 // A large monorepo lockfile is a few MB; this leaves room and keeps one report's memory bounded.
 const MAX_UNPACKED = 16 * 1024 * 1024;
-const ACCEPTED = new Set<string>(["package.json", ...LOCKFILE_NAMES]);
+const ACCEPTED = new Set<string>(["package.json", GO_BINARIES, ...LOCKFILE_NAMES]);
 
 export interface IngestMeta {
   /** X-Runtime, in the order reported; empty when the image has none Observator recognizes. */
@@ -48,6 +48,8 @@ export interface IngestFiles {
   /** Null when the image has no package.json: then there are no packages, only runtimes. */
   packageJson: string | null;
   lockfiles: Partial<Record<LockfileName, string>>;
+  /** The reporter's go-binaries.json: the Go programs in the image and their modules. */
+  goBinaries: string | null;
 }
 
 /** Reads the request body with a hard cap, without trusting Content-Length. */
@@ -91,7 +93,7 @@ export function decodeBody(body: Buffer): Buffer {
 
 /** Unpacks the tar.gz in memory and keeps only the expected top-level files. */
 export function extractFiles(body: Buffer): IngestFiles {
-  if (body.length === 0) return { packageJson: null, lockfiles: {} };
+  if (body.length === 0) return { packageJson: null, lockfiles: {}, goBinaries: null };
   let archive: Buffer;
   try {
     archive = gunzipSync(decodeBody(body), { maxOutputLength: MAX_UNPACKED });
@@ -121,7 +123,7 @@ export function extractFiles(body: Buffer): IngestFiles {
     const content = files.get(name);
     if (content !== undefined) lockfiles[name] = content;
   }
-  return { packageJson, lockfiles };
+  return { packageJson, lockfiles, goBinaries: files.get(GO_BINARIES) ?? null };
 }
 
 const SEVERITY_TOKENS = ["low", "moderate", "high", "critical"] as const;

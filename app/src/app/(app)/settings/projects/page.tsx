@@ -90,7 +90,7 @@ export default async function ProjectsSettingsPage() {
       <section>
         <PageHeader
           title="Shared keys"
-          description="One write-only key for many apps. Each build names its project with OBSERVATOR_PROJECT (or package.json) and the project is created on its first report."
+          description="One write-only key for many apps. Each build names its project with OBSERVATOR_PROJECT (or package.json, or a Go program's module) and the project is created on its first report."
           actions={<NewSharedKeyDialog appUrl={appUrl} />}
         />
         {keys.length === 0 ? (

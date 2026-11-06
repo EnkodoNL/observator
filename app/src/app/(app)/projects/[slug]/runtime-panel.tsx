@@ -4,7 +4,7 @@ import { CodeBlock } from "@/components/code-block";
 import type { RuntimeEolData, RuntimeSecurityData } from "@/lib/issues/types";
 import { pbDate } from "@/lib/pb/admin";
 import type { BuildRecord } from "@/lib/pb/types";
-import { CHECKED_RUNTIMES, lineDescription, pinFor, runtimeLabel } from "@/lib/runtimes/labels";
+import { CHECKED_RUNTIMES, lineDescription, pinAdvice, pinLine, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Runtime, RuntimeEvaluation } from "@/lib/runtimes/types";
 import type { StatusSummary } from "@/lib/status";
 import { formatDate, timeAgo } from "@/lib/time";
@@ -23,7 +23,7 @@ function CheckedRuntime({
 }) {
   const label = runtimeLabel(runtime.name);
   const line = lineDescription(evaluation);
-  const pin = security ? pinFor(runtime.name, security.target, security.os) : null;
+  const pin = security ? pinLine(runtime.name, security.target, security.os) : null;
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       <div className="space-y-1">
@@ -41,11 +41,9 @@ function CheckedRuntime({
               {security.securityReleases.length === 1
                 ? `${label} ${security.securityReleases[0]} was a security release.`
                 : `${security.securityReleases.length} security releases since ${security.running}, most recently ${security.securityReleases.at(-1)}.`}{" "}
-              {pin
-                ? "Pin the image and redeploy: rebuilding a floating tag often reuses a cached base image."
-                : `Move to ${security.target} and redeploy.`}
+              {pin ? pinAdvice(runtime.name) : `Move to ${security.target} and redeploy.`}
             </p>
-            {pin && <CodeBlock code={`FROM ${pin} AS app`} />}
+            {pin && <CodeBlock code={pin} />}
           </div>
         ) : evaluation?.patchAvailable && evaluation.latestInLine ? (
           <p className="text-sm text-muted-foreground">
@@ -74,7 +72,7 @@ function CheckedRuntime({
 }
 
 /**
- * The runtimes of the latest build. Checked ones (Node.js so far) get their release line and
+ * The runtimes of the latest build. Checked ones (Node.js and Go) get their release line and
  * advice; the rest is listed with its version, so it is at least visible.
  */
 export function RuntimePanel({
@@ -112,7 +110,7 @@ export function RuntimePanel({
       ))}
       {runtimes.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          The latest build found no runtime it recognizes (Node.js, Bun, Deno, Python, PHP, Ruby).
+          The latest build found no runtime it recognizes (Node.js, Go, Bun, Deno, Python, PHP, Ruby).
         </p>
       )}
       {unchecked.length > 0 && (

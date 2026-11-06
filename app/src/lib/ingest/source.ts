@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import type { PackageJson } from "@/lib/lockfile";
+import { goAppName, type PackageJson } from "@/lib/lockfile";
 import { IngestError } from "./request";
 
 const NAME = /^[\x20-\x7e]{1,100}$/;
 
 /**
  * The project name a shared-key report is for: OBSERVATOR_PROJECT (X-Project), otherwise
- * the name from package.json.
+ * the name from package.json, otherwise the last part of a Go program's module path.
  */
-export function reportedName(header: string | null, pkg: PackageJson | null): string {
+export function reportedName(header: string | null, pkg: PackageJson | null, goMain = ""): string {
   const explicit = header?.trim() ?? "";
   if (explicit) {
     if (!NAME.test(explicit))
@@ -17,7 +17,12 @@ export function reportedName(header: string | null, pkg: PackageJson | null): st
   }
   const fromPackage = typeof pkg?.name === "string" ? pkg.name.trim() : "";
   if (fromPackage && NAME.test(fromPackage)) return fromPackage;
-  throw new IngestError(400, "no project name: set OBSERVATOR_PROJECT, or a name in package.json");
+  const fromGo = goAppName(goMain);
+  if (fromGo && NAME.test(fromGo)) return fromGo;
+  throw new IngestError(
+    400,
+    "no project name: set OBSERVATOR_PROJECT, or a name in package.json (or a Go module path)",
+  );
 }
 
 /** How an auto-created project is shown: the reported name, plus the server when split by IP. */

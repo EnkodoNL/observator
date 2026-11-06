@@ -3,7 +3,7 @@ import type { DomainEvent, IssueEvent } from "@/lib/issues/events";
 import { domainDetail, worse } from "@/lib/domains/phase";
 import type { ExpiryPhase } from "@/lib/pb/types";
 import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "@/lib/issues/types";
-import { pinFor, runtimeLabel } from "@/lib/runtimes/labels";
+import { pinFor, pinStage, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
 import { MAX_ITEMS, type Message, type MessageAction, type MessageItem } from "./message";
@@ -61,7 +61,8 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
     case "runtime.security_update": {
       const pinText = (d: RuntimeSecurityData) => {
         const pin = pinFor(d.runtime, d.target, d.os);
-        return pin ? `pin ${pin} and redeploy` : `move to ${d.target} and redeploy`;
+        const where = pinStage(d.runtime) === "build" ? " in the build stage" : "";
+        return pin ? `pin ${pin}${where} and redeploy` : `move to ${d.target} and redeploy`;
       };
       const items = events.map((e) => {
         const d = e.data as unknown as RuntimeSecurityData;

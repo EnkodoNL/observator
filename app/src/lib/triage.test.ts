@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "@/lib/data/views";
 import type { BuildRecord, IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
-import { summarize } from "./status";
+import { isChecked, summarize } from "./status";
+import { atLeast } from "./severity";
 import { triage } from "./triage";
 
 const NOW = new Date();
@@ -110,6 +111,33 @@ describe("triage", () => {
     // One project: the cause links to it.
     expect(causes[0].href).toBe("/projects/web");
     expect(causes.at(-1)).toMatchObject({ kind: "stale", projects: [{ name: "Old", slug: "old" }] });
+  });
+});
+
+describe("what counts as checked", () => {
+  it("calls a build with nothing to check unchecked, not ok", () => {
+    expect(summarize(true, [], false, false).status).toBe("unchecked");
+    expect(summarize(true, [vuln("lodash", "4.17.20", "GHSA-1", "high")], false, false).status).toBe(
+      "vulnerable",
+    );
+    expect(summarize(false, [], false, false).status).toBe("none");
+  });
+
+  it("counts packages or a runtime with release checks", () => {
+    const build = (runtimes: { name: string; version: string }[], packageCount: number) => ({
+      runtimes,
+      packageCount,
+    });
+    expect(isChecked(build([{ name: "python", version: "3.12.4" }], 0))).toBe(false);
+    expect(isChecked(build([{ name: "go", version: "1.26.2" }], 0))).toBe(true);
+    expect(isChecked(build([], 22))).toBe(true);
+    expect(isChecked(null)).toBe(false);
+  });
+
+  it("lets an unrated advisory reach a moderate threshold, not a high one", () => {
+    expect(atLeast("unknown", "moderate")).toBe(true);
+    expect(atLeast("unknown", "high")).toBe(false);
+    expect(atLeast("low", "low")).toBe(true);
   });
 });
 

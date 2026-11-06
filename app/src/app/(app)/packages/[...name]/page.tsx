@@ -49,6 +49,16 @@ export default async function PackagePage({ params }: PageProps<"/packages/[...n
               npm <ArrowSquareOutIcon className="size-3.5" />
             </a>
           )}
+          {pkg.ecosystem === "Go" && (
+            <a
+              href={`https://pkg.go.dev/${pkg.name}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              pkg.go.dev <ArrowSquareOutIcon className="size-3.5" />
+            </a>
+          )}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Used by {projects} project{projects === 1 ? "" : "s"} in {pkg.versions.length} version

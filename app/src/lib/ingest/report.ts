@@ -24,8 +24,8 @@ export function renderReport(r: ReportInput): string {
   const details = [
     r.runtimes.length ? r.runtimes.map((x) => `${x.name} ${x.version}`).join(", ") : "no runtime detected",
     r.platform,
-    r.lockfileType === "none" ? "no lockfile" : r.lockfileType,
-    r.lockfileType === "none" ? null : `${r.packageCount} packages`,
+    r.lockfileType === "none" ? "no lockfile" : r.lockfileType === "go" ? "go modules" : r.lockfileType,
+    r.lockfileType === "none" ? null : `${r.packageCount} package${r.packageCount === 1 ? "" : "s"}`,
   ].filter(Boolean);
   lines.push(`Observator: recorded build for ${r.projectName} (${details.join(", ")})`);
 

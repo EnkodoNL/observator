@@ -10,7 +10,7 @@ export const ignoreSchema = z.object({
   scope: z.enum(["project", "all"]),
   match: z.enum(["advisory", "package"]),
   osvId: z.string().max(128),
-  pkg: z.string().max(214),
+  pkg: z.string().max(512),
   reason: z.string().trim().min(3, "Say why, for whoever looks at this later").max(1000),
   expiresAt: z.union([z.literal(""), z.iso.date("Pick a date")]),
 });

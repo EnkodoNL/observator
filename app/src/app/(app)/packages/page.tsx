@@ -27,7 +27,7 @@ export default async function PackagesPage({ searchParams }: PageProps<"/package
   const params = await searchParams;
   const q = String(params.q ?? "")
     .trim()
-    .slice(0, 214);
+    .slice(0, 512);
   const scope = PACKAGE_SCOPES.find((s) => s === params.scope) ?? "direct";
   const { packages, counts } = await listPackages(q, scope);
   const shown = packages.slice(0, LIMIT);
@@ -37,8 +37,8 @@ export default async function PackagesPage({ searchParams }: PageProps<"/package
       <div>
         <h1 className="font-display text-3xl font-bold tracking-tight">Packages</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every npm package in your projects&rsquo; lockfiles. Open one to see which projects use it, in which
-          version, and why.
+          Every npm package in your projects&rsquo; lockfiles, and every Go module in their programs. Open one
+          to see which projects use it, in which version, and why.
         </p>
       </div>
 

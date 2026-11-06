@@ -4,7 +4,7 @@ import { safeEqual } from "@/lib/crypto";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { activeIssues } from "@/lib/data/views";
 import { getSettings } from "@/lib/settings";
-import { summarize } from "@/lib/status";
+import { isChecked, summarize } from "@/lib/status";
 import { latestBuild } from "@/lib/ingest/ingest";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: RouteContext<"/badge/[fi
     activeIssues(project.id),
     getSettings(),
   ]);
-  const s = summarize(Boolean(build), issues, settings.countDevDependencies);
+  const s = summarize(Boolean(build), issues, settings.countDevDependencies, isChecked(build));
   const { value, color } = badgeValue({
     status: s.status,
     counts: s.vulnBySeverity,
