@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
+import { go } from "./go";
 import { node } from "./node";
 import type { Evaluator, Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
 
 export type { Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
-export { pinFor, runtimeLabel } from "./labels";
+export { pinFor, pinStage, runtimeLabel } from "./labels";
 
 /** Runtimes with release checks. Others are reported and shown, not checked. */
-export const PROVIDERS: Record<string, RuntimeProvider> = { node };
+export const PROVIDERS: Record<string, RuntimeProvider> = { node, go };
 
 export const providerFor = (name: string): RuntimeProvider | null => PROVIDERS[name] ?? null;
 

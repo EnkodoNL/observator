@@ -5,14 +5,20 @@ const RANK: Record<Severity, number> = { unknown: 0, low: 1, moderate: 2, high: 
 
 export const severityRank = (s: Severity | "" | null | undefined): number => RANK[s || "unknown"] ?? 0;
 
-export const atLeast = (s: Severity, min: Severity): boolean => severityRank(s) >= severityRank(min);
+/**
+ * Whether an advisory reaches a threshold (the build gate, a channel's minimum). One without a
+ * rating counts as moderate: the Go vulnerability database rates nothing, and "never" would let
+ * real problems through every gate.
+ */
+export const atLeast = (s: Severity, min: Severity): boolean =>
+  severityRank(s === "unknown" ? "moderate" : s) >= severityRank(min);
 
 export function maxSeverity(list: Severity[]): Severity | null {
   return list.reduce<Severity | null>((max, s) => (max === null || RANK[s] > RANK[max] ? s : max), null);
 }
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
-  unknown: "Unknown",
+  unknown: "Unrated",
   low: "Low",
   moderate: "Moderate",
   high: "High",
@@ -29,6 +35,6 @@ export const worstCounted = (counts: Partial<Record<Severity, number>>): Severit
 export function countsText(counts: Partial<Record<Severity, number>>, max = 2): string {
   return WORST_FIRST.filter((s) => counts[s])
     .slice(0, max)
-    .map((s) => `${counts[s]} ${s}`)
+    .map((s) => `${counts[s]} ${s === "unknown" ? "unrated" : s}`)
     .join(", ");
 }

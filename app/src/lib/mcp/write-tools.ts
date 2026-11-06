@@ -209,7 +209,7 @@ export const writeTools: Record<string, Tool> = {
         project: projectRef.optional(),
         allProjects: z.boolean().optional().describe("Ignore in every project instead of one"),
         osvId: z.string().max(128).optional().describe("Such as GHSA-35jh-r3h4-6jhm"),
-        package: z.string().max(214).optional().describe("Ignore every advisory of this package instead"),
+        package: z.string().max(512).optional().describe("Ignore every advisory of this package instead"),
         reason: z.string().trim().min(3).max(1000).describe("Why, for whoever looks at this later"),
         expiresAt: z.iso.date().optional().describe("YYYY-MM-DD; after that day the advisory counts again"),
       })
@@ -258,7 +258,7 @@ export const writeTools: Record<string, Tool> = {
   run_checks: defineTool({
     title: "Run checks now",
     description:
-      "Fetches Node releases, re-checks every package against OSV and refreshes the latest npm versions, then re-evaluates all projects. Runs in the background; get_settings shows when each check finished.",
+      "Fetches Node and Go releases, re-checks every package and Go module against OSV and refreshes the latest npm versions, then re-evaluates all projects. Runs in the background; get_settings shows when each check finished.",
     input: z.object({}),
     write: true,
     idempotent: true,
@@ -292,7 +292,7 @@ export const writeTools: Record<string, Tool> = {
   create_shared_key: defineTool({
     title: "Create a shared key",
     description:
-      "One write-only key for many apps: each build names its project (OBSERVATOR_PROJECT or package.json) and the project is created on its first report. The key is shown once.",
+      "One write-only key for many apps: each build names its project (OBSERVATOR_PROJECT, package.json or a Go program's module) and the project is created on its first report. The key is shown once.",
     input: z.object({
       name: z.string().trim().min(1).max(100),
       onePerServer: z

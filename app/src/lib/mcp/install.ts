@@ -99,7 +99,7 @@ export const installTools: Record<string, Tool> = {
             notes.push(
               note(
                 "info",
-                `Shared key "${match.key.name}" without project: the name from package.json is used.`,
+                `Shared key "${match.key.name}" without project: the name from package.json (or a Go program's module) is used.`,
               ),
             );
           } else {
@@ -218,7 +218,7 @@ export function registerInstallPrompt(server: McpServer): void {
               "Set up Observator in this repository.",
               "",
               "1. Find every Dockerfile (Dockerfile, Dockerfile.*, *.Dockerfile) that builds a deployable app. Skip ones for tooling or tests.",
-              "2. Per app, pick a project name: the package.json name of the app it builds, or else its folder. Pick labels: app:<repository name>, role:<web|worker|...> when the repository has more than one app, env:<...> when it is obvious" +
+              "2. Per app, pick a project name: the package.json name of the app it builds, the last part of its Go module path, or else its folder. Pick labels: app:<repository name>, role:<web|worker|...> when the repository has more than one app, env:<...> when it is obvious" +
                 (labels ? `, plus: ${labels}` : "") +
                 ".",
               "3. Authentication: " +

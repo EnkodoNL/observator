@@ -10,6 +10,11 @@ describe("reportedName", () => {
     expect(reportedName(null, { name: "web" })).toBe("web");
   });
 
+  it("falls back to the last part of a Go program's module path", () => {
+    expect(reportedName(null, null, "github.com/enkodo/onthoud/sync-server")).toBe("sync-server");
+    expect(reportedName(null, { name: "web" }, "github.com/acme/api")).toBe("web");
+  });
+
   it("refuses reports without a usable name", () => {
     expect(() => reportedName(null, {})).toThrow(/OBSERVATOR_PROJECT/);
     expect(() => reportedName(null, null)).toThrow(IngestError);

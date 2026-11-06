@@ -5,9 +5,11 @@ import { adminPb, toPbDate } from "@/lib/pb/admin";
 import {
   chooseLockfile,
   LockfileError,
+  parseGoBinaries,
   parseLockfile,
   parsePackageJson,
   type Component,
+  type GoResult,
   type LockfileName,
 } from "@/lib/lockfile";
 import type { BuildChanges, BuildRecord, LockfileType, ProjectRecord } from "@/lib/pb/types";
@@ -34,9 +36,18 @@ const LOCKFILE_TYPE: Record<LockfileName, (text: string) => LockfileType> = {
 /** Bump when the parsers classify differently, so the next build parses an unchanged lockfile again. */
 const PARSER_VERSION = 2;
 
-/** Identifies a package.json + lockfile pair; a build with the same hash changes no packages. */
-export function reportHash(packageJson: string, lockfileName: string | null, lockfileText: string): string {
-  return sha256(`${PARSER_VERSION}\0${packageJson}\0${lockfileName ?? ""}\0${lockfileText}`);
+/**
+ * Identifies a package.json + lockfile pair, and the Go programs' modules when there are any; a
+ * build with the same hash changes no packages. Without Go the hash is what it always was.
+ */
+export function reportHash(
+  packageJson: string,
+  lockfileName: string | null,
+  lockfileText: string,
+  goBinaries: string | null = null,
+): string {
+  const go = goBinaries === null ? "" : `\0go\0${goBinaries}`;
+  return sha256(`${PARSER_VERSION}\0${packageJson}\0${lockfileName ?? ""}\0${lockfileText}${go}`);
 }
 
 export async function latestBuild(projectId: string): Promise<BuildRecord | null> {
@@ -60,8 +71,10 @@ async function replaceComponents(projectId: string, components: Component[]): Pr
   const pb = await adminPb();
   await pb.send("/api/observator/components/replace", {
     method: "POST",
-    // npm is the only package ecosystem with a lockfile parser so far.
-    body: { project: projectId, components: components.map((c) => ({ ...c, ecosystem: "npm" })) },
+    body: {
+      project: projectId,
+      components: components.map((c) => ({ ...c, ecosystem: c.ecosystem ?? "npm" })),
+    },
   });
 }
 
@@ -89,12 +102,27 @@ export async function recordBuild(
   const available = Object.keys(files.lockfiles) as LockfileName[];
   const lockfileName = pkg ? chooseLockfile(pkg, available) : (available[0] ?? null);
   const lockfileText = lockfileName ? files.lockfiles[lockfileName]! : "";
-  const lockfileType: LockfileType = lockfileName ? LOCKFILE_TYPE[lockfileName](lockfileText) : "none";
-  const lockfileHash = reportHash(files.packageJson ?? "", lockfileName, lockfileText);
+  const lockfileType: LockfileType = lockfileName
+    ? LOCKFILE_TYPE[lockfileName](lockfileText)
+    : files.goBinaries !== null
+      ? "go"
+      : "none";
+  const lockfileHash = reportHash(files.packageJson ?? "", lockfileName, lockfileText, files.goBinaries);
+  // A bad file is reported as a parse error below, with the other packages kept as they were.
+  const go = (() => {
+    if (files.goBinaries === null) return null;
+    try {
+      return parseGoBinaries(files.goBinaries);
+    } catch (err) {
+      if (err instanceof LockfileError) return err;
+      throw err;
+    }
+  })();
+  const goApp: GoResult | null = go instanceof LockfileError ? null : go;
 
-  // For information: which release of the app this build is.
-  const appName = typeof pkg?.name === "string" ? pkg.name.slice(0, 214) : "";
-  const appVersion = typeof pkg?.version === "string" ? pkg.version.slice(0, 64) : "";
+  // For information: which release of the app this build is; a Go app names its main module.
+  const appName = (typeof pkg?.name === "string" ? pkg.name : (goApp?.main ?? "")).slice(0, 512);
+  const appVersion = (typeof pkg?.version === "string" ? pkg.version : (goApp?.version ?? "")).slice(0, 64);
 
   const changes: BuildChanges = { added: [], removed: [], changed: [] };
   if (previous) {
@@ -112,12 +140,18 @@ export async function recordBuild(
   if (lockfileChanged) {
     try {
       if (files.packageJson !== null && !pkg) throw new LockfileError("package.json is not valid JSON");
-      // Without a package.json (an image of another language) there are no packages to track.
-      const components = pkg && lockfileName ? parseLockfile(lockfileName, lockfileText, pkg).components : [];
+      if (go instanceof LockfileError) throw go;
+      // npm packages need a package.json; Go modules come from the programs themselves. One set,
+      // because storing it replaces everything the project had.
+      const components = [
+        ...(pkg && lockfileName ? parseLockfile(lockfileName, lockfileText, pkg).components : []),
+        ...(goApp?.components ?? []),
+      ];
       Object.assign(changes, diffComponents(await currentComponents(project.id), components));
       await replaceComponents(project.id, components);
       packageCount = components.length;
-      directNames = components.filter((c) => c.direct).map((c) => c.name);
+      // For the npm latest-version cache.
+      directNames = components.filter((c) => c.direct && !c.ecosystem).map((c) => c.name);
     } catch (err) {
       if (!(err instanceof LockfileError)) throw err;
       parseError = err.message;

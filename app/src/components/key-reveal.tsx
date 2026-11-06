@@ -58,7 +58,8 @@ export function KeyReveal({
             Give every app the same <code className="font-mono text-foreground">OBSERVATOR_KEY</code> and its
             own <code className="font-mono text-foreground">OBSERVATOR_PROJECT</code> (in Coolify: environment
             variables with &ldquo;Build Variable&rdquo; ticked). Without a project name, the name from
-            package.json is used. The project is created on its first report. Locally:
+            package.json (or a Go program&rsquo;s module) is used. The project is created on its first report.
+            Locally:
           </p>
           <CodeBlock code={buildCommand(key, "my-api")} placeholder={apiKey ? undefined : placeholder} />
         </div>

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import semver from "semver";
 import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
+import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import type { LockfileType } from "@/lib/pb/types";
 
 export interface Advice {
@@ -10,8 +11,19 @@ export interface Advice {
 
 const majorOf = (v: string) => semver.coerce(v)?.major ?? null;
 
-/** What to do about one advisory, in the syntax of the project's package manager. */
+/**
+ * What to do about one advisory, in the syntax of the project's package manager. A Go module
+ * gets `go get` whatever the project's lockfile, since one image can hold both.
+ */
 export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice {
+  if (d.ecosystem === GO_ECOSYSTEM && d.fixedIn) {
+    // go get works the same for a module the app imports and one pulled in further down: it
+    // raises the requirement in go.mod, marked // indirect when nothing imports it directly.
+    return {
+      text: `Raise ${d.package} to ${d.fixedIn} or later, then rebuild.`,
+      snippets: [{ label: "Upgrade", code: `go get ${d.package}@${d.fixedIn} && go mod tidy` }],
+    };
+  }
   if (!d.fixedIn) {
     return {
       text: "No fixed version is published yet. Check whether the affected code path is used at all; if it is not, ignore the advisory with a reason.",
@@ -32,6 +44,7 @@ export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice 
       "yarn-berry": `yarn add${dev} ${d.package}@${d.fixedIn}`,
       pnpm: `pnpm add${dev} ${d.package}@${d.fixedIn}`,
       none: `npm install${dev} ${d.package}@${d.fixedIn}`,
+      go: `npm install${dev} ${d.package}@${d.fixedIn}`,
     };
     return {
       text: `${d.package} is a direct dependency. Upgrade it to ${d.fixedIn} or later.${majorNote}`,
@@ -44,6 +57,7 @@ export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice 
   const override: Record<LockfileType, { label: string; code: string }> = {
     npm: { label: "package.json", code: `"overrides": {\n  "${d.package}": "${range}"\n}` },
     none: { label: "package.json", code: `"overrides": {\n  "${d.package}": "${range}"\n}` },
+    go: { label: "package.json", code: `"overrides": {\n  "${d.package}": "${range}"\n}` },
     "yarn-v1": { label: "package.json", code: `"resolutions": {\n  "${d.package}": "${range}"\n}` },
     "yarn-berry": { label: "package.json", code: `"resolutions": {\n  "${d.package}": "${range}"\n}` },
     pnpm: {

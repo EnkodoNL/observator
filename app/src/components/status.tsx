@@ -7,6 +7,7 @@ import { SEVERITY_LABEL } from "@/lib/severity";
 // Status and severity are words in their colour; only what needs doing is coloured at all.
 const STATUS_CLASS: Record<ProjectStatus, string> = {
   none: "text-muted-foreground",
+  unchecked: "text-muted-foreground",
   ok: "text-ok",
   update: "text-warn",
   vulnerable: "text-danger",

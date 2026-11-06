@@ -88,7 +88,7 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     return "unchanged";
   }
 
-  const files = { packageJson, lockfiles: { "package-lock.json": lockfile } };
+  const files = { packageJson, lockfiles: { "package-lock.json": lockfile }, goBinaries: null };
   const outcome = await recordBuild(project, files, meta);
   const analysis = await analyzeInline(project, outcome, meta);
   await publish(await analyzeInBackground(project.id, analysis));

@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { VulnIssueData } from "@/lib/issues/types";
-import type { IssueRecord, Severity } from "@/lib/pb/types";
+import type { BuildRecord, IssueRecord, Severity } from "@/lib/pb/types";
+import { CHECKED_RUNTIMES } from "@/lib/runtimes/labels";
 import { maxSeverity } from "@/lib/severity";
 import { daysSince } from "@/lib/time";
 
-export type ProjectStatus = "none" | "ok" | "update" | "vulnerable";
+export type ProjectStatus = "none" | "unchecked" | "ok" | "update" | "vulnerable";
 
 export const STATUS_LABEL: Record<ProjectStatus, string> = {
   none: "No builds yet",
+  unchecked: "Nothing checked",
   ok: "OK",
   update: "Update available",
   vulnerable: "Vulnerable",
 };
 
-const STATUS_RANK: Record<ProjectStatus, number> = { none: 0, ok: 1, update: 2, vulnerable: 3 };
+const STATUS_RANK: Record<ProjectStatus, number> = { none: 0, unchecked: 1, ok: 2, update: 3, vulnerable: 4 };
 
 /** The status a group of projects gets: that of its worst member. */
 export function worstStatus(statuses: ProjectStatus[]): ProjectStatus {
@@ -40,10 +42,25 @@ export const isDevVuln = (issue: { kind: string; data?: unknown }) =>
   issue.kind === "vuln" && Boolean((issue.data as Partial<VulnIssueData> | null)?.dev);
 
 /**
+ * Whether a build gave Observator anything to check: packages, or a runtime with release checks.
+ * One with neither (a Python app without a lockfile) is not "OK", it is unknown.
+ */
+export const isChecked = (build: Pick<BuildRecord, "runtimes" | "packageCount"> | null): boolean =>
+  Boolean(
+    build &&
+    (build.packageCount > 0 || (build.runtimes ?? []).some((r) => CHECKED_RUNTIMES.includes(r.name))),
+  );
+
+/**
  * Derives the dashboard status of a project from its open issues. Advisories in dev
  * dependencies only count with countDev; otherwise they are listed as build-only.
  */
-export function summarize(hasBuild: boolean, issues: IssueRecord[], countDev = false): StatusSummary {
+export function summarize(
+  hasBuild: boolean,
+  issues: IssueRecord[],
+  countDev = false,
+  checked = true,
+): StatusSummary {
   const open = issues.filter((i) => i.status === "open");
   const allVulns = open.filter((i) => i.kind === "vuln");
   const vulns = countDev ? allVulns : allVulns.filter((i) => !isDevVuln(i));
@@ -57,6 +74,7 @@ export function summarize(hasBuild: boolean, issues: IssueRecord[], countDev = f
   if (!hasBuild) status = "none";
   else if (vulns.length > 0) status = "vulnerable";
   else if (runtimeSecurity.length || runtimeEol.length) status = "update";
+  else if (!checked) status = "unchecked";
 
   return {
     status,

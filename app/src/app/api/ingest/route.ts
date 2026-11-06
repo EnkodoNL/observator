@@ -7,7 +7,7 @@ import { recordBuild } from "@/lib/ingest/ingest";
 import { matchAddress, matchKey, resolveSharedProject } from "@/lib/ingest/resolve";
 import { clientIpFrom, rateKey } from "@/lib/client-ip";
 import { reportedName } from "@/lib/ingest/source";
-import { parsePackageJson } from "@/lib/lockfile";
+import { LockfileError, parseGoBinaries, parsePackageJson } from "@/lib/lockfile";
 import { publish } from "@/lib/notify/publish";
 import { refreshLatest } from "@/lib/npm-latest";
 import { renderReport } from "@/lib/ingest/report";
@@ -32,6 +32,17 @@ const getLimits = () =>
     perSharedKey: RateLimiter.perWindow(env().INGEST_RATE_LIMIT * 20, HOUR),
     badKey: RateLimiter.perWindow(30, 10 * 60 * 1000),
   });
+
+/** The main module of the first Go program, for naming a shared-key project; "" without one. */
+function goMain(text: string | null): string {
+  if (text === null) return "";
+  try {
+    return parseGoBinaries(text).main;
+  } catch (err) {
+    if (err instanceof LockfileError) return "";
+    throw err;
+  }
+}
 
 const getParsing = () => (g.__ingestParsing ??= new Semaphore(4, 50));
 
@@ -130,7 +141,7 @@ export async function POST(request: Request) {
         })();
         const resolved = await resolveSharedProject(
           match.key,
-          reportedName(request.headers.get("x-project"), pkg),
+          reportedName(request.headers.get("x-project"), pkg, goMain(files.goBinaries)),
           ip,
         );
         project = resolved.project;

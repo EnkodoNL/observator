@@ -17,6 +17,21 @@ const base: VulnIssueData = {
 };
 
 describe("packageAdvice", () => {
+  it("raises a Go module with go get, whatever the project's lockfile", () => {
+    const go = {
+      ...base,
+      ecosystem: "Go",
+      package: "golang.org/x/net",
+      version: "v0.20.0",
+      fixedIn: "v0.23.0",
+      via: [],
+    };
+    for (const lockfile of ["go", "npm"] as const)
+      expect(packageAdvice(go, lockfile).snippets[0].code).toBe(
+        "go get golang.org/x/net@v0.23.0 && go mod tidy",
+      );
+  });
+
   it("upgrades direct dependencies with the right package manager", () => {
     const d = { ...base, package: "lodash", version: "4.17.20", fixedIn: "4.17.21", direct: true, via: [] };
     expect(packageAdvice(d, "npm").snippets[0].code).toBe("npm install lodash@4.17.21");

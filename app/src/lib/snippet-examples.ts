@@ -44,6 +44,30 @@ ${snippet(form)}
 `,
 });
 
+// Go 1.26 on purpose: one line below the reporter's own Go, so the e2e test proves it read the
+// app and not itself.
+const goApp = (file: string, final: string, note: string): ExampleDockerfile => ({
+  path: `go-app/${file}`,
+  content: () => `# SPDX-License-Identifier: FSL-1.1-ALv2
+# Example app for testing the Observator snippet. ${note}
+# There is no package.json: the reporter reads Go and the modules from the binary itself.
+ARG GO_IMAGE=golang:1.26-alpine
+
+FROM \${GO_IMAGE} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY main.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /server .
+
+FROM ${final} AS app
+COPY --from=build /server /server
+ENTRYPOINT ["/server"]
+
+${snippet("image")}
+`,
+});
+
 /**
  * The Dockerfiles in examples/, generated so they never drift from the UI. The reporter image
  * (Dockerfile.reporter, .distroless) runs anywhere; the plain sh snippet is the same in each of
@@ -84,4 +108,10 @@ ${snippet("image")}
   },
   pythonApp("Dockerfile", "shell", "Plain sh: no curl, wget or Node, so sent with python3."),
   pythonApp("Dockerfile.reporter", "image", "The reporter image."),
+  goApp("Dockerfile", "scratch", "The reporter image on scratch: nothing but the program."),
+  goApp(
+    "Dockerfile.distroless",
+    "gcr.io/distroless/static-debian13",
+    "The reporter image on distroless static.",
+  ),
 ];

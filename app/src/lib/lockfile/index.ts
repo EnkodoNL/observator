@@ -6,6 +6,7 @@ import { parseYarnV1 } from "./yarn-v1";
 import { LockfileError, type PackageJson, type ParseResult } from "./types";
 
 export { LockfileError } from "./types";
+export { GO_BINARIES, GO_ECOSYSTEM, goAppName, parseGoBinaries, type GoResult } from "./go";
 export type { Component, PackageJson, ParseResult } from "./types";
 
 export const LOCKFILE_NAMES = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"] as const;

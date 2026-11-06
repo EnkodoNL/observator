@@ -81,7 +81,13 @@ function service(key: string, name: string, servers: ProjectSummary[], staleDays
   };
 }
 
-const STATUS_ORDER: Record<ProjectStatus, number> = { vulnerable: 0, update: 1, ok: 2, none: 3 };
+const STATUS_ORDER: Record<ProjectStatus, number> = {
+  vulnerable: 0,
+  update: 1,
+  ok: 2,
+  unchecked: 3,
+  none: 4,
+};
 
 /**
  * Projects grouped into apps: by label app:*, otherwise by the name the build reported (so a

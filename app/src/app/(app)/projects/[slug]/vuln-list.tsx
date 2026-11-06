@@ -4,6 +4,7 @@ import { CodeBlock } from "@/components/code-block";
 import { SeverityBadge } from "@/components/status";
 import { packageAdvice } from "@/lib/advice";
 import type { VulnIssueData } from "@/lib/issues/types";
+import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import type { IssueRecord, LockfileType } from "@/lib/pb/types";
 import { cn } from "@/lib/utils";
 import { groupVulns, type VulnGroup } from "@/lib/vuln-groups";
@@ -12,6 +13,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** How the package got in, from any of its advisories: they share the dependency path. */
 function origin(d: VulnIssueData): string {
+  // A Go binary does not say which modules the app imports itself.
+  if (d.ecosystem === GO_ECOSYSTEM) return "Go module";
   return d.direct ? "direct" : d.via.length ? `via ${d.via.join(", ")}` : "transitive";
 }
 

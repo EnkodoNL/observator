@@ -66,13 +66,13 @@ func TestOSID(t *testing.T) {
 
 func TestArchive(t *testing.T) {
 	dir := t.TempDir()
-	if body, err := archive(dir); err != nil || body != nil {
+	if body, err := archive(dir, nil); err != nil || body != nil {
 		t.Fatalf("empty dir: %v %v", body, err)
 	}
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"x"}`), 0o644)
 	os.WriteFile(filepath.Join(dir, "yarn.lock"), []byte("lock"), 0o644)
 	os.WriteFile(filepath.Join(dir, "secret.env"), []byte("KEY=1"), 0o644)
-	body, err := archive(dir)
+	body, err := archive(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

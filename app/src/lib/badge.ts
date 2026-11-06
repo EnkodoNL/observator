@@ -37,7 +37,7 @@ export function runtimeBadge(s: Pick<StatusSummary, "runtimeSecurity" | "runtime
   return `${runtime} ${s.runtimeSecurity.length ? "update" : "eol"}`;
 }
 
-/** What a badge says: "2 high, 10 moderate", "node update", "ok" or "no builds". */
+/** What a badge says: "2 high, 10 moderate", "node update", "ok", "not checked" or "no builds". */
 export function badgeValue({
   status,
   counts,
@@ -51,6 +51,7 @@ export function badgeValue({
   if (status === "vulnerable" && worst) return { value: countsText(counts), color: SEVERITY_COLOR[worst] };
   if (status === "update") return { value: runtime ?? "runtime update", color: BADGE_COLORS.update };
   if (status === "ok") return { value: "ok", color: BADGE_COLORS.ok };
+  if (status === "unchecked") return { value: "not checked", color: BADGE_COLORS.none };
   return { value: "no builds", color: BADGE_COLORS.none };
 }
 

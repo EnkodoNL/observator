@@ -83,6 +83,8 @@ interface Stage {
   workdir: string;
   folders: Map<string, Folder>;
   observator: boolean;
+  /** Builds a Go program: based on golang, or runs go build. Stages built on it inherit it. */
+  go: boolean;
 }
 
 interface Instruction {
@@ -270,9 +272,11 @@ function copy(ins: Instruction, stage: Stage, stages: Stage[]): string | undefin
  * The reporter runs without a shell; the sh snippet picks its own client, so for it only images
  * without a shell are a problem.
  */
-function baseNote(base: string, form: SnippetForm): DockerfileNote {
+function baseNote(base: string, form: SnippetForm, go = false): DockerfileNote {
   const image = base.toLowerCase();
   if (form === "image") {
+    if (image === "scratch" && go)
+      return { level: "ok", text: "The last stage is based on scratch: the reporter runs there on its own." };
     if (image === "scratch")
       return {
         level: "info",
@@ -292,6 +296,16 @@ function baseNote(base: string, form: SnippetForm): DockerfileNote {
     level: "ok",
     text: `Base image ${base}: the snippet sends with curl, wget, node or python3, whichever the image has.`,
   };
+}
+
+const GOLANG = /(^|\/)golang(:|@|$)/i;
+
+/** ${NAME}, $NAME and ${NAME:-default} in a FROM line, from the ARGs before the first FROM. */
+function withArgs(value: string, args: Map<string, string>): string {
+  return value.replace(/\$\{(\w+)(?::?-([^}]*))?\}|\$(\w+)/g, (whole, braced, fallback, bare) => {
+    const name = braced ?? bare;
+    return args.get(name) || fallback || (args.has(name) ? "" : whole);
+  });
 }
 
 /** An http(s) URL that can stand unquoted in an ARG line; anything else is dropped. */
@@ -354,11 +368,18 @@ export function analyzeDockerfile(
   const all = instructions(text);
   const stages: Stage[] = [];
   const standaloneLines = new Map<Stage, string>();
+  // ARGs before the first FROM are what FROM lines may use: FROM ${GO_IMAGE} AS build.
+  const globalArgs = new Map<string, string>();
 
   for (const ins of all) {
+    if (ins.keyword === "ARG" && stages.length === 0) {
+      const m = /^([A-Za-z_]\w*)(?:=(.*))?$/.exec(ins.args.trim());
+      if (m) globalArgs.set(m[1], tokens(m[2] ?? "")[0] ?? "");
+      continue;
+    }
     if (ins.keyword === "FROM") {
       const parts = tokens(ins.args).filter((p) => !p.startsWith("--"));
-      const image = parts[0] ?? "";
+      const image = withArgs(parts[0] ?? "", globalArgs);
       const name = parts.length >= 3 && parts[1].toUpperCase() === "AS" ? parts[2].toLowerCase() : undefined;
       const parent = stages.find((s) => s.name === image.toLowerCase());
       stages.push({
@@ -372,11 +393,13 @@ export function analyzeDockerfile(
         folders: new Map([...(parent?.folders ?? [])].map(([dir, f]) => [dir, { ...f }] as [string, Folder])),
         // The snippet's stages: the reporter image (image form) and the report stage.
         observator: name === "observator" || name === "observator-reporter",
+        go: parent?.go ?? GOLANG.test(image),
       });
       continue;
     }
     const stage = stages.at(-1);
     if (!stage) continue;
+    if (ins.keyword === "RUN" && /\bgo\s+(build|install)\b/.test(ins.args)) stage.go = true;
     if (ins.keyword === "WORKDIR") stage.workdir = resolve(stage.workdir, tokens(ins.args)[0] ?? "/");
     if (ins.keyword === "COPY" || ins.keyword === "ADD") {
       const standalone = copy(ins, stage, stages);
@@ -453,7 +476,21 @@ export function analyzeDockerfile(
     });
   }
 
-  notes.push(baseNote(last.base, options.form ?? "image"));
+  // A Go program: the reporter reads it from the binary, the sh snippet cannot.
+  const goStage = app.find((s) => s.go);
+  notes.push(baseNote(last.base, options.form ?? "image", Boolean(goStage)));
+  if (goStage)
+    notes.push(
+      (options.form ?? "image") === "image"
+        ? {
+            level: "ok",
+            text: `Line ${goStage.line} builds a Go program. The reporter reads its Go version and modules from the binary in the last stage, in /, /app, /srv, /ko-app, /usr/local/bin or the working directory.`,
+          }
+        : {
+            level: "warn",
+            text: `Line ${goStage.line} builds a Go program, which the sh snippet cannot read: it would report no Go version and no modules. Use the reporter image (form image) instead.`,
+          },
+    );
 
   const here = last.folders.get(last.workdir);
   let lockfileFrom: LockfileSource | undefined;
@@ -491,11 +528,13 @@ export function analyzeDockerfile(
         level: "info",
         text: `${why} The snippet copies both from ${pick.s.name ?? `stage ${pick.s.index}`} (${pick.dir}, ${describe(pick.f.lock!)}).`,
       });
+    } else if (!anyPackageJson && goStage) {
+      // The Go note above says what is read.
     } else if (!anyPackageJson) {
       // Most likely an app in another language: its runtime is still reported.
       notes.push({
         level: "info",
-        text: "No stage has a package.json, so only the runtime versions are reported (npm is the only package manager Observator reads so far).",
+        text: "No stage has a package.json, so only the runtime versions are reported (Observator reads npm lockfiles and Go programs so far).",
       });
     } else {
       notes.push({

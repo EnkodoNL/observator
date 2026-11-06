@@ -8,9 +8,9 @@ import { readTools } from "./read-tools";
 import { registerTools } from "./tools";
 import { writeTools } from "./write-tools";
 
-const INSTRUCTIONS = `Observator tracks the runtimes (Node.js, Python, PHP, ...) and npm packages that self-hosted apps really run. Each app reports from a stage in its Dockerfile during docker build; Observator checks Node.js versions against nodejs.org (other runtimes are shown, not checked yet) and every package against OSV, and notifies when something needs doing.
+const INSTRUCTIONS = `Observator tracks the runtimes (Node.js, Go, Python, PHP, ...), npm packages and Go modules that self-hosted apps really run. Each app reports from a stage in its Dockerfile during docker build; the reporter image reads Go programs from the binary itself. Observator checks Node.js versions against nodejs.org, Go versions against go.dev and the standard library's advisories (other runtimes are shown, not checked yet), and every package and module against OSV, and notifies when something needs doing.
 
-- A project is one app (or one server of an app, when a shared key splits by IP). Status: ok, update (a runtime security release or end of life), vulnerable (open package advisories), none (no build yet).
+- A project is one app (or one server of an app, when a shared key splits by IP). Status: ok, update (a runtime security release or end of life), vulnerable (open package advisories), unchecked (a build with nothing to check), none (no build yet).
 - Start with list_projects; get_project has the details and fix advice in the project's package manager; list_packages and get_package answer "where is X used"; runtime_overview groups projects by runtime version.
 - Labels (word or key:value such as app:heatwave, env:prod) group and filter projects. Builds add their own via OBSERVATOR_LABELS; update_project sets the project's own.
 - Domains: list_domains shows watched domains (registration expiry via RDAP or a date entered by hand, the user's reminder and note) and their hosts' TLS certificates; add_domain and update_domain manage them. A domain may belong to a project or stand alone.

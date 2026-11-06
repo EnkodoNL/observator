@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { IssueKind, Severity } from "@/lib/pb/types";
 import type { Runtime, RuntimeEvaluation } from "@/lib/runtimes/types";
+import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import { maxSeverity } from "@/lib/severity";
 import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "./types";
 
@@ -89,37 +90,43 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
   const pkg = (x: { ecosystem: string; name: string }) => `${x.ecosystem}:${x.name}`;
   const components = new Map<string, ComponentInput[]>();
   for (const c of input.components) components.set(pkg(c), [...(components.get(pkg(c)) ?? []), c]);
-  const grouped = new Map<string, VulnInput[]>();
+  const perPackage = new Map<string, VulnInput[]>();
   for (const v of input.vulns) {
     if (!components.get(pkg(v))?.some((c) => c.version === v.version)) continue;
-    const key = `vuln:${v.osvId}:${v.name}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), v]);
+    perPackage.set(pkg(v), [...(perPackage.get(pkg(v)) ?? []), v]);
   }
-  for (const [key, list] of [...grouped].sort(([a], [b]) => a.localeCompare(b))) {
-    const first = list[0];
-    const versions = [...new Set(list.map((v) => v.version))].sort();
-    const affected = (components.get(pkg(first)) ?? []).filter((c) => versions.includes(c.version));
-    out.push({
-      kind: "vuln",
-      key,
-      revision: "",
-      severity: maxSeverity(list.map((v) => v.severity)) ?? "unknown",
-      title: `${first.name}@${versions.join(", ")}: ${first.summary || first.osvId}`,
-      data: {
-        ecosystem: first.ecosystem,
-        package: first.name,
-        version: versions.join(", "),
-        osvId: first.osvId,
-        aliases: first.aliases,
-        summary: first.summary,
-        fixedIn: list.map((v) => v.fixedIn).find(Boolean) ?? "",
-        url: first.url,
-        direct: affected.some((c) => c.direct),
-        dev: affected.every((c) => c.dev),
-        via: [...new Set(affected.flatMap((c) => c.via))].slice(0, 3),
-      },
-    });
-  }
+  const vulnIssues: DesiredIssue[] = [];
+  for (const list of perPackage.values())
+    for (const group of aliasGroups(list)) {
+      const lead = leadOf(group);
+      const versions = [...new Set(group.map((v) => v.version))].sort();
+      const affected = (components.get(pkg(lead)) ?? []).filter((c) => versions.includes(c.version));
+      const fixed = lead.fixedIn || (group.map((v) => v.fixedIn).find(Boolean) ?? "");
+      vulnIssues.push({
+        kind: "vuln",
+        key: `vuln:${lead.osvId}:${lead.name}`,
+        revision: "",
+        severity: maxSeverity(group.map((v) => v.severity)) ?? "unknown",
+        title: `${lead.name}@${versions.join(", ")}: ${lead.summary || lead.osvId}`,
+        data: {
+          ecosystem: lead.ecosystem,
+          package: lead.name,
+          version: versions.join(", "),
+          osvId: lead.osvId,
+          aliases: [...new Set(group.flatMap((v) => [v.osvId, ...v.aliases]))].filter(
+            (a) => a !== lead.osvId,
+          ),
+          summary: lead.summary,
+          // OSV writes Go versions without the v that go get and go.mod need.
+          fixedIn: fixed && lead.ecosystem === GO_ECOSYSTEM && !fixed.startsWith("v") ? `v${fixed}` : fixed,
+          url: lead.url,
+          direct: affected.some((c) => c.direct),
+          dev: affected.every((c) => c.dev),
+          via: [...new Set(affected.flatMap((c) => c.via))].slice(0, 3),
+        },
+      });
+    }
+  out.push(...vulnIssues.sort((a, b) => a.key.localeCompare(b.key)));
 
   if (input.lastBuildAt) {
     const days = Math.floor((input.now.getTime() - input.lastBuildAt.getTime()) / (24 * 3600 * 1000));
@@ -135,4 +142,30 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
     }
   }
   return out;
+}
+
+/**
+ * Advisories of one package that name each other, such as a GO- record from the Go vulnerability
+ * database and the GHSA it aliases: one problem, so one issue.
+ */
+function aliasGroups(list: VulnInput[]): VulnInput[][] {
+  const groups: { ids: Set<string>; items: VulnInput[] }[] = [];
+  for (const v of list) {
+    const ids = new Set([v.osvId, ...v.aliases]);
+    const hits = groups.filter((g) => [...ids].some((id) => g.ids.has(id)));
+    const merged = { ids, items: [v] };
+    for (const g of hits) {
+      for (const id of g.ids) merged.ids.add(id);
+      merged.items.push(...g.items);
+      groups.splice(groups.indexOf(g), 1);
+    }
+    groups.push(merged);
+  }
+  return groups.map((g) => g.items);
+}
+
+/** The record that speaks for a group: one with a rating, a GHSA before others, then by id. */
+function leadOf(group: VulnInput[]): VulnInput {
+  const score = (v: VulnInput) => (v.severity !== "unknown" ? 2 : 0) + (v.osvId.startsWith("GHSA-") ? 1 : 0);
+  return [...group].sort((a, b) => score(b) - score(a) || a.osvId.localeCompare(b.osvId))[0];
 }

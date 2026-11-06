@@ -72,7 +72,11 @@ describe("extractFiles", () => {
         "._package.json": "mac",
       }),
     );
-    expect(extractFiles(body)).toEqual({ packageJson: "{}", lockfiles: { "yarn.lock": "x" } });
+    expect(extractFiles(body)).toEqual({
+      packageJson: "{}",
+      lockfiles: { "yarn.lock": "x" },
+      goBinaries: null,
+    });
   });
 
   it("accepts base64-encoded gzip, as sent through BusyBox wget", () => {
@@ -84,10 +88,11 @@ describe("extractFiles", () => {
 
   it("accepts an image without package.json, but not a body that is not gzip", () => {
     // The snippet sends an empty body when it finds no manifests at all.
-    expect(extractFiles(Buffer.alloc(0))).toEqual({ packageJson: null, lockfiles: {} });
+    expect(extractFiles(Buffer.alloc(0))).toEqual({ packageJson: null, lockfiles: {}, goBinaries: null });
     expect(extractFiles(gzipSync(tarOf({ "yarn.lock": "x" })))).toEqual({
       packageJson: null,
       lockfiles: { "yarn.lock": "x" },
+      goBinaries: null,
     });
     expect(() => extractFiles(Buffer.from("plain"))).toThrow(IngestError);
   });

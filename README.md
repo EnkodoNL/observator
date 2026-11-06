@@ -2,7 +2,7 @@
 
 ![Observator](https://enkodo.app/observator-github-project.svg)
 
-Self-hosted overview of the runtimes and npm packages inside your containers, with a message on
+Self-hosted overview of the runtimes, npm packages and Go modules inside your containers, with a message on
 Slack, Telegram, e-mail or your own push service the moment one of them needs attention.
 
 <!-- Screenshot: docs/screenshot.png (dashboard, dark mode) -->
@@ -13,11 +13,13 @@ Observator records what every build really contains, checks it against the Node.
 schedule and OSV.dev, and stays quiet until there is something to do.
 
 - **Runtimes:** the exact Node.js version per app, its release line (current, LTS, maintenance,
-  end-of-life), and "Security update available: 22.23.4" with the image tag to pin. Bun, Deno,
-  Python, PHP and Ruby are detected and shown as well, without release checks so far.
+  end-of-life), and "Security update available: 22.23.4" with the image tag to pin. Go the same way:
+  the version the program was compiled with, its support from go.dev, and a security update when the
+  standard library has advisories for it. Bun, Deno, Python, PHP and Ruby are detected and shown as
+  well, without release checks so far.
 - **Packages:** every npm package from `package-lock.json`, `yarn.lock` (v1 and Berry) or
-  `pnpm-lock.yaml`, checked against OSV.dev, with severity, the fixed version and whether it is a
-  direct or transitive dependency.
+  `pnpm-lock.yaml`, and every Go module linked into a Go program, checked against OSV.dev, with
+  severity, the fixed version and whether it is a direct or transitive dependency.
 - **Notifications:** Slack, Telegram, Discord, e-mail, ntfy, Gotify, Pushover, Apprise and webhooks.
   One message per problem, bundled per build, retried in the background.
 - **In the build log:** every report prints a short status line, so Coolify's deploy log already
@@ -195,16 +197,23 @@ without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Docke
   BSD-3-Clause, Mozilla's roots), so it reaches an HTTPS Observator from slim images that have no CA
   bundle; roots in the image itself still go first. It runs `node -v`, `bun --version`, `deno`,
   `python3`, `php` and `ruby` directly when the image has them and reports the versions it finds.
+- **Go programs read from the binary.** A Go binary keeps the Go version it was built with and every
+  module linked into it, also with `-trimpath -ldflags "-s -w"`. The reporter reads that (Go's own
+  `debug/buildinfo`) from the executables at the top of `/`, `/app`, `/srv`, `/ko-app`,
+  `/usr/local/bin` and the working directory, skipping itself, the Go toolchain and `gosu`. With
+  several programs it reports the oldest Go version and all their modules.
 
 ### Base images
 
-Any image works, distroless included (node is found in `/nodejs/bin` there). An image without
-`package.json` reports only its runtimes; `scratch` has no runtime to report, only the lockfile if you
-copy it in.
+Any image works, distroless included (node is found in `/nodejs/bin` there). A Go program on `scratch`
+or `distroless/static` reports its Go version and modules. An image with neither `package.json` nor a
+Go program reports only its runtimes; when none of them is checked either, the project shows
+*Nothing checked* rather than *OK*.
 
 [`examples/express-app`](examples/express-app) has the reporter on Alpine and distroless plus the
-plain sh snippet per way of sending, and [`examples/python-app`](examples/python-app) both forms
-without `package.json`. [`examples/test-snippet.sh`](examples/test-snippet.sh) builds them all against
+plain sh snippet per way of sending, [`examples/python-app`](examples/python-app) both forms
+without `package.json`, and [`examples/go-app`](examples/go-app) a Go program on `scratch` and
+`distroless/static`. [`examples/test-snippet.sh`](examples/test-snippet.sh) builds them all against
 a running Observator.
 
 ### Without a registry: plain sh
@@ -212,7 +221,8 @@ a running Observator.
 The same report in plain `sh`, with nothing to pull. It needs a shell and one of `curl`, `wget`,
 `node` or `python3`, and sends with the first one the image has: Alpine with BusyBox `wget`, Debian
 slim with Node's `fetch`, the full Debian images with `curl`, `python:*-slim` with `python3`. Images
-without a shell (distroless, `scratch`) cannot run it.
+without a shell (distroless, `scratch`) cannot run it, and it cannot read Go programs: use the
+reporter image for Go.
 
 ```dockerfile
 # --- Observator: reports runtime versions + lockfile; does not end up in the final image ---
@@ -321,12 +331,17 @@ COPY --from=deps /app/package.json /app/package-lock.json* /app/pnpm-lock.yaml* 
 The `*` makes each lockfile optional, so the same line works for npm, pnpm and yarn. In the
 *Setup* tab, tick *The last stage has no lockfile* and the snippet includes these lines.
 
+A Go program needs none of this: the report stage is based on the final stage, which has the binary.
+Go itself lives in the build stage, so its pin advice is for that stage: `FROM golang:1.26.10 AS build`,
+keeping your `-alpine` or `-bookworm` suffix, and a rebuild without cache.
+
 ### Build gate (optional)
 
 Set `OBSERVATOR_FAIL_ON` (also a build variable) to fail the build when Observator knows about a
 problem: a severity (`critical`, `high`, `moderate`, `low`) for package advisories, `runtime` for a
-runtime security release that the image does not have yet (or one runtime by name, such as `node`),
-or both, such as `high,node`. Advisories in dev dependencies only count when *Count dev
+runtime security release that the image does not have yet (or one runtime by name, such as `node` or
+`go`), or both, such as `high,node`. An advisory without a rating (most of the Go vulnerability
+database) counts as `moderate` here and for a channel's minimum severity. Advisories in dev dependencies only count when *Count dev
 dependencies* is on under **Settings → General**. With a new lockfile the server checks
 OSV before answering (up to 20 seconds). If that check does not finish, the gate passes and says so.
 
@@ -336,6 +351,8 @@ Exactly this, and nothing else:
 
 - `package.json` and one lockfile (`package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`), if the image
   has them
+- for Go programs (reporter image only): `go-binaries.json` with each program's path, Go version, main
+  module and its modules with their versions
 - the version of each runtime it finds (`node -v`, `python3 -c '...python_version()'`, ...), the
   platform (`linux/arm64`), and the `ID` from `/etc/os-release`
 - the reporter's version (`X-Reporter: observator-reporter/1.0.0`), for the reporter image
@@ -374,7 +391,7 @@ build pulls the base image.
 ### Status badges
 
 Every app and every project has a public badge for a README. It shows `ok`, `node update` (or
-`node eol`), `no builds`, or the open advisories in production, such as `2 high, 10 moderate`. It is
+`node eol`), `not checked`, `no builds`, or the open advisories in production, such as `2 high, 10 moderate`. It is
 red for high and critical, amber for moderate.
 
 - **App badge** (`/badge/app/<app>.svg`): all projects of an app together, such as every server behind
@@ -540,7 +557,7 @@ docker build ── snippet: tar.gz + headers ──▶ web (Next.js) ───�
                                                └─ jobs: runtime releases hourly, OSV daily,
                                                   digest, notification retries
                                                         │
-                       nodejs.org, api.osv.dev, Slack, Telegram, SMTP, ... ◀┘
+                nodejs.org, go.dev, api.osv.dev, Slack, Telegram, SMTP, ... ◀┘
 ```
 
 - **web** is a Next.js app (App Router). It serves the UI, the ingest endpoint and the background
@@ -553,8 +570,11 @@ docker build ── snippet: tar.gz + headers ──▶ web (Next.js) ───�
   password, the token waits in memory (ten minutes, five tries) until the second step succeeds.
   Authenticator codes are standard TOTP (RFC 6238); recovery codes are stored as hashes.
 - **Data sources:** [nodejs.org/dist/index.json](https://nodejs.org/dist/index.json) and the
-  [release schedule](https://github.com/nodejs/Release) for Node.js, the only runtime with release
-  checks so far, and the [OSV.dev](https://osv.dev) API for packages. Neither needs an account.
+  [release schedule](https://github.com/nodejs/Release) for Node.js;
+  [go.dev/dl](https://go.dev/dl/?mode=json&include=all), the
+  [release history](https://go.dev/doc/devel/release) and OSV's advisories for Go's standard library
+  (`stdlib`) for Go; the [OSV.dev](https://osv.dev) API for npm packages and Go modules, where a
+  `GO-` record and the GHSA it aliases become one advisory. None needs an account.
 
 ## Configuration
 
@@ -676,7 +696,7 @@ npm run dev        # http://localhost:3100
 | `examples/test-snippet.sh` | Build the example apps with the reporter (built from `reporter/`) and the plain sh snippet against a running stack |
 
 CI runs all of these, and starts the compose stack to build the example apps: the reporter on Alpine,
-Debian slim, distroless and `python:3.12-slim`, and the plain sh snippet on `node:22-alpine`,
+Debian slim, distroless, `python:3.12-slim`, and a Go program on `scratch` and `distroless/static`, and the plain sh snippet on `node:22-alpine`,
 `node:24-alpine`, `node:26-alpine`, `node:22-slim`, `node:22` and `python:3.12-slim`.
 
 **Releasing the reporter:** push a tag `reporter-v1.2.3`. The *Reporter image* workflow tests it and
@@ -689,9 +709,14 @@ log instead of dropping it silently.
 
 ## Limitations
 
-- Node.js is the only runtime with release and end-of-life checks; other runtimes are shown, not
+- Node.js and Go are the runtimes with release and end-of-life checks; other runtimes are shown, not
   checked.
-- npm packages only, and only the root `package.json` of a workspace.
+- npm packages and Go modules only, and only the root `package.json` of a workspace. A Go binary does
+  not record which modules the app imports itself, so Go modules are not split into direct and
+  transitive, and there is no "latest version" lookup for them yet.
+- Go support needs the reporter image: the plain sh snippet cannot read a Go binary. The reporter looks
+  only at the top of a few folders (see [How the snippet behaves](#how-the-snippet-behaves)), not
+  through the whole image.
 - `package-lock.json` lockfileVersion 1 (npm 6) and pnpm lockfiles older than 6.0 are not supported.
 - One web instance. The job lock works across instances, but rate limits, passkey challenges and
   half-finished sign-ins live in memory. A restart during the second step means entering the

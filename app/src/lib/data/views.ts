@@ -3,7 +3,7 @@ import "server-only";
 import { adminPb, pbDate } from "@/lib/pb/admin";
 import type { BuildRecord, ComponentRecord, IgnoreRecord, IssueRecord, ProjectRecord } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
-import { summarize, type StatusSummary } from "@/lib/status";
+import { isChecked, summarize, type StatusSummary } from "@/lib/status";
 import { getProjectBySlug } from "./projects";
 
 export interface ProjectSummary {
@@ -53,7 +53,12 @@ export async function getOverview(): Promise<ProjectSummary[]> {
     return {
       project,
       latest,
-      summary: summarize(Boolean(latest), byProject.get(project.id) ?? [], settings.countDevDependencies),
+      summary: summarize(
+        Boolean(latest),
+        byProject.get(project.id) ?? [],
+        settings.countDevDependencies,
+        isChecked(latest),
+      ),
       lastBuildAt: pbDate(project.lastBuildAt),
     };
   });
@@ -95,7 +100,7 @@ export async function getProjectView(slug: string): Promise<ProjectView | null> 
     project,
     latest,
     lastBuildAt: pbDate(project.lastBuildAt),
-    summary: summarize(Boolean(latest), issues, settings.countDevDependencies),
+    summary: summarize(Boolean(latest), issues, settings.countDevDependencies, isChecked(latest)),
     countDev: settings.countDevDependencies,
     builds: builds.items,
     components,

@@ -178,6 +178,31 @@ COPY --from=build /app /app`;
     expect(a.ok).toBe(false);
   });
 
+  it("recognizes a Go build, also behind an ARG, and says which form can read it", () => {
+    const go = `ARG GO_IMAGE=golang:1.26-alpine
+FROM \${GO_IMAGE} AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -o /server .
+
+FROM gcr.io/distroless/static-debian13
+COPY --from=build /server /server
+ENTRYPOINT ["/server"]`;
+    const image = ok(go);
+    const texts = image.notes.map((n) => n.text).join("\n");
+    expect(texts).toContain("Line 2 builds a Go program. The reporter reads its Go version and modules");
+    expect(texts).not.toContain("No stage has a package.json");
+    expect(image.notes.some((n) => n.level === "warn")).toBe(false);
+    const shell = analyzeDockerfile(go, URL, { form: "shell" });
+    if (!shell.ok) throw new Error(shell.error);
+    expect(shell.notes.find((n) => n.text.includes("Go program"))?.level).toBe("warn");
+    // scratch is fine for a Go program: the reporter runs there on its own.
+    const scratch = ok(go.replace("gcr.io/distroless/static-debian13", "scratch"));
+    expect(scratch.notes.map((n) => n.text)).toContain(
+      "The last stage is based on scratch: the reporter runs there on its own.",
+    );
+  });
+
   it("follows folders copied between stages", () => {
     const a = ok(`FROM node:22-alpine AS deps
 WORKDIR /src

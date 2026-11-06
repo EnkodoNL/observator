@@ -4,7 +4,7 @@
 export type Severity = "unknown" | "low" | "moderate" | "high" | "critical";
 export const SEVERITIES: Severity[] = ["unknown", "low", "moderate", "high", "critical"];
 
-export type LockfileType = "npm" | "yarn-v1" | "yarn-berry" | "pnpm" | "none";
+export type LockfileType = "npm" | "yarn-v1" | "yarn-berry" | "pnpm" | "go" | "none";
 
 interface BaseRecord {
   id: string;
@@ -115,7 +115,7 @@ export interface BuildRecord extends BaseRecord {
 
 export interface ComponentRecord extends BaseRecord {
   project: string;
-  /** OSV ecosystem of the package: "npm" for now. */
+  /** OSV ecosystem of the package: "npm" or "Go". */
   ecosystem: string;
   name: string;
   version: string;

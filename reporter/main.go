@@ -30,9 +30,17 @@ type config struct {
 	marker    string
 	osRelease string
 	timeout   time.Duration
+	// Where Go programs may be, besides dir.
+	goDirs []string
 }
 
-var defaults = config{dir: ".", marker: "/tmp/.observator", osRelease: "/etc/os-release", timeout: 30 * time.Second}
+var defaults = config{
+	dir:       ".",
+	marker:    "/tmp/.observator",
+	osRelease: "/etc/os-release",
+	timeout:   30 * time.Second,
+	goDirs:    goDirs,
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, defaults))
@@ -66,14 +74,19 @@ func run(args []string, getenv func(string) string, out io.Writer, cfg config) i
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout)
 	defer cancel()
-	body, err := archive(cfg.dir)
+	binaries := scanGo(ctx, append([]string{cfg.dir}, cfg.goDirs...))
+	body, err := archive(cfg.dir, goFile(binaries))
 	if err != nil {
 		fmt.Fprintf(out, "Observator: report failed, continuing (%v)\n", err)
 		return done(out, cfg)
 	}
+	runtimes := detect(ctx, getenv("PATH"))
+	if v := oldestGo(binaries); v != "" {
+		runtimes = append(runtimes, Runtime{"go", v})
+	}
 	report := Report{
 		Key:      key,
-		Runtimes: formatRuntimes(detect(ctx, getenv("PATH"))),
+		Runtimes: formatRuntimes(runtimes),
 		Platform: platform(),
 		OS:       osID(cfg.osRelease),
 		FailOn:   getenv("OBSERVATOR_FAIL_ON"),

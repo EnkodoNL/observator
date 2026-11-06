@@ -4,7 +4,7 @@ import { activeIssues } from "@/lib/data/views";
 import type { IssueEvent } from "@/lib/issues/events";
 import { evaluateProject } from "@/lib/issues/evaluate";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { pinFor, runtimeLabel } from "@/lib/runtimes";
+import { pinFor, pinStage, runtimeLabel } from "@/lib/runtimes";
 import { checkProject } from "@/lib/osv/check";
 import type { IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
@@ -29,7 +29,7 @@ function countBySeverity(issues: IssueRecord[]): string {
   return order
     .map((s) => [s, issues.filter((i) => i.severity === s).length] as const)
     .filter(([, n]) => n > 0)
-    .map(([s, n]) => `${n} ${s}`)
+    .map(([s, n]) => `${n} ${s === "unknown" ? "unrated" : s}`)
     .join(", ");
 }
 
@@ -40,7 +40,7 @@ export function describeIssues(issues: IssueRecord[], countDev: boolean): string
     const d = security.data as unknown as RuntimeSecurityData;
     const pin = pinFor(d.runtime, d.target, d.os);
     lines.push(
-      `${runtimeLabel(d.runtime)} security update available: ${d.target}.${pin ? ` Pin ${pin} and redeploy.` : ""}`,
+      `${runtimeLabel(d.runtime)} security update available: ${d.target}.${pin ? ` Pin ${pin}${pinStage(d.runtime) === "build" ? " in the build stage" : ""} and redeploy.` : ""}`,
     );
   }
   for (const eol of open.filter((i) => i.kind === "runtime_eol")) {
@@ -62,7 +62,9 @@ export function describeIssues(issues: IssueRecord[], countDev: boolean): string
     for (const v of vulns.slice(0, 5)) {
       const d = v.data as unknown as VulnIssueData;
       const fix = d.fixedIn ? `, fixed in ${d.fixedIn}` : "";
-      lines.push(`  ${d.package}@${d.version}: ${d.osvId} (${v.severity})${fix}${d.dev ? " [dev]" : ""}`);
+      lines.push(
+        `  ${d.package}@${d.version}: ${d.osvId} (${v.severity === "unknown" ? "unrated" : v.severity})${fix}${d.dev ? " [dev]" : ""}`,
+      );
     }
     if (vulns.length > 5) lines.push(`  ...and ${vulns.length - 5} more`);
   }

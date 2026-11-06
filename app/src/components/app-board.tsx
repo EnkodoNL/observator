@@ -170,6 +170,7 @@ function inOrderSummary(app: App): string {
     plural(app.services.length, "service") + (servers > app.services.length ? ` on ${servers} servers` : ""),
   ];
   if (app.status === "none") parts.push("waiting for a first build");
+  if (app.status === "unchecked") parts.push("nothing Observator can check yet");
   if (app.buildOnly) parts.push(`${app.buildOnly} build-only`);
   return parts.join(", ");
 }

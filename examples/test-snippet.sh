@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
 # Builds the example apps against a running Observator: the reporter image (built here from
-# reporter/ and swapped in for the published one) and the plain sh snippet, one image per way it
+# reporter/ and swapped in for the published one, also for a Go app on scratch and distroless)
+# and the plain sh snippet, one image per way it
 # sends (wget, node, curl, python3). Checks that: the report arrives with the right runtimes, the
 # key never ends up in the build log or the image, a missing key, a wrong key or an unreachable
 # server never breaks the build, and the gate does.
@@ -73,6 +74,7 @@ expect_report() {
 
 EXPRESS=express-app/Dockerfile
 PYTHON=python-app/Dockerfile
+GO=go-app/Dockerfile
 
 echo "==> reporter image (reporter/)"
 docker build -q -t observator-reporter:test ../reporter >/dev/null || { echo "  FAIL: reporter image"; exit 1; }
@@ -86,6 +88,12 @@ build v2-distroless "$EXPRESS.distroless" NODE_IMAGE=node:26-slim "$OBSERVATOR_U
   expect_report v2-distroless 'node 26\.[0-9.]+, linux/[a-z0-9]+, npm, [0-9]+ packages'
 build v2-python "$PYTHON.reporter" PYTHON_IMAGE=python:3.12-slim "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
   expect_report v2-python 'python 3\.12\.[0-9]+, linux/[a-z0-9]+, no lockfile\)'
+# Go: the version and modules come from the binary. The app is built with Go 1.26, the reporter
+# with 1.27, so "go 1.26" proves it read the app and not itself.
+build v2-go-scratch "$GO" GO_IMAGE=golang:1.26-alpine "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-go-scratch 'go 1\.26\.[0-9]+, linux/[a-z0-9]+, go modules, [0-9]+ packages?'
+build v2-go-distroless "$GO.distroless" GO_IMAGE=golang:1.26-alpine "$OBSERVATOR_URL" "$OBSERVATOR_KEY" &&
+  expect_report v2-go-distroless 'go 1\.26\.[0-9]+, linux/[a-z0-9]+, go modules, [0-9]+ packages?'
 build v2-no-key "$EXPRESS.reporter" NODE_IMAGE=node:26-alpine "$OBSERVATOR_URL" "" &&
   { ! output | grep -q 'Observator:' || fail "v2 reported without a key"; }
 build v2-unreachable "$EXPRESS.distroless" NODE_IMAGE=node:26-slim "http://127.0.0.1:9" "$OBSERVATOR_KEY" &&
