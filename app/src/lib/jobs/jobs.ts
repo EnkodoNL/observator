@@ -6,6 +6,7 @@ import { publish } from "@/lib/notify/publish";
 import { sendDigestIfDue } from "@/lib/notify/digest";
 import { processQueue } from "@/lib/notify/queue";
 import { sendReminders } from "@/lib/notify/reminders";
+import { checkDeploys } from "@/lib/deploys/coolify";
 import { refreshLatest } from "@/lib/npm-latest";
 import { checkAllProjects } from "@/lib/osv/check";
 import { reportSelf } from "@/lib/self-report";
@@ -54,6 +55,15 @@ export const JOBS = {
     },
   },
   /** Retries for notifications that could not be delivered right away. */
+  /** Coolify's deploys against the reports: a deploy without one is announced within the hour. */
+  deploys: {
+    label: "Coolify deploys",
+    intervalMs: HOUR,
+    lockTtlMs: 10 * MINUTE,
+    run: async () => {
+      await checkDeploys();
+    },
+  },
   "notify-queue": {
     label: "Notification retries",
     intervalMs: 30_000,

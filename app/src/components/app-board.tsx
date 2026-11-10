@@ -17,11 +17,13 @@ function Advisories({
   buildOnly,
   built,
   stale,
+  silent,
 }: {
   counts: Partial<Record<Severity, number>>;
   buildOnly: number;
   built: boolean;
   stale: boolean;
+  silent: boolean;
 }) {
   if (!built) return <span className="text-muted-foreground">no build yet</span>;
   const worst = worstCounted(counts);
@@ -34,7 +36,11 @@ function Advisories({
       )}
     >
       {text}
-      {stale && <span className="font-normal text-warn">, stale</span>}
+      {silent ? (
+        <span className="font-normal text-warn">, deployed without a report</span>
+      ) : (
+        stale && <span className="font-normal text-muted-foreground">, no new build</span>
+      )}
     </span>
   );
 }
@@ -79,6 +85,7 @@ function ServiceRows({ service, compact }: { service: Service; compact?: boolean
               buildOnly={service.buildOnly}
               built={Boolean(first.latest)}
               stale={service.stale}
+              silent={service.silent}
             />
           </span>
         </Link>
@@ -93,7 +100,13 @@ function ServiceRows({ service, compact }: { service: Service; compact?: boolean
         </span>
         <span className={runtimeCell} />
         <span className="text-right">
-          <Advisories counts={service.counts} buildOnly={service.buildOnly} built stale={service.stale} />
+          <Advisories
+            counts={service.counts}
+            buildOnly={service.buildOnly}
+            built
+            stale={service.stale}
+            silent={service.silent}
+          />
         </span>
       </div>
       <ul className="mb-2 ml-1 border-l pl-3">
@@ -112,6 +125,7 @@ function ServiceRows({ service, compact }: { service: Service; compact?: boolean
                   buildOnly={s.summary.buildOnly.length}
                   built={Boolean(s.latest)}
                   stale={false}
+                  silent={false}
                 />
               </span>
             </Link>
@@ -143,7 +157,7 @@ function headline(app: App): { text: string; className: string } {
         d.phase === "remind" ? "text-muted-foreground" : d.phase === "warn" ? "text-warn" : "text-danger",
     };
   }
-  if (app.stale) return { text: "Stale", className: "text-warn" };
+  if (app.silent) return { text: "No report", className: "text-warn" };
   return { text: "", className: "" };
 }
 

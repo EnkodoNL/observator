@@ -6,6 +6,7 @@ import { describeFetchError, request } from "./channels/types";
 import { signWebhook } from "./channels/webhook";
 import { toMarkdown, toPlainText } from "./message";
 import { countedEvents, domainEventsForChannel } from "./publish";
+import { remindable } from "./reminders";
 import { renderDomainEvents, renderEvents, type RenderContext } from "./render";
 
 const ctx: RenderContext = {
@@ -91,6 +92,40 @@ describe("renderEvents", () => {
     const single = renderEvents("runtime.security_update", [runtimeEvent("p1")], ctx);
     expect(single.title).toBe("Node.js security update for api: 22.23.4");
     expect(single.summary).toContain("Pin node:22.23.4-alpine and redeploy.");
+  });
+
+  it("says no new build plainly, and a deploy without a report as the problem it is", () => {
+    const stale = (projectId: string, data: object): IssueEvent => ({
+      type: "project.stale",
+      projectId,
+      kind: "stale",
+      key: "stale",
+      revision: "",
+      severity: "low",
+      title: "",
+      occurredAt: "2026-11-10T00:00:00.000Z",
+      data: { lastBuildAt: "2026-10-27T17:45:00.000Z", days: 14, ...data },
+    });
+    const quiet = renderEvents("project.stale", [stale("p1", {}), stale("p2", { reason: "age" })], ctx);
+    expect(quiet).toMatchObject({ tone: "low", title: "2 projects: no new build in 14+ days" });
+    expect(quiet.summary).toContain("keeps checking the versions they reported last");
+    expect(renderEvents("project.stale", [stale("p1", { reason: "age" })], ctx).title).toBe(
+      "api: no new build in 14 days",
+    );
+    const silent = renderEvents(
+      "project.stale",
+      [stale("p1", { reason: "deploy", deploy: { at: "2026-11-05T09:05:00Z", commit: "abc1234def" } })],
+      ctx,
+    );
+    expect(silent).toMatchObject({ tone: "moderate", title: "api was deployed without a report" });
+    expect(silent.summary).toContain("(commit abc1234)");
+  });
+
+  it("repeats a deploy without a report, not a quiet stretch", () => {
+    expect(remindable({ kind: "stale", data: { reason: "age" } })).toBe(false);
+    expect(remindable({ kind: "stale", data: {} })).toBe(false);
+    expect(remindable({ kind: "stale", data: { reason: "deploy" } })).toBe(true);
+    expect(remindable({ kind: "vuln", data: {} })).toBe(true);
   });
 
   it("advises a version where it knows no image to pin", () => {

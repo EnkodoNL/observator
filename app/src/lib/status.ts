@@ -3,7 +3,6 @@ import type { VulnIssueData } from "@/lib/issues/types";
 import type { BuildRecord, IssueRecord, Severity } from "@/lib/pb/types";
 import { CHECKED_RUNTIMES } from "@/lib/runtimes/labels";
 import { maxSeverity } from "@/lib/severity";
-import { daysSince } from "@/lib/time";
 
 export type ProjectStatus = "none" | "unchecked" | "ok" | "update" | "vulnerable";
 
@@ -35,6 +34,8 @@ export interface StatusSummary {
   vulnBySeverity: Partial<Record<Severity, number>>;
   worstSeverity: Severity | null;
   stale: boolean;
+  /** The open stale issue: its data says whether it is age or a deploy without a report. */
+  staleIssue: IssueRecord | null;
 }
 
 /** An advisory in a package only dev dependencies pull in. */
@@ -86,18 +87,12 @@ export function summarize(
     vulnBySeverity,
     worstSeverity: maxSeverity(vulns.map((v) => v.severity)),
     stale: open.some((i) => i.kind === "stale"),
+    staleIssue: open.find((i) => i.kind === "stale") ?? null,
   };
 }
 
 /**
- * Stale: an open stale issue, or no build for staleDays. The second part shows it before the
- * hourly job has opened the issue.
+ * Stale: an open stale issue. The hourly job opens it after staleDays, unless Coolify says
+ * nothing was deployed since the last report; it opens right away for a deploy without one.
  */
-export function isStale(
-  summary: Pick<StatusSummary, "stale">,
-  lastBuildAt: Date | null,
-  staleDays: number,
-): boolean {
-  const age = daysSince(lastBuildAt);
-  return summary.stale || (age !== null && age >= staleDays);
-}
+export const isStale = (summary: Pick<StatusSummary, "stale">): boolean => summary.stale;

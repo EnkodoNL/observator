@@ -3,7 +3,12 @@ import "server-only";
 import { channelEvents, listChannels } from "@/lib/data/channels";
 import { getOverview } from "@/lib/data/views";
 import { env } from "@/lib/env";
-import type { RuntimeEolData, RuntimeSecurityData } from "@/lib/issues/types";
+import {
+  staleReason,
+  type RuntimeEolData,
+  type RuntimeSecurityData,
+  type StaleData,
+} from "@/lib/issues/types";
 import { runtimeLabel } from "@/lib/runtimes/labels";
 import { kvGet, kvSet } from "@/lib/kv";
 import { adminPb, toPbDate } from "@/lib/pb/admin";
@@ -54,8 +59,13 @@ export async function buildDigest(now = new Date()): Promise<Message> {
         `${plural(summary.vulnCount, "advisory", "advisories")}${counts.length ? ` (${counts.join(", ")})` : ""}`,
       );
     }
-    const age = daysSince(lastBuildAt);
-    if (age !== null && age >= settings.staleDays) parts.push(`no build for ${age} days`);
+    // The open stale issue, not the age: Coolify may know nothing was deployed since.
+    if (summary.staleIssue)
+      parts.push(
+        staleReason(summary.staleIssue.data) === "deploy"
+          ? "deployed without a report"
+          : `no new build for ${daysSince(lastBuildAt) ?? (summary.staleIssue.data as unknown as StaleData).days} days`,
+      );
     if (!latest) parts.push("never reported");
     if (parts.length) {
       attention.push({

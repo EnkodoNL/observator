@@ -156,7 +156,26 @@ describe("computeDesired", () => {
       }),
     );
     expect(issues.map((i) => i.key)).toEqual(["runtime_security:node:20", "runtime_eol:node:20", "stale"]);
-    expect(issues.find((i) => i.kind === "stale")?.title).toBe("No build for 54 days");
+    expect(issues.find((i) => i.kind === "stale")?.title).toBe("No new build for 54 days");
+  });
+
+  it("lets Coolify decide: no deploy since is fine, a deploy without a report is news", () => {
+    const old = { lastBuildAt: new Date("2026-09-01T00:00:00Z"), vulns: [] };
+    const stale = (deploy: Parameters<typeof computeDesired>[0]["deploy"]) =>
+      computeDesired(input({ ...old, deploy })).find((i) => i.kind === "stale");
+    // Without Coolify: the age rule.
+    expect(stale(undefined)).toMatchObject({ severity: "low", data: { reason: "age", days: 54 } });
+    // Coolify checked and nothing was deployed since: however old, nothing to say.
+    expect(stale({ unreported: null })).toBeUndefined();
+    // A deploy without a report, announced as such, with the deployment as revision.
+    expect(
+      stale({ unreported: { at: "2026-10-20T10:00:00Z", commit: "abc1234def", uuid: "dep-1" } }),
+    ).toMatchObject({
+      severity: "moderate",
+      revision: "dep-1",
+      title: "Deployed without a report on 2026-10-20",
+      data: { reason: "deploy", deploy: { at: "2026-10-20T10:00:00Z", commit: "abc1234def" } },
+    });
   });
 });
 

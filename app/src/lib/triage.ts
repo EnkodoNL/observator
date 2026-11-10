@@ -2,11 +2,10 @@
 import type { ProjectSummary } from "@/lib/data/views";
 import type { DomainAttention } from "@/lib/domains/phase";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { vulnVersions } from "@/lib/issues/types";
+import { staleReason, vulnVersions } from "@/lib/issues/types";
 import { packageHref } from "@/lib/package-href";
 import type { IssueRecord, Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
-import { isStale } from "@/lib/status";
 
 export interface ProjectRef {
   name: string;
@@ -69,7 +68,7 @@ const DOMAIN_SEVERITY: Record<DomainAttention["phase"], Severity> = {
  * What needs doing across all projects, the heaviest first: tier, severity, then reach.
  * Domains come along as they are; one watched on its own has no projects.
  */
-export function triage(items: ProjectSummary[], staleDays: number, domains: DomainAttention[] = []): Cause[] {
+export function triage(items: ProjectSummary[], domains: DomainAttention[] = []): Cause[] {
   const causes = new Map<string, Cause>();
   const refs = new Map(items.map((i) => [i.project.id, ref(i)]));
   for (const { projectIds, ...d } of domains)
@@ -131,8 +130,15 @@ export function triage(items: ProjectSummary[], staleDays: number, domains: Doma
       for (const v of vulnVersions(d)) if (!cause.versions.includes(v)) cause.versions.push(v);
       if (cause.fixedIn !== (d.fixedIn || null)) cause.fixedIn = null;
     }
-    if (isStale(item.summary, item.lastBuildAt, staleDays))
-      add("stale", () => ({ key: "", kind: "stale", severity: "low", projects: [], href: "" }), item, "low");
+    // Only a deploy without a report is a to-do; no new build for a while is not (it is shown on
+    // the board), since the versions Observator has are still the ones that run.
+    if (item.summary.staleIssue && staleReason(item.summary.staleIssue.data) === "deploy")
+      add(
+        "stale",
+        () => ({ key: "", kind: "stale", severity: "moderate", projects: [], href: "" }),
+        item,
+        "moderate",
+      );
   }
 
   // Advisories count per package, not per project: the same one in seven projects is one.

@@ -2,10 +2,17 @@
 import type { DomainEvent, IssueEvent } from "@/lib/issues/events";
 import { domainDetail, worse } from "@/lib/domains/phase";
 import type { ExpiryPhase } from "@/lib/pb/types";
-import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "@/lib/issues/types";
+import {
+  staleReason,
+  type RuntimeEolData,
+  type RuntimeSecurityData,
+  type StaleData,
+  type VulnIssueData,
+} from "@/lib/issues/types";
 import { pinFor, pinStage, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
+import { formatDate } from "@/lib/time";
 import { MAX_ITEMS, type Message, type MessageAction, type MessageItem } from "./message";
 
 export interface ProjectInfo {
@@ -169,20 +176,55 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
     }
 
     case "project.stale": {
-      const items = events.map((e) => ({
-        title: name(ctx, e.projectId),
-        detail: `last build ${(e.data as unknown as StaleData).days} days ago`,
-      }));
+      // "deploy": Coolify deployed and no report came, a real problem. "age": only no new build,
+      // which needs nothing unless something was deployed; said once and plainly.
+      const silent = events.filter((e) => staleReason(e.data) === "deploy");
+      const stale = (e: (typeof events)[number]) => e.data as unknown as StaleData;
+      if (silent.length > 0) {
+        const silentProjects = [...new Set(silent.map((e) => e.projectId))];
+        const deployed = (e: (typeof events)[number]) => {
+          const d = stale(e).deploy;
+          return d
+            ? `deployed ${formatDate(new Date(d.at))}${d.commit ? ` (commit ${d.commit.slice(0, 7)})` : ""}`
+            : "deployed";
+        };
+        return {
+          event: type,
+          tone: "moderate",
+          title:
+            silentProjects.length === 1
+              ? `${prefix}${name(ctx, silentProjects[0])} was deployed without a report`
+              : `${prefix}${plural(silentProjects.length, "project")} deployed without a report`,
+          summary:
+            silentProjects.length === 1
+              ? `Coolify ${deployed(silent[0])}, but no report arrived. Check the snippet, the key and the reporter: an old reporter image cached on the build server is a common cause (docker pull it there).`
+              : "Coolify deployed them, but no report arrived. Check the snippet, the key and the reporter: an old reporter image cached on the build server is a common cause (docker pull it there).",
+          ...cap(
+            silentProjects.length === 1
+              ? []
+              : silent.map((e) => ({ title: name(ctx, e.projectId), detail: deployed(e) })),
+          ),
+          actions: projectActions(ctx, silentProjects, "builds"),
+        };
+      }
+      const days = stale(events[0]).days;
       return {
         event: type,
         tone: "low",
         title:
           projects.length === 1
-            ? `${prefix}${name(ctx, projects[0])} has not reported for ${(events[0].data as unknown as StaleData).days} days`
-            : `${prefix}${plural(projects.length, "project")} stopped reporting`,
+            ? `${prefix}${name(ctx, projects[0])}: no new build in ${days} days`
+            : `${prefix}${plural(projects.length, "project")}: no new build in ${days}+ days`,
         summary:
-          "No build has reported in a while. Either nothing was deployed, or the Dockerfile snippet or key stopped working.",
-        ...cap(projects.length === 1 ? [] : items),
+          "Observator keeps checking the versions they reported last, so this needs nothing unless one was deployed since: then its report did not arrive. Check the snippet, the key and the reporter. A Coolify deploy webhook with read permission lets Observator tell the difference.",
+        ...cap(
+          projects.length === 1
+            ? []
+            : events.map((e) => ({
+                title: name(ctx, e.projectId),
+                detail: `last build ${stale(e).days} days ago`,
+              })),
+        ),
         actions: projectActions(ctx, projectIds, "builds"),
       };
     }

@@ -24,7 +24,7 @@ function kind(c: Cause): string {
     case "domain":
       return c.phase === "remind" ? "Reminder" : c.target === "certificate" ? "Certificate" : "Domain";
     case "stale":
-      return "Stale";
+      return "No report";
   }
 }
 
@@ -70,18 +70,18 @@ function what(c: Cause): React.ReactNode {
         </>
       );
     case "stale":
-      return <b>No recent build</b>;
+      return <b>Deployed without a report</b>;
   }
 }
 
-function why(c: Cause, staleDays: number): string | null {
+function why(c: Cause): string | null {
   switch (c.kind) {
     case "package":
       return plural(c.advisories, "advisory", "advisories");
     case "runtime_security":
       return "a security release";
     case "stale":
-      return `nothing reported for ${staleDays}+ days`;
+      return "Coolify deployed it, no report arrived: check the snippet, the key and the reporter";
     default:
       return null;
   }
@@ -107,8 +107,8 @@ function Projects({ projects }: { projects: ProjectRef[] }) {
   );
 }
 
-function Row({ cause, staleDays }: { cause: Cause; staleDays: number }) {
-  const reason = why(cause, staleDays);
+function Row({ cause }: { cause: Cause }) {
+  const reason = why(cause);
   return (
     <li className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-0.5 py-3 sm:grid-cols-[6.5rem_minmax(0,1fr)_auto]">
       <span
@@ -150,7 +150,7 @@ function Row({ cause, staleDays }: { cause: Cause; staleDays: number }) {
 }
 
 /** What needs doing, heaviest first; beyond five it folds away. */
-export function AttentionList({ causes, staleDays }: { causes: Cause[]; staleDays: number }) {
+export function AttentionList({ causes }: { causes: Cause[] }) {
   if (causes.length === 0)
     return (
       <p className="border-y py-4 text-muted-foreground">
@@ -162,7 +162,7 @@ export function AttentionList({ causes, staleDays }: { causes: Cause[]; staleDay
     <div>
       <ul className="divide-y border-y">
         {causes.slice(0, SHOWN).map((c) => (
-          <Row key={c.key} cause={c} staleDays={staleDays} />
+          <Row key={c.key} cause={c} />
         ))}
       </ul>
       {rest.length > 0 && (
@@ -173,7 +173,7 @@ export function AttentionList({ causes, staleDays }: { causes: Cause[]; staleDay
           </summary>
           <ul className="divide-y border-b">
             {rest.map((c) => (
-              <Row key={c.key} cause={c} staleDays={staleDays} />
+              <Row key={c.key} cause={c} />
             ))}
           </ul>
         </details>

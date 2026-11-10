@@ -2,9 +2,14 @@
 import "server-only";
 import { OPEN_EVENT, type IssueEvent } from "@/lib/issues/events";
 import { adminPb, toPbDate } from "@/lib/pb/admin";
+import { staleReason } from "@/lib/issues/types";
 import type { IssueRecord } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
 import { publish } from "./publish";
+
+/** "No new build" is said once; a deploy without a report is a problem and is repeated. */
+export const remindable = (issue: Pick<IssueRecord, "kind" | "data">): boolean =>
+  !(issue.kind === "stale" && staleReason(issue.data) === "age");
 
 /** Re-announces issues that are still open after the configured number of days. */
 export async function sendReminders(): Promise<number> {
@@ -16,7 +21,7 @@ export async function sendReminders(): Promise<number> {
     filter: pb.filter("status = 'open' && notifiedAt != '' && notifiedAt <= {:cutoff}", { cutoff }),
   });
   const today = new Date().toISOString().slice(0, 10);
-  const events: IssueEvent[] = due.map((i) => ({
+  const events: IssueEvent[] = due.filter(remindable).map((i) => ({
     type: OPEN_EVENT[i.kind],
     projectId: i.project,
     kind: i.kind,

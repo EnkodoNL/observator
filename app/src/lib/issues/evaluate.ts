@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
+import { deployStateKey, freshDeployState, type DeployState } from "@/lib/deploys/state";
+import { kvGet } from "@/lib/kv";
 import { adminPb, pbDate, toPbDate } from "@/lib/pb/admin";
 import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
 import type { Evaluator } from "@/lib/runtimes/types";
@@ -61,12 +63,13 @@ async function loadShared(): Promise<Shared> {
 async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<IssueEvent[]> {
   const pb = await adminPb();
   const byProject = pb.filter("project = {:id}", { id: project.id });
-  const [builds, components, existing] = await Promise.all([
+  const [builds, components, existing, deploy] = await Promise.all([
     pb.collection("builds").getList<BuildRecord>(1, 1, { filter: byProject, sort: "-created" }),
     pb
       .collection("components")
       .getFullList<ComponentRecord>({ filter: byProject, fields: "ecosystem,name,version,direct,dev,via" }),
     pb.collection("issues").getFullList<IssueRecord>({ filter: byProject }),
+    kvGet<DeployState>(deployStateKey(project.id)),
   ]);
   const build = builds.items[0] ?? null;
   const runtimes = build?.runtimes ?? [];
@@ -82,6 +85,7 @@ async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<Issu
       .map((v) => ({ ...v, aliases: v.aliases ?? [] })),
     evaluations: evaluateRuntimes(runtimes, shared.evaluators, shared.now),
     staleDays: shared.staleDays,
+    deploy: freshDeployState(deploy, shared.now),
     now: shared.now,
   });
 

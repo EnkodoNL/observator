@@ -5,6 +5,7 @@ import { effectiveLabels, labelValue } from "@/lib/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity } from "@/lib/severity";
 import { slugify } from "@/lib/slug";
+import { staleReason } from "@/lib/issues/types";
 import { isStale, worstStatus, type ProjectStatus } from "@/lib/status";
 
 /** One part of an app (label role:*), on one or more servers. */
@@ -15,6 +16,8 @@ export interface Service {
   servers: ProjectSummary[];
   status: ProjectStatus;
   stale: boolean;
+  /** Deployed without a report (Coolify): unlike a quiet stretch, this is work. */
+  silent: boolean;
   /** Counting advisories by severity; servers run the same code, so the busiest one counts. */
   counts: Partial<Record<Severity, number>>;
   advisories: number;
@@ -29,6 +32,7 @@ export interface App {
   services: Service[];
   status: ProjectStatus;
   stale: boolean;
+  silent: boolean;
   /** Advisories by severity, summed over the services. */
   counts: Partial<Record<Severity, number>>;
   advisories: number;
@@ -67,14 +71,15 @@ function serviceName(item: ProjectSummary, app: string): string {
   return name !== app && name.startsWith(`${app}-`) ? name.slice(app.length + 1) : name;
 }
 
-function service(key: string, name: string, servers: ProjectSummary[], staleDays: number): Service {
+function service(key: string, name: string, servers: ProjectSummary[]): Service {
   const busiest = servers.reduce((a, b) => (b.summary.vulnCount > a.summary.vulnCount ? b : a));
   return {
     key,
     name,
     servers,
     status: worstStatus(servers.map((s) => s.summary.status)),
-    stale: servers.some((s) => isStale(s.summary, s.lastBuildAt, staleDays)),
+    stale: servers.some((s) => isStale(s.summary)),
+    silent: servers.some((s) => s.summary.staleIssue && staleReason(s.summary.staleIssue.data) === "deploy"),
     counts: busiest.summary.vulnBySeverity,
     advisories: busiest.summary.vulnCount,
     buildOnly: Math.max(...servers.map((s) => s.summary.buildOnly.length)),
@@ -94,7 +99,7 @@ const STATUS_ORDER: Record<ProjectStatus, number> = {
  * shared key's servers land together), otherwise one app per project. Within an app, one
  * service per role:* label or reported name. Apps that need work come first.
  */
-export function appBoard(items: ProjectSummary[], staleDays: number, domains: DomainAttention[] = []): App[] {
+export function appBoard(items: ProjectSummary[], domains: DomainAttention[] = []): App[] {
   const apps = new Map<string, { name: string; items: ProjectSummary[] }>();
   for (const item of items) {
     const label = labelValue(effectiveLabels(item.project), "app");
@@ -115,10 +120,11 @@ export function appBoard(items: ProjectSummary[], staleDays: number, domains: Do
         byService.set(sName, entry);
       }
       const services = [...byService]
-        .map(([k, s]) => service(k, s.name, s.servers, staleDays))
+        .map(([k, s]) => service(k, s.name, s.servers))
         .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name));
       const status = worstStatus(services.map((s) => s.status));
       const stale = services.some((s) => s.stale);
+      const silent = services.some((s) => s.silent);
       const ids = new Set(members.map((m) => m.project.id));
       const appDomains = domains.filter((d) => d.projectIds.some((id) => ids.has(id)));
       return {
@@ -128,6 +134,7 @@ export function appBoard(items: ProjectSummary[], staleDays: number, domains: Do
         services,
         status,
         stale,
+        silent,
         counts: sumCounts(services.map((s) => s.counts)),
         advisories: services.reduce((n, s) => n + s.advisories, 0),
         worstSeverity: maxSeverity(
@@ -137,7 +144,8 @@ export function appBoard(items: ProjectSummary[], staleDays: number, domains: Do
         ),
         buildOnly: services.reduce((n, s) => n + s.buildOnly, 0),
         domains: appDomains,
-        needsWork: status === "vulnerable" || status === "update" || stale || appDomains.length > 0,
+        // A quiet stretch is not work: the app runs what Observator knows. A silent deploy is.
+        needsWork: status === "vulnerable" || status === "update" || silent || appDomains.length > 0,
       };
     })
     .sort(

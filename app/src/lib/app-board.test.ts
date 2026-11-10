@@ -27,14 +27,11 @@ function item(
 
 describe("appBoard", () => {
   it("groups by app label and names services by role, apps that need work first", () => {
-    const apps = appBoard(
-      [
-        item("gelukscode-site · 1.2.3.4", { sourceName: "gelukscode-site", instance: "1.2.3.4" }),
-        item("tuinsnap-cms", { labels: ["app:tuinsnap", "role:cms"], issues: [vuln("low", true)] }),
-        item("tuinsnap-backend", { labels: ["app:tuinsnap", "role:backend"], issues: [vuln("moderate")] }),
-      ],
-      14,
-    );
+    const apps = appBoard([
+      item("gelukscode-site · 1.2.3.4", { sourceName: "gelukscode-site", instance: "1.2.3.4" }),
+      item("tuinsnap-cms", { labels: ["app:tuinsnap", "role:cms"], issues: [vuln("low", true)] }),
+      item("tuinsnap-backend", { labels: ["app:tuinsnap", "role:backend"], issues: [vuln("moderate")] }),
+    ]);
     expect(apps.map((a) => a.name)).toEqual(["tuinsnap", "gelukscode-site"]);
     expect(apps[0]).toMatchObject({
       needsWork: true,
@@ -55,7 +52,7 @@ describe("appBoard", () => {
         issues: [vuln("moderate"), vuln("moderate")],
       }),
     );
-    const [app] = appBoard(servers, 14);
+    const [app] = appBoard(servers);
     expect(app.services).toHaveLength(1);
     expect(app.services[0]).toMatchObject({ name: "api", advisories: 2 });
     expect(app.services[0].servers).toHaveLength(2);
@@ -63,38 +60,51 @@ describe("appBoard", () => {
   });
 
   it("strips the app name from services without a role", () => {
-    const [app] = appBoard([item("cinnux-socket", { labels: ["app:cinnux"] })], 14);
+    const [app] = appBoard([item("cinnux-socket", { labels: ["app:cinnux"] })]);
     expect(app.services[0].name).toBe("socket");
   });
 
   it("sums the services' advisories by severity", () => {
-    const [app] = appBoard(
-      [
-        item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
-        item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
-      ],
-      14,
-    );
+    const [app] = appBoard([
+      item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
+      item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
+    ]);
     expect(app.counts).toEqual({ high: 1, moderate: 2 });
+  });
+});
+
+describe("quiet stretches", () => {
+  const stale = (reason: "age" | "deploy") =>
+    ({
+      kind: "stale",
+      status: "open",
+      severity: "low",
+      data: { reason, days: 14 },
+    }) as unknown as IssueRecord;
+
+  it("shows no new build without calling it work, and a deploy without a report as work", () => {
+    const [quiet] = appBoard([item("sip-helper-engine", { labels: ["app:sip"], issues: [stale("age")] })]);
+    expect(quiet).toMatchObject({ stale: true, silent: false, needsWork: false });
+    const [silent] = appBoard([
+      item("sip-helper-engine", { labels: ["app:sip"], issues: [stale("deploy")] }),
+    ]);
+    expect(silent).toMatchObject({ stale: true, silent: true, needsWork: true });
   });
 });
 
 describe("findApp", () => {
   it("addresses an app by its label, or by the reported name as a slug", () => {
-    const apps = appBoard(
-      [
-        item("Sip Helper · 10.0.0.1", { sourceName: "Sip Helper", instance: "10.0.0.1" }),
-        item("tuinsnap-cms", { labels: ["app:tuinsnap"] }),
-      ],
-      14,
-    );
+    const apps = appBoard([
+      item("Sip Helper · 10.0.0.1", { sourceName: "Sip Helper", instance: "10.0.0.1" }),
+      item("tuinsnap-cms", { labels: ["app:tuinsnap"] }),
+    ]);
     expect(findApp(apps, "sip-helper")?.name).toBe("Sip Helper");
     expect(findApp(apps, "tuinsnap")?.name).toBe("tuinsnap");
     expect(findApp(apps, "nope")).toBeUndefined();
   });
 
   it("prefers the app label when a project without one has the same name", () => {
-    const apps = appBoard([item("penal"), item("penal-api", { labels: ["app:penal"] })], 14);
+    const apps = appBoard([item("penal"), item("penal-api", { labels: ["app:penal"] })]);
     expect(apps.map((a) => a.id)).toEqual(["penal", "penal"]);
     expect(findApp(apps, "penal")?.key).toBe("label:penal");
   });
