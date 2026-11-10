@@ -365,8 +365,23 @@ stored; Observator keeps the resulting package list, and the `name` and `version
 
 ### Caching
 
-A build that is fully cached does not report again. Nothing changed then, so nothing is lost. The
-*stale* notification tells you when a project has not reported for a while (14 days by default).
+A build that is fully cached does not report again. Nothing changed then, so nothing is lost.
+
+### No new build
+
+An app that is not rebuilt keeps running the image Observator knows, and Observator keeps checking
+the versions it reported every day. So a quiet stretch is not a problem in itself; it is only one when
+something was deployed and its report did not arrive (the snippet, the key or the reporter).
+
+- **Without more to go on**, a project that has not reported for 14 days (*Settings → General*) gets
+  one low-key notification, "no new build in 14 days", and shows as such on the board. It is not
+  repeated and not listed as a to-do.
+- **With a Coolify deploy webhook whose token can read** (see [Redeploy](#redeploy)), Observator
+  compares Coolify's deploys with the reports every hour. Nothing deployed since the last report: no
+  warning, however long ago that was. A finished deploy since then without a report: "deployed without
+  a report" within the hour, as a to-do. Restarts, failed deploys, a redeploy of the commit that
+  already reported (a cached build) and the cached services of a compose deploy where another service
+  did report do not count. Coolify services have no deployment history; for those the 14 days apply.
 
 ## Per project
 
@@ -378,7 +393,8 @@ On a project's *Setup* tab you can store a deploy webhook. Observator calls it w
 - **Coolify:** the resource's deploy webhook URL (`https://coolify.example.com/api/v1/deploy?uuid=...`),
   method `POST` (Coolify answers `GET` with 405 since v4.2), and a Coolify API token as bearer token.
   Give that token the `deploy` permission, and `read` if Observator should watch the resource's
-  domains (see [Domains](#domains)); nothing more (*Keys & Tokens → API Tokens*). Leaked, it can then
+  domains (see [Domains](#domains)) and compare its deploys with the reports (see
+  [No new build](#no-new-build)); nothing more (*Keys & Tokens → API Tokens*). Leaked, it can then
   start redeploys and read resource settings, but change nothing.
 - **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
 

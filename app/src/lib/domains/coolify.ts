@@ -69,7 +69,7 @@ export interface CoolifySync {
 const statusKey = (projectId: string) => `coolify:domains:${projectId}`;
 export const coolifyStatus = (projectId: string) => kvGet<CoolifySync>(statusKey(projectId));
 
-async function get(url: string, token: string): Promise<Response> {
+export async function coolifyGet(url: string, token: string): Promise<Response> {
   return fetch(url, {
     headers: { accept: "application/json", authorization: `Bearer ${token}`, "user-agent": "observator" },
     redirect: "manual",
@@ -78,12 +78,12 @@ async function get(url: string, token: string): Promise<Response> {
 }
 
 /**
- * The names a project's Coolify resource is served on, or why they could not be read. Null when
- * the project has no Coolify webhook. The outcome is kept for the project's page.
+ * The Coolify server, resource and token behind a project's deploy webhook, or null when it has
+ * none (or the secrets cannot be opened).
  */
-export async function coolifyNames(
-  project: Pick<ProjectRecord, "id" | "deployWebhookUrl" | "deployWebhookToken">,
-): Promise<ParsedName[] | null> {
+export function coolifyAccess(
+  project: Pick<ProjectRecord, "deployWebhookUrl" | "deployWebhookToken">,
+): { base: string; uuid: string; token: string } | null {
   let url: string;
   let token: string;
   try {
@@ -94,7 +94,19 @@ export async function coolifyNames(
     throw err;
   }
   const target = url ? coolifyTarget(url) : null;
-  if (!target || !token) return null;
+  return target && token ? { ...target, token } : null;
+}
+
+/**
+ * The names a project's Coolify resource is served on, or why they could not be read. Null when
+ * the project has no Coolify webhook. The outcome is kept for the project's page.
+ */
+export async function coolifyNames(
+  project: Pick<ProjectRecord, "id" | "deployWebhookUrl" | "deployWebhookToken">,
+): Promise<ParsedName[] | null> {
+  const access = coolifyAccess(project);
+  if (!access) return null;
+  const { token, ...target } = access;
 
   const fail = async (error: string) => {
     await kvSet(statusKey(project.id), {
@@ -112,12 +124,12 @@ export async function coolifyNames(
   }
   try {
     let names: string[];
-    const app = await get(`${target.base}/api/v1/applications/${target.uuid}`, token);
+    const app = await coolifyGet(`${target.base}/api/v1/applications/${target.uuid}`, token);
     if (app.status === 404) {
-      const service = await get(`${target.base}/api/v1/services/${target.uuid}`, token);
-      if (!service.ok) return fail(answer(service.status));
+      const service = await coolifyGet(`${target.base}/api/v1/services/${target.uuid}`, token);
+      if (!service.ok) return fail(coolifyAnswer(service.status));
       names = serviceDomains(await service.json());
-    } else if (!app.ok) return fail(answer(app.status));
+    } else if (!app.ok) return fail(coolifyAnswer(app.status));
     else names = applicationDomains(await app.json());
     const parsed = parseNames(names).names;
     await kvSet(statusKey(project.id), {
@@ -133,7 +145,7 @@ export async function coolifyNames(
   }
 }
 
-function answer(status: number): string {
+export function coolifyAnswer(status: number): string {
   if (status === 401 || status === 403)
     return "the token cannot read this resource; give it the read permission (next to deploy)";
   return `Coolify answered HTTP ${status}`;

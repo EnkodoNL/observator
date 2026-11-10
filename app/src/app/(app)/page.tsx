@@ -49,8 +49,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
     { warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays },
     new Date(),
   ).filter((d) => (wanted.length ? d.projectIds.some((id) => shown.has(id)) : true));
-  const apps = appBoard(items, settings.staleDays, domains);
-  const causes = triage(items, settings.staleDays, domains);
+  const apps = appBoard(items, domains);
+  const causes = triage(items, domains);
 
   const vulnerable = apps.filter((a) => a.advisories > 0).length;
   const runtimeFixes = causes.filter((c) => c.kind === "runtime_security").length;
@@ -73,7 +73,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
               {runtimeFixes
                 ? `${plural(runtimeFixes, "runtime")} ${runtimeFixes === 1 ? "has" : "have"} a security release waiting. `
                 : "Runtimes are all patched. "}
-              {stale > 0 && `${plural(stale, "project")} stopped reporting. `}
+              {stale > 0 &&
+                `${plural(stale, "project")} ${stale === 1 ? "was" : "were"} deployed without a report. `}
               {domains.length > 0 &&
                 `${plural(domains.length, "domain or certificate", "domains and certificates")} ${domains.length === 1 ? "needs" : "need"} renewing. `}
               {buildOnly > 0 && (
@@ -107,7 +108,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
             <h2 id="todo" className="font-display text-xl font-bold tracking-tight">
               To do
             </h2>
-            <AttentionList causes={causes} staleDays={settings.staleDays} />
+            <AttentionList causes={causes} />
           </section>
 
           <div className="space-y-4">

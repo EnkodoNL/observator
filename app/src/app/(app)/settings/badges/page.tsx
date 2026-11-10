@@ -7,16 +7,15 @@ import { appBoard } from "@/lib/app-board";
 import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
 import { getOverview } from "@/lib/data/views";
 import { env } from "@/lib/env";
-import { getSettings } from "@/lib/settings";
 import { requireUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Badges" };
 
 export default async function BadgesSettingsPage() {
   await requireUser();
-  const [items, settings] = await Promise.all([getOverview(), getSettings()]);
+  const items = await getOverview();
   const appUrl = env().APP_URL;
-  const apps = appBoard(items, settings.staleDays).sort((a, b) => a.name.localeCompare(b.name));
+  const apps = appBoard(items).sort((a, b) => a.name.localeCompare(b.name));
   const tokens = await Promise.all(apps.map((a) => appBadgeToken(a.id)));
 
   return (

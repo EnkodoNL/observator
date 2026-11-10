@@ -2,6 +2,7 @@
 import type { IssueKind, Severity } from "@/lib/pb/types";
 import type { Runtime, RuntimeEvaluation } from "@/lib/runtimes/types";
 import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
+import type { DeployState } from "@/lib/deploys/state";
 import { maxSeverity } from "@/lib/severity";
 import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "./types";
 
@@ -43,6 +44,8 @@ export interface DesiredInput {
   /** One per reported runtime that has release data. */
   evaluations: RuntimeEvaluation[];
   staleDays: number;
+  /** Coolify's word on deploys since the last report, when fresh; null without one. */
+  deploy?: Pick<DeployState, "unreported"> | null;
   now: Date;
 }
 
@@ -130,14 +133,28 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
 
   if (input.lastBuildAt) {
     const days = Math.floor((input.now.getTime() - input.lastBuildAt.getTime()) / (24 * 3600 * 1000));
-    if (days >= input.staleDays) {
+    const silent = input.deploy?.unreported;
+    const lastBuildAt = input.lastBuildAt.toISOString();
+    if (silent) {
+      // Each silent deploy is news, so it is the revision.
+      out.push({
+        kind: "stale",
+        key: "stale",
+        revision: silent.uuid,
+        severity: "moderate",
+        title: `Deployed without a report on ${silent.at.slice(0, 10)}`,
+        data: { lastBuildAt, days, reason: "deploy", deploy: { at: silent.at, commit: silent.commit } },
+      });
+    } else if (!input.deploy && days >= input.staleDays) {
+      // Without Coolify's word, a long silence is all there is to go on. With it, no deploy
+      // since the last report means the app runs what Observator has, however old.
       out.push({
         kind: "stale",
         key: "stale",
         revision: "",
         severity: "low",
-        title: `No build for ${days} days`,
-        data: { lastBuildAt: input.lastBuildAt.toISOString(), days },
+        title: `No new build for ${days} days`,
+        data: { lastBuildAt, days, reason: "age" },
       });
     }
   }

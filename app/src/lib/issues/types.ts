@@ -37,11 +37,21 @@ export interface RuntimeEolData {
   phase: "soon" | "eol";
 }
 
-/** issues.data for kind "stale". */
+/**
+ * issues.data for kind "stale". "age": no report for staleDays and nothing that says why;
+ * "deploy": Coolify deployed after the last report and no report came. Issues from before the
+ * reason have none and are "age".
+ */
 export interface StaleData {
   lastBuildAt: string;
   days: number;
+  reason?: "age" | "deploy";
+  /** The silent deployment, for "deploy". */
+  deploy?: { at: string; commit: string | null };
 }
+
+export const staleReason = (data: unknown): "age" | "deploy" =>
+  (data as Partial<StaleData> | null)?.reason === "deploy" ? "deploy" : "age";
 
 /** A vuln issue covers every installed version of the package with that advisory. */
 export function vulnVersions(d: Pick<VulnIssueData, "version">): string[] {

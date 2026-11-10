@@ -4,7 +4,6 @@ import { badgeResponse, badgeSvg, badgeValue, runtimeBadge, unknownBadge } from 
 import { storedAppBadgeToken } from "@/lib/badges";
 import { safeEqual } from "@/lib/crypto";
 import { getOverview } from "@/lib/data/views";
-import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +27,8 @@ export async function GET(request: Request, { params }: RouteContext<"/badge/app
   const hit = rendered.get(id);
   if (hit && hit.until > now) return badgeResponse(hit.svg, "public, max-age=300");
 
-  const [items, settings] = await Promise.all([getOverview(), getSettings()]);
-  const app = findApp(appBoard(items, settings.staleDays), id);
+  const items = await getOverview();
+  const app = findApp(appBoard(items), id);
   if (!app) return unknownBadge();
 
   const servers = app.services.flatMap((s) => s.servers);

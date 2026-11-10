@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
+import { isIP } from "node:net";
 import { connect } from "node:tls";
 import { checkOutbound, OutboundError } from "@/lib/outbound";
 import type { CertInfo } from "@/lib/pb/types";
@@ -22,10 +23,11 @@ export function readCert(host: string, port = 443, timeoutMs = 10_000): Promise<
   };
   return new Promise((resolve) => {
     // servername sends SNI: without it a proxy such as Traefik answers with its default certificate.
+    // SNI is for host names only, and Node 26 refuses an IP address there.
     const socket = connect({
       host,
       port,
-      servername: host,
+      ...(isIP(host) ? {} : { servername: host }),
       rejectUnauthorized: false,
       ALPNProtocols: ["http/1.1"],
     });

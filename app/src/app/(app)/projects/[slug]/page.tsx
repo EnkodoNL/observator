@@ -27,6 +27,7 @@ import { RuntimePanel } from "./runtime-panel";
 import { DomainsPanel } from "./domains-panel";
 import { listDomains } from "@/lib/domains/data";
 import { coolifyStatus } from "@/lib/domains/coolify";
+import { deployStatus } from "@/lib/deploys/coolify";
 import { getSettings } from "@/lib/settings";
 import { ProjectSettings } from "./project-settings";
 import { RedeployButton } from "./redeploy-button";
@@ -78,6 +79,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
     evaluateRuntimes(latest?.runtimes ?? [], evaluators).map((e) => [e.runtime, e] as const),
   );
   const redeploy = project.deployWebhookUrl ? await lastRedeploy(project.id) : null;
+  const deploys = project.deployWebhookUrl ? await deployStatus(project.id) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
     .sort(
@@ -178,6 +180,19 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   {" "}
                   Last redeploy {timeAgo(new Date(redeploy.at))}
                   {!redeploy.ok && " failed"}.
+                </span>
+              )}
+              {deploys && (
+                <span
+                  className={deploys.unreported ? "text-warn" : undefined}
+                  title={deploys.error ?? `Checked ${timeAgo(new Date(deploys.checkedAt))}`}
+                >
+                  {" "}
+                  {deploys.error
+                    ? "Coolify deploys: not readable."
+                    : deploys.unreported
+                      ? `Coolify deployed ${timeAgo(new Date(deploys.unreported.at))} without a report.`
+                      : "Coolify: no deploy since."}
                 </span>
               )}
             </p>

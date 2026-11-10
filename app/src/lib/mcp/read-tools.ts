@@ -20,7 +20,7 @@ import { displayEntry } from "@/lib/ingest/allowlist";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { matchingIgnore } from "@/lib/issues/reconcile";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { vulnVersions } from "@/lib/issues/types";
+import { staleReason, vulnVersions } from "@/lib/issues/types";
 import { jobStates } from "@/lib/jobs/scheduler";
 import { effectiveLabels, hasLabels, parseLabels } from "@/lib/labels";
 import type { BuildChanges, BuildRecord, IssueRecord } from "@/lib/pb/types";
@@ -31,6 +31,7 @@ import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
 import { isStale } from "@/lib/status";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
+import { deployStatus } from "@/lib/deploys/coolify";
 import { listDomains, type WatchedDomain } from "@/lib/domains/data";
 import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
 
@@ -130,7 +131,7 @@ export const readTools: Record<string, Tool> = {
       query: z.string().max(100).optional().describe("Part of the name or slug"),
     }),
     run: async ({ labels, status, query }) => {
-      const [items, settings, keys] = await Promise.all([getOverview(), getSettings(), listIngestKeys()]);
+      const [items, keys] = await Promise.all([getOverview(), listIngestKeys()]);
       const keyName = new Map(keys.map((k) => [k.id, k.name]));
       const q = query?.trim().toLowerCase();
       const projects = items
@@ -147,7 +148,8 @@ export const readTools: Record<string, Tool> = {
           name: p.name,
           url: projectUrl(p.slug),
           status: summary.status,
-          stale: isStale(summary, lastBuildAt, settings.staleDays),
+          stale: isStale(summary),
+          staleReason: summary.staleIssue ? staleReason(summary.staleIssue.data) : null,
           labels: effectiveLabels(p),
           runtimes: describeRuntimes(latest, { security: summary.runtimeSecurity, eol: summary.runtimeEol }),
           app: latest?.appVersion ? { name: latest.appName, version: latest.appVersion } : null,
@@ -164,7 +166,7 @@ export const readTools: Record<string, Tool> = {
   get_project: defineTool({
     title: "Project details",
     description:
-      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup, the latest build, its domains (certificates and registrations, see list_domains), and README badges as Markdown (badge.app covers every project of the app and suits a repository's README; badge.project is this project or server alone). Badges are public through the token in their link; new tokens are made in the web UI.",
+      "One project: its runtimes with release line and the image to pin, open advisories with fix advice for its package manager (commands, overrides, resolutions), build-only advisories (in dev dependencies, not in the running image) separately, ignored advisories with their reason, labels, setup (with Coolify's deploys against the reports, when linked), the latest build, its domains (certificates and registrations, see list_domains), and README badges as Markdown (badge.app covers every project of the app and suits a repository's README; badge.project is this project or server alone). Badges are public through the token in their link; new tokens are made in the web UI.",
     input: z.object({ project: projectRef }),
     run: async ({ project: ref }) => {
       const found = await resolveProject(ref);
@@ -174,7 +176,11 @@ export const readTools: Record<string, Tool> = {
       const appUrl = env().APP_URL;
       const app = appId(p);
       const appToken = await appBadgeToken(app);
-      const [watched, settings] = await Promise.all([listDomains(), getSettings()]);
+      const [watched, settings, deploys] = await Promise.all([
+        listDomains(),
+        getSettings(),
+        p.deployWebhookUrl ? deployStatus(p.id) : null,
+      ]);
       const domains = watched
         .map((w) => ({ ...w, hosts: w.hosts.filter((h) => h.project === p.id) }))
         .filter((w) => w.hosts.length)
@@ -262,6 +268,16 @@ export const readTools: Record<string, Tool> = {
           reportedName: p.sourceName || null,
           server: p.instance || null,
           deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "POST" } : null,
+          // Coolify's deploys against the reports (a token with read permission): no deploy since
+          // the last report means nothing to worry about; unreported means the snippet did not run.
+          deploys: deploys
+            ? {
+                checkedAt: deploys.checkedAt,
+                lastDeployAt: deploys.lastDeployAt,
+                unreported: deploys.unreported,
+                error: deploys.error,
+              }
+            : null,
         },
       };
     },

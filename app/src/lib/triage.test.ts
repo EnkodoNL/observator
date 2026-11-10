@@ -26,7 +26,7 @@ function item(name: string, issues: IssueRecord[], { built = true, lastBuildAt =
 
 describe("triage", () => {
   it("is empty when nothing needs doing", () => {
-    expect(triage([item("Web", []), item("New", [], { built: false })], 14)).toEqual([]);
+    expect(triage([item("Web", []), item("New", [], { built: false })])).toEqual([]);
   });
 
   it("groups a package across projects and counts each advisory once", () => {
@@ -34,14 +34,11 @@ describe("triage", () => {
       vuln("lodash", "4.17.20", "GHSA-1", "critical"),
       vuln("lodash", "4.17.20", "GHSA-2", "high"),
     ];
-    const [cause, ...rest] = triage(
-      [
-        item("Web", shared),
-        item("Api", shared),
-        item("Worker", [vuln("lodash", "4.17.19", "GHSA-1", "high")]),
-      ],
-      14,
-    );
+    const [cause, ...rest] = triage([
+      item("Web", shared),
+      item("Api", shared),
+      item("Worker", [vuln("lodash", "4.17.19", "GHSA-1", "high")]),
+    ]);
     expect(rest).toEqual([]);
     expect(cause).toMatchObject({
       kind: "package",
@@ -56,15 +53,14 @@ describe("triage", () => {
   });
 
   it("drops the fixed version when advisories disagree", () => {
-    const [cause] = triage(
-      [item("Web", [vuln("qs", "6.0.0", "A", "high", "6.2.0"), vuln("qs", "6.0.0", "B", "low", "6.5.0")])],
-      14,
-    );
+    const [cause] = triage([
+      item("Web", [vuln("qs", "6.0.0", "A", "high", "6.2.0"), vuln("qs", "6.0.0", "B", "low", "6.5.0")]),
+    ]);
     expect(cause).toMatchObject({ kind: "package", fixedIn: null });
   });
 
   it("leaves ignored advisories out", () => {
-    expect(triage([item("Web", [issue("vuln", "critical", {}, "ignored")])], 14)).toEqual([]);
+    expect(triage([item("Web", [issue("vuln", "critical", {}, "ignored")])])).toEqual([]);
   });
 
   it("puts critical first, then runtime security fixes, then severity and reach", () => {
@@ -73,13 +69,10 @@ describe("triage", () => {
       running: "22.11.0",
       target: "22.23.4",
     });
-    const causes = triage(
-      [
-        item("Web", [runtime, vuln("lodash", "4.17.20", "A", "high"), vuln("qs", "6.0.0", "B", "high")]),
-        item("Api", [vuln("minimist", "1.2.5", "C", "critical"), vuln("qs", "6.0.0", "B", "high")]),
-      ],
-      14,
-    );
+    const causes = triage([
+      item("Web", [runtime, vuln("lodash", "4.17.20", "A", "high"), vuln("qs", "6.0.0", "B", "high")]),
+      item("Api", [vuln("minimist", "1.2.5", "C", "critical"), vuln("qs", "6.0.0", "B", "high")]),
+    ]);
     expect(causes.map((c) => (c.kind === "package" ? c.package : c.kind))).toEqual([
       "minimist",
       "runtime_security",
@@ -94,23 +87,26 @@ describe("triage", () => {
       running: "22.11.0",
       target: "22.23.4",
     });
-    const causes = triage(
-      [
-        item("Web", [runtime, vuln("qs", "6.0.0", "A", "moderate")]),
-        item("Api", [vuln("lodash", "4.17.20", "B", "high"), vuln("qs", "6.0.0", "A", "moderate")]),
-        item("Old", [], { lastBuildAt: new Date(NOW.getTime() - 30 * 86_400_000) }),
-      ],
-      14,
-    );
+    const causes = triage([
+      item("Web", [runtime, vuln("qs", "6.0.0", "A", "moderate")]),
+      item("Api", [vuln("lodash", "4.17.20", "B", "high"), vuln("qs", "6.0.0", "A", "moderate")]),
+    ]);
     expect(causes.map((c) => (c.kind === "package" ? c.package : c.kind))).toEqual([
       "runtime_security",
       "lodash",
       "qs",
-      "stale",
     ]);
     // One project: the cause links to it.
     expect(causes[0].href).toBe("/projects/web");
-    expect(causes.at(-1)).toMatchObject({ kind: "stale", projects: [{ name: "Old", slug: "old" }] });
+  });
+
+  it("lists a deploy without a report, not a project that was just not rebuilt", () => {
+    const lastBuildAt = new Date(NOW.getTime() - 30 * 86_400_000).toISOString();
+    const causes = triage([
+      item("Old", [issue("stale", "low", { lastBuildAt, days: 30, reason: "age" })]),
+      item("Silent", [issue("stale", "moderate", { lastBuildAt, days: 30, reason: "deploy" })]),
+    ]);
+    expect(causes).toMatchObject([{ kind: "stale", severity: "moderate", projects: [{ name: "Silent" }] }]);
   });
 });
 
@@ -155,7 +151,7 @@ describe("dev dependencies", () => {
     const s = summarize(true, [dev]);
     expect(s).toMatchObject({ status: "ok", vulnCount: 0, worstSeverity: null });
     expect(s.buildOnly).toEqual([dev]);
-    expect(triage([item("Web", [dev])], 14)).toEqual([]);
+    expect(triage([item("Web", [dev])])).toEqual([]);
   });
 
   it("count like any other advisory when the setting is on", () => {

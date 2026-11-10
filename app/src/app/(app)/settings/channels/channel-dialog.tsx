@@ -46,7 +46,7 @@ const EVENT_HINT: Record<EventType, string> = {
   "runtime.eol": "A project's runtime line is end-of-life, or will be within 30 days",
   "vuln.new": "New advisories in a project's packages",
   "vuln.resolved": "A reported advisory is gone after a new build",
-  "project.stale": "A project has not reported for a while",
+  "project.stale": "No new build for a while (once), or deployed without a report",
   "domain.expiring":
     "A domain registration or TLS certificate is close to expiring, or a domain reminder is due",
   "digest.weekly": "Summary of everything, once a week",

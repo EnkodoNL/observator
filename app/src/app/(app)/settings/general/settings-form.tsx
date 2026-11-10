@@ -48,7 +48,10 @@ export function SettingsForm({ initial, timezones }: { initial: Settings; timezo
             />
             <span className="text-sm text-muted-foreground">days without a build</span>
           </div>
-          <FieldDescription>Stale projects are dimmed on the dashboard and reported once.</FieldDescription>
+          <FieldDescription>
+            A project that has not reported this long shows as &ldquo;no new build&rdquo; and is announced
+            once. With a Coolify deploy webhook that can read, Coolify&rsquo;s deploys decide instead.
+          </FieldDescription>
           {errors.staleDays && <FieldError>{errors.staleDays}</FieldError>}
         </Field>
 

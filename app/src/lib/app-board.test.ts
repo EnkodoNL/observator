@@ -27,14 +27,11 @@ function item(
 
 describe("appBoard", () => {
   it("groups by app label and names services by role, apps that need work first", () => {
-    const apps = appBoard(
-      [
-        item("landing-site · 1.2.3.4", { sourceName: "landing-site", instance: "1.2.3.4" }),
-        item("garden-cms", { labels: ["app:garden", "role:cms"], issues: [vuln("low", true)] }),
-        item("garden-backend", { labels: ["app:garden", "role:backend"], issues: [vuln("moderate")] }),
-      ],
-      14,
-    );
+    const apps = appBoard([
+      item("landing-site · 1.2.3.4", { sourceName: "landing-site", instance: "1.2.3.4" }),
+      item("garden-cms", { labels: ["app:garden", "role:cms"], issues: [vuln("low", true)] }),
+      item("garden-backend", { labels: ["app:garden", "role:backend"], issues: [vuln("moderate")] }),
+    ]);
     expect(apps.map((a) => a.name)).toEqual(["garden", "landing-site"]);
     expect(apps[0]).toMatchObject({
       needsWork: true,
@@ -55,7 +52,7 @@ describe("appBoard", () => {
         issues: [vuln("moderate"), vuln("moderate")],
       }),
     );
-    const [app] = appBoard(servers, 14);
+    const [app] = appBoard(servers);
     expect(app.services).toHaveLength(1);
     expect(app.services[0]).toMatchObject({ name: "api", advisories: 2 });
     expect(app.services[0].servers).toHaveLength(2);
@@ -63,38 +60,51 @@ describe("appBoard", () => {
   });
 
   it("strips the app name from services without a role", () => {
-    const [app] = appBoard([item("chat-socket", { labels: ["app:chat"] })], 14);
+    const [app] = appBoard([item("chat-socket", { labels: ["app:chat"] })]);
     expect(app.services[0].name).toBe("socket");
   });
 
   it("sums the services' advisories by severity", () => {
-    const [app] = appBoard(
-      [
-        item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
-        item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
-      ],
-      14,
-    );
+    const [app] = appBoard([
+      item("shop-web", { labels: ["app:shop"], issues: [vuln("high"), vuln("moderate")] }),
+      item("shop-worker", { labels: ["app:shop"], issues: [vuln("moderate"), vuln("low", true)] }),
+    ]);
     expect(app.counts).toEqual({ high: 1, moderate: 2 });
+  });
+});
+
+describe("quiet stretches", () => {
+  const stale = (reason: "age" | "deploy") =>
+    ({
+      kind: "stale",
+      status: "open",
+      severity: "low",
+      data: { reason, days: 14 },
+    }) as unknown as IssueRecord;
+
+  it("shows no new build without calling it work, and a deploy without a report as work", () => {
+    const [quiet] = appBoard([item("price-watch-engine", { labels: ["app:price"], issues: [stale("age")] })]);
+    expect(quiet).toMatchObject({ stale: true, silent: false, needsWork: false });
+    const [silent] = appBoard([
+      item("price-watch-engine", { labels: ["app:price"], issues: [stale("deploy")] }),
+    ]);
+    expect(silent).toMatchObject({ stale: true, silent: true, needsWork: true });
   });
 });
 
 describe("findApp", () => {
   it("addresses an app by its label, or by the reported name as a slug", () => {
-    const apps = appBoard(
-      [
-        item("Price Watch · 10.0.0.1", { sourceName: "Price Watch", instance: "10.0.0.1" }),
-        item("garden-cms", { labels: ["app:garden"] }),
-      ],
-      14,
-    );
+    const apps = appBoard([
+      item("Price Watch · 10.0.0.1", { sourceName: "Price Watch", instance: "10.0.0.1" }),
+      item("garden-cms", { labels: ["app:garden"] }),
+    ]);
     expect(findApp(apps, "price-watch")?.name).toBe("Price Watch");
     expect(findApp(apps, "garden")?.name).toBe("garden");
     expect(findApp(apps, "nope")).toBeUndefined();
   });
 
   it("prefers the app label when a project without one has the same name", () => {
-    const apps = appBoard([item("league"), item("league-api", { labels: ["app:league"] })], 14);
+    const apps = appBoard([item("league"), item("league-api", { labels: ["app:league"] })]);
     expect(apps.map((a) => a.id)).toEqual(["league", "league"]);
     expect(findApp(apps, "league")?.key).toBe("label:league");
   });
