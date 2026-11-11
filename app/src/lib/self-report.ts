@@ -10,7 +10,7 @@ import { latestBuild, recordBuild, reportHash } from "@/lib/ingest/ingest";
 import { normalizePlatform, type IngestMeta } from "@/lib/ingest/request";
 import { kvGet, kvSet } from "@/lib/kv";
 import { publish } from "@/lib/notify/publish";
-import { adminPb, isNotFound, toPbDate } from "@/lib/pb/admin";
+import { adminPb, isNotFound } from "@/lib/pb/admin";
 import type { ProjectRecord } from "@/lib/pb/types";
 
 /** Where package.json and package-lock.json are: copied to ./self in the image, the app root in dev. */
@@ -28,6 +28,23 @@ function osId(): string {
     return "";
   }
 }
+
+/** This build's id: Next writes a new one at every `next build`. Null in development. */
+function buildId(): string | null {
+  try {
+    return readFileSync(join(process.cwd(), ".next", "BUILD_ID"), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether this start is the build Observator already recorded. A restart, or a redeploy that came
+ * fully from cache, keeps the build id; a rebuild gets a new one, also when no package changed.
+ * Without an id (development) only the packages and the runtime tell.
+ */
+export const sameBuild = (current: string | null, recorded: string | null): boolean =>
+  current === null || current === recorded;
 
 async function selfProject(): Promise<ProjectRecord> {
   const pb = await adminPb();
@@ -53,8 +70,8 @@ async function selfProject(): Promise<ProjectRecord> {
 
 /**
  * Observator reports the runtime it actually runs on (Node) and its own packages, straight into
- * its database. Runs at every start and daily; records a build only when something changed,
- * otherwise it just marks the project as seen so it never counts as stale while running.
+ * its database. Runs at every start and daily, and records a build for every new build of
+ * Observator; a restart adds none. It never goes stale: the reporter is the running process.
  */
 export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"> {
   if (!env().OBSERVATOR_SELF) return "skipped";
@@ -76,20 +93,19 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
 
   const project = await selfProject();
   const latest = await latestBuild(project.id);
+  const id = buildId();
   const unchanged =
     latest &&
+    sameBuild(id, (await kvGet<{ id: string }>("self:build"))?.id ?? null) &&
     JSON.stringify(latest.runtimes ?? []) === JSON.stringify(meta.runtimes) &&
     latest.os === meta.os &&
     latest.arch === meta.arch &&
     latest.lockfileHash === reportHash(packageJson, "package-lock.json", lockfile);
-  if (unchanged) {
-    const pb = await adminPb();
-    await pb.collection("projects").update(project.id, { lastBuildAt: toPbDate(new Date()) });
-    return "unchanged";
-  }
+  if (unchanged) return "unchanged";
 
   const files = { packageJson, lockfiles: { "package-lock.json": lockfile }, goBinaries: null };
   const outcome = await recordBuild(project, files, meta);
+  if (id) await kvSet("self:build", { id });
   const analysis = await analyzeInline(project, outcome, meta);
   await publish(await analyzeInBackground(project.id, analysis));
   return "recorded";
