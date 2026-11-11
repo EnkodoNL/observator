@@ -85,7 +85,8 @@ async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<Issu
       .map((v) => ({ ...v, aliases: v.aliases ?? [] })),
     evaluations: evaluateRuntimes(runtimes, shared.evaluators, shared.now),
     staleDays: shared.staleDays,
-    deploy: freshDeployState(deploy, shared.now),
+    // Observator's own project is reported by the running process, so it runs what it reported.
+    deploy: project.apiKeyPrefix === "self" ? { unreported: null } : freshDeployState(deploy, shared.now),
     now: shared.now,
   });
 
