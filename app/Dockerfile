@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 # Observator web: Next.js standalone build.
-ARG NODE_VERSION=26.12.1
+ARG NODE_VERSION=26.13.1
 ARG NPM_VERSION=12.2.1
 
 FROM node:${NODE_VERSION}-alpine AS deps
