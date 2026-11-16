@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # The reporter image: one static binary and nothing else. Cross-compiled with the build host's
 # own Go for every target platform, so no emulation is needed.
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS build
 ARG TARGETOS TARGETARCH TARGETVARIANT
 ARG VERSION=dev
 WORKDIR /src
