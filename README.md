@@ -33,8 +33,8 @@ And for the days you do open it:
   22.23.4", with the `FROM` line to pin.
 - **Fix advice:** per advisory, the command or override that fixes it in your package manager
   (`npm install`, `yarn add`, `pnpm add`, `overrides`, `resolutions`), and whether it is a major upgrade.
-- **Redeploy:** with a deploy webhook (Coolify, Dokploy, Portainer, ...), a Redeploy button on the
-  project and in notifications, always with a confirmation.
+- **Redeploy:** for a project linked to Coolify, or with a deploy webhook (Dokploy, Portainer, ...),
+  a Redeploy button on the project and in notifications, always with a confirmation.
 - **Ignore with a reason:** accept an advisory for one project or all of them, optionally until a
   date. It stays visible as *ignored* and comes back when the ignore expires.
 - **Build history and diffs:** when a runtime or the app's own version changed, and which packages
@@ -101,6 +101,7 @@ ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
 ARG OBSERVATOR_DOMAINS=""
+ARG COOLIFY_RESOURCE_UUID=""
 RUN ["/tmp/observator"]
 
 FROM app
@@ -233,6 +234,7 @@ ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
 ARG OBSERVATOR_DOMAINS=""
+ARG COOLIFY_RESOURCE_UUID=""
 RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
       rt=""; \
       v="$(node -v 2>/dev/null)" && rt="$rt,node/${v#v}"; \
@@ -255,6 +257,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           -H "X-Project: $OBSERVATOR_PROJECT" \
           -H "X-Labels: $OBSERVATOR_LABELS" \
           -H "X-Domains: $OBSERVATOR_DOMAINS" \
+          -H "X-Coolify-Resource: $COOLIFY_RESOURCE_UUID" \
           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest"; \
       elif command -v wget >/dev/null; then \
         base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30 \
@@ -266,6 +269,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           --header "X-Project: $OBSERVATOR_PROJECT" \
           --header "X-Labels: $OBSERVATOR_LABELS" \
           --header "X-Domains: $OBSERVATOR_DOMAINS" \
+          --header "X-Coolify-Resource: $COOLIFY_RESOURCE_UUID" \
           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest"; \
       elif command -v node >/dev/null; then \
         node -e 'const fs = require("fs"), e = process.env; \
@@ -279,6 +283,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             "X-Project": e.OBSERVATOR_PROJECT || "", \
             "X-Labels": e.OBSERVATOR_LABELS || "", \
             "X-Domains": e.OBSERVATOR_DOMAINS || "", \
+            "X-Coolify-Resource": e.COOLIFY_RESOURCE_UUID || "", \
           } }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
           fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); }) \
         '; \
@@ -292,6 +297,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             ("X-Project", "OBSERVATOR_PROJECT"), \
             ("X-Labels", "OBSERVATOR_LABELS"), \
             ("X-Domains", "OBSERVATOR_DOMAINS"), \
+            ("X-Coolify-Resource", "COOLIFY_RESOURCE_UUID"), \
           ]}; \
           h["Authorization"] = "Bearer " + e["OBS_KEY"]; \
           r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30); \
@@ -333,7 +339,8 @@ The `*` makes each lockfile optional, so the same line works for npm, pnpm and y
 
 A Go program needs none of this: the report stage is based on the final stage, which has the binary.
 Go itself lives in the build stage, so its pin advice is for that stage: `FROM golang:1.26.10 AS build`,
-keeping your `-alpine` or `-bookworm` suffix, and a rebuild without cache.
+keeping your `-alpine` or `-bookworm` suffix. The new pin is a new commit, so the next deploy rebuilds
+the program.
 
 ### Build gate (optional)
 
@@ -358,6 +365,8 @@ Exactly this, and nothing else:
 - the reporter's version (`X-Reporter: observator-reporter/1.0.0`), for the reporter image
 - the gate setting, the project name (`OBSERVATOR_PROJECT`), the labels (`OBSERVATOR_LABELS`) and the
   domains it is served on (`OBSERVATOR_DOMAINS`), if set
+- on Coolify, the application's uuid (`COOLIFY_RESOURCE_UUID`, which Coolify passes to every build of a
+  Dockerfile app), to link the project to it (see [Coolify](#coolify))
 
 No source code, no environment variables, no other files. The raw files are parsed in memory and not
 stored; Observator keeps the resulting package list, and the `name` and `version` from
@@ -376,33 +385,61 @@ something was deployed and its report did not arrive (the snippet, the key or th
 - **Without more to go on**, a project that has not reported for 14 days (*Settings → General*) gets
   one low-key notification, "no new build in 14 days", and shows as such on the board. It is not
   repeated and not listed as a to-do.
-- **With a Coolify deploy webhook whose token can read** (see [Redeploy](#redeploy)), Observator
-  compares Coolify's deploys with the reports every hour. Nothing deployed since the last report: no
+- **For a project linked to Coolify** (see [Coolify](#coolify)), Observator compares Coolify's deploys
+  with the reports every hour. Nothing deployed since the last report: no
   warning, however long ago that was. A finished deploy since then without a report: "deployed without
   a report" within the hour, as a to-do. Restarts, failed deploys, a redeploy of the commit that
-  already reported (a cached build) and the cached services of a compose deploy where another service
-  did report do not count. Coolify services have no deployment history; for those the 14 days apply.
+  already reported (Coolify reuses its image) and the cached services of a compose deploy where
+  another service did report do not count. Coolify services have no deployment history; for those the 14 days apply.
 
 ## Per project
 
+### Coolify
+
+Connect your Coolify server once under **Settings → Coolify**: its URL and an API token
+(*Keys & Tokens → API Tokens*) with the `read` and `deploy` permissions, nothing more. Several servers
+can be connected. The token is stored encrypted, so this needs `SECRETS_KEY`.
+
+A project is linked to its Coolify application:
+
+- **Dockerfile apps link themselves.** Coolify passes `COOLIFY_RESOURCE_UUID` to every build of a
+  Dockerfile (or Nixpacks) application; the snippet declares it and sends it along. The value is the
+  same for every build, so it does not touch the build cache. A build's link wins over a pick.
+- **Docker Compose apps are picked.** Coolify gives those the uuid only at runtime, not to the build.
+  Pick the application on the project's *Setup* tab, or over MCP with `list_coolify_applications` and
+  `update_project`'s `coolify`.
+- **Observator itself** links through `COOLIFY_RESOURCE_UUID` at runtime, passed by
+  `docker-compose.yml`.
+
+A linked project gets:
+- the deploy check (see [No new build](#no-new-build))
+- the application's domains (see [Domains](#domains))
+- a *Redeploy* button, without a deploy webhook
+
 ### Redeploy
 
-On a project's *Setup* tab you can store a deploy webhook. Observator calls it when you press
-*Redeploy* on the project page or in a notification, always after a confirmation.
+*Redeploy* on the project page or in a notification starts a new deployment, always after a
+confirmation. A project linked to Coolify deploys over the API. Otherwise the *Setup* tab can store a
+deploy webhook:
 
-- **Coolify:** the resource's deploy webhook URL (`https://coolify.example.com/api/v1/deploy?uuid=...`),
-  method `POST` (Coolify answers `GET` with 405 since v4.2), and a Coolify API token as bearer token.
-  Give that token the `deploy` permission, and `read` if Observator should watch the resource's
-  domains (see [Domains](#domains)) and compare its deploys with the reports (see
-  [No new build](#no-new-build)); nothing more (*Keys & Tokens → API Tokens*). Leaked, it can then
-  start redeploys and read resource settings, but change nothing.
+- **Coolify without a connected server:** the resource's deploy webhook URL
+  (`https://coolify.example.com/api/v1/deploy?uuid=...`), method `POST` (Coolify answers `GET` with
+  405 since v4.2), and a Coolify API token as bearer token. Give that token the `deploy` permission,
+  and `read` if Observator should watch the resource's domains (see [Domains](#domains)) and compare
+  its deploys with the reports (see [No new build](#no-new-build)); nothing more (*Keys & Tokens →
+  API Tokens*). Leaked, it can then start redeploys and read resource settings, but change nothing.
 - **Dokploy, Portainer:** the webhook URL, method `POST`, no token.
 
 The URL and the token are stored encrypted, so this needs `SECRETS_KEY` (see
 [Secrets at rest](#secrets-at-rest)).
 
-A rebuild only gets a newer runtime if the Dockerfile pins the new version (as the advice says) or the
-build pulls the base image.
+On Coolify, a redeploy from Observator is always a rebuild without cache (`force`, also through the
+webhook, whose URL Coolify gives with `force=false`). Without it, Coolify reuses the image it built
+for the same commit and builds nothing, so a moving tag such as `node:26` keeps its old image. The
+rebuild runs `docker build --pull --no-cache`: it fetches the newest image behind the tag and reruns
+steps such as `apk upgrade`, so it takes longer than a normal deploy. A plain `docker build`
+elsewhere keeps a cached base image unless it runs with `--pull`; pinning the version, as the advice
+says, works everywhere.
 
 ### Status badges
 
@@ -455,8 +492,9 @@ to a project or be watched on its own, such as a parked one.
 - **Where they come from.** Added by hand under *Domains* or over MCP; from the build:
   `--build-arg OBSERVATOR_DOMAINS=app.example.com,api.example.com` (or a build variable in Coolify)
   ties those names to the project and follows each report, like `OBSERVATOR_LABELS`; or from Coolify:
-  a project whose deploy webhook points at Coolify gets the resource's domains daily, when the
-  webhook's token has the `read` permission. Names added by hand stay until you remove them.
+  a project linked to a Coolify application (see [Coolify](#coolify)), or whose deploy webhook points
+  at Coolify, gets the resource's domains daily, when the token has the `read` permission. Names
+  added by hand stay until you remove them.
 - **Reminder and note.** Per domain, a reminder of your own some days before expiry, with a note, for
   something to do in time: moving a .nl domain to another registrar before it renews, say, so you do
   not pay for the same year twice.
@@ -532,9 +570,11 @@ snippet does not use yet, such as its domains.
   you pick, keeps what the old one was set to, and returns questions about what it does not use yet
   (domains, labels, a fail-on for snippets from before that setting); it changes nothing in Observator
   itself.
-- **Create and update** (tokens with *May make changes*): projects and their labels, deploy webhooks
-  and keys, ignores (ending one lets it expire instead of deleting it), shared keys and their IP
-  allowlists, settings and channels; run checks, redeploy, send a test notification.
+- **Create and update** (tokens with *May make changes*): projects and their labels, deploy webhooks,
+  Coolify links and keys, ignores (ending one lets it expire instead of deleting it), shared keys and
+  their IP allowlists, settings and channels; run checks, redeploy (a rebuild on Coolify), send a
+  test notification. `list_coolify_applications` lists the connected servers' applications, so an
+  agent can match a Docker Compose app and link it with `update_project`.
   `setup_dockerfile` returns a Dockerfile with the snippet and, if you want, the key, project name
   and labels filled in as defaults, so the build needs no further configuration.
 - **Never:** deleting anything, and users, invites, tokens, passwords, 2FA and passkeys. Those stay in
@@ -611,7 +651,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `TRUST_CLOUDFLARE` | `off` | Cloudflare proxies Observator: take the visitor from `CF-Connecting-IP` |
 | `REPORTER_IMAGE` | `ghcr.io/enkodonl/observator-reporter:1` | Where the snippet copies the reporter from, such as your own mirror |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
-| `SECRETS_KEY` | | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets; without it, deploy webhooks and channels with credentials cannot be saved. See [Secrets at rest](#secrets-at-rest) |
+| `SECRETS_KEY` | | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets; without it, deploy webhooks, Coolify servers and channels with credentials cannot be saved. See [Secrets at rest](#secrets-at-rest) |
 | `SECRETS_KEY_PREVIOUS` | | The previous key during a rotation |
 | `DEMO_MODE` | `off` | A public read-only demo; see [Demo](#demo) |
 | `SETUP_CODE` | `on` | The first account needs the setup code from the web container's log; `off` lets the first visitor of `/setup` create it |

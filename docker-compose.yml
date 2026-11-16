@@ -9,6 +9,9 @@ services:
     env_file: .env
     environment:
       PB_URL: http://pocketbase:8090
+      # On Coolify: this application's uuid, which links Observator's own project to its Coolify
+      # application for deploy checks and redeploys. Empty anywhere else.
+      COOLIFY_RESOURCE_UUID: ${COOLIFY_RESOURCE_UUID:-}
     # No host port here: a reverse proxy (Coolify's Traefik) reaches the container over the Docker
     # network, and two installs on one host do not compete for a port. A plain `docker compose up`
     # also loads docker-compose.override.yml, which publishes it on localhost.

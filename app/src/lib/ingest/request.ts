@@ -36,6 +36,8 @@ export interface IngestMeta {
   domains: { names: ParsedName[]; invalid: string[] } | null;
   /** The reporter image's release; null for the sh snippet and for development builds. */
   reporter: string | null;
+  /** COOLIFY_RESOURCE_UUID from the build: the Coolify application this project is. */
+  coolify: string | null;
 }
 
 export interface FailOn {
@@ -203,6 +205,12 @@ const MIN_REPORTER = "1.1.0";
 export const reporterOutdated = (version: string | null) =>
   version !== null && semver.lt(version, MIN_REPORTER);
 
+/** A Coolify application uuid as Coolify passes it to builds; anything else is ignored. */
+const coolifyResource = (header: string | null) => {
+  const value = header?.trim().toLowerCase() ?? "";
+  return /^[a-z0-9]{8,64}$/.test(value) ? value : null;
+};
+
 /** "observator-reporter/1.1.0" to its release; anything else is not one. */
 const reporterRelease = (header: string | null) =>
   /^observator-reporter\/(\d+\.\d+\.\d+)$/.exec(header?.trim() ?? "")?.[1] ?? null;
@@ -235,5 +243,6 @@ export function parseMeta(headers: Headers): IngestMeta {
     labels: labelHeader === null ? null : parseLabels(labelHeader.slice(0, 2000)),
     domains: domainHeader === null ? null : limitNames(parseNames(domainHeader.slice(0, 2000))),
     reporter: reporterRelease(headers.get("x-reporter")),
+    coolify: coolifyResource(headers.get("x-coolify-resource")),
   };
 }

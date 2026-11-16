@@ -32,6 +32,8 @@ import { severityRank } from "@/lib/severity";
 import { isStale } from "@/lib/status";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
 import { deployStatus } from "@/lib/deploys/coolify";
+import { listApplications } from "@/lib/coolify/client";
+import { listServers, serverAccess } from "@/lib/coolify/servers";
 import { listDomains, type WatchedDomain } from "@/lib/domains/data";
 import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
 
@@ -268,6 +270,14 @@ export const readTools: Record<string, Tool> = {
           reportedName: p.sourceName || null,
           server: p.instance || null,
           deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "POST" } : null,
+          coolify: p.coolifyUuid
+            ? {
+                uuid: p.coolifyUuid,
+                // false: no connected Coolify server has this application (yet).
+                linked: Boolean(p.coolifyServer),
+                source: p.coolifySource || "picked",
+              }
+            : null,
           // Coolify's deploys against the reports (a token with read permission): no deploy since
           // the last report means nothing to worry about; unreported means the snippet did not run.
           deploys: deploys
@@ -279,6 +289,36 @@ export const readTools: Record<string, Tool> = {
               }
             : null,
         },
+      };
+    },
+  }),
+
+  list_coolify_applications: defineTool({
+    title: "Coolify applications",
+    description:
+      "The applications on the Coolify servers connected under Settings → Coolify (name, uuid, domains, build pack), to link a project with update_project's coolify. Dockerfile apps link themselves through COOLIFY_RESOURCE_UUID in their build; Docker Compose apps need this.",
+    input: z.object({}),
+    run: async () => {
+      const servers = await listServers();
+      const out: { server: string; uuid: string; name: string; domains: string[]; buildPack: string }[] = [];
+      const errors: string[] = [];
+      for (const server of servers) {
+        const access = serverAccess(server);
+        if (!access) {
+          errors.push(`${server.name}: no token, or SECRETS_KEY changed`);
+          continue;
+        }
+        const apps = await listApplications(access);
+        if ("error" in apps) errors.push(`${server.name}: ${apps.error}`);
+        else out.push(...apps.map((a) => ({ server: server.name, ...a })));
+      }
+      return {
+        servers: servers.length,
+        applications: out,
+        errors,
+        ...(servers.length === 0
+          ? { hint: "No Coolify server is connected; add one in the web UI under Settings → Coolify." }
+          : {}),
       };
     },
   }),

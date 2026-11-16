@@ -6,6 +6,8 @@ import { WEBHOOK_TOKEN, WEBHOOK_URL } from "@/lib/data/projects";
 import { checkOutbound, isRedirect, OutboundError } from "@/lib/outbound";
 import { SecretsKeyError, unseal } from "@/lib/secrets";
 import type { ProjectRecord } from "@/lib/pb/types";
+import { projectCoolify } from "@/lib/coolify/access";
+import { coolifyTarget, deployApplication } from "@/lib/coolify/client";
 
 export interface RedeployResult {
   at: string;
@@ -35,16 +37,40 @@ export function maskUrl(url: string): string {
   }
 }
 
+/** Whether a project can be redeployed from Observator: a Coolify link or a deploy webhook. */
+export const canRedeploy = (
+  project: Pick<ProjectRecord, "deployWebhookUrl" | "coolifyServer" | "coolifyUuid">,
+) => Boolean(project.deployWebhookUrl || (project.coolifyServer && project.coolifyUuid));
+
 /**
- * Calls the project's deploy webhook: Coolify (GET with a bearer token), Dokploy and Portainer
- * (POST to a URL that contains the token), or anything else that takes a plain request.
+ * A Coolify deploy webhook with force set; any other URL as it is. Coolify's own webhook URL
+ * carries force=false, which reuses the image built for the same commit (see deployApplication).
+ */
+export function withForce(url: string): string {
+  if (!coolifyTarget(url)) return url;
+  const u = new URL(url);
+  u.searchParams.set("force", "true");
+  return u.href;
+}
+
+/**
+ * Redeploys a project: over the Coolify API when it is linked to a Coolify server, otherwise
+ * through its deploy webhook: Coolify (with a bearer token), Dokploy and Portainer (POST to a URL
+ * that contains the token), or anything else that takes a plain request. Coolify always rebuilds,
+ * so the build pulls the newest image behind a moving tag.
  */
 export async function triggerRedeploy(project: ProjectRecord): Promise<RedeployResult> {
-  if (!project.deployWebhookUrl) throw new Error("No deploy webhook configured");
+  if (!canRedeploy(project)) throw new Error("No Coolify link or deploy webhook configured");
   const at = new Date().toISOString();
+  const coolify = await projectCoolify(project);
+  if (coolify?.via === "link") {
+    const result = { at, ...(await deployApplication(coolify)) };
+    await kvSet(`redeploy:${project.id}`, result);
+    return result;
+  }
   let result: RedeployResult;
   try {
-    const url = unseal(project.deployWebhookUrl, WEBHOOK_URL);
+    const url = withForce(unseal(project.deployWebhookUrl, WEBHOOK_URL));
     const token = unseal(project.deployWebhookToken, WEBHOOK_TOKEN);
     // Same guard as notification channels; only the status comes back, never the body.
     const target = await checkOutbound(url);

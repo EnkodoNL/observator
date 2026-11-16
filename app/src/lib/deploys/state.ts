@@ -50,7 +50,7 @@ export function parseDeployments(body: unknown): CoolifyDeployment[] {
  * have sent one. It did not need to when:
  * - another project on the same Coolify resource reported after it started: a compose deploy
  *   rebuilds only what changed, and the services it left alone were cached;
- * - it built the same commit as the deploy that did report: a redeploy, fully cached.
+ * - it built the same commit as the deploy that did report: a redeploy, which reuses that image.
  */
 export function deployState(
   deployments: CoolifyDeployment[],

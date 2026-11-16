@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
-import { coolifyAccess, coolifyAnswer, coolifyGet } from "@/lib/domains/coolify";
+import { COOLIFY_FIELDS, projectCoolify, serverFor, serverMap } from "@/lib/coolify/access";
+import { coolifyAnswer, coolifyGet } from "@/lib/coolify/client";
 import { evaluateProject } from "@/lib/issues/evaluate";
 import type { IssueEvent } from "@/lib/issues/events";
 import { kvGet, kvSet } from "@/lib/kv";
@@ -17,8 +18,8 @@ import {
 } from "./state";
 
 /*
- * For projects with a Coolify deploy webhook: whether something was deployed since the last
- * report. Nothing deployed means the app runs what Observator has, however old; a deploy without
+ * For projects linked to a Coolify application (a server in Settings, or a Coolify deploy
+ * webhook): whether something was deployed since the last report. Nothing deployed means the app runs what Observator has, however old; a deploy without
  * a report means the snippet, the key or the reporter is not working. Needs the token's read
  * permission, like the domains; Coolify services have no deployment history.
  */
@@ -57,14 +58,29 @@ export async function fetchDeployments(access: {
  */
 export async function checkDeploys(): Promise<IssueEvent[]> {
   const pb = await adminPb();
+  // A uuid from a build that no server had yet (a server added later): look again.
+  const unresolved = await pb.collection("projects").getFullList<ProjectRecord>({
+    filter: 'coolifyUuid != "" && coolifyServer = ""',
+    fields: "id,coolifyUuid",
+  });
+  for (const p of unresolved) {
+    const server = await serverFor(p.coolifyUuid);
+    if (server) await pb.collection("projects").update(p.id, { coolifyServer: server.id });
+  }
+
   const projects = await pb.collection("projects").getFullList<ProjectRecord>({
-    filter: 'deployWebhookUrl != ""',
-    fields: "id,deployWebhookUrl,deployWebhookToken,lastBuildAt",
+    filter: 'deployWebhookUrl != "" || coolifyServer != ""',
+    fields: `id,lastBuildAt,${COOLIFY_FIELDS}`,
   });
-  const linked = projects.flatMap((p) => {
-    const access = coolifyAccess(p);
-    return access ? [{ project: p, access }] : [];
-  });
+  const servers = await serverMap();
+  const linked = (
+    await Promise.all(
+      projects.map(async (p) => {
+        const access = await projectCoolify(p, servers);
+        return access ? [{ project: p, access }] : [];
+      }),
+    )
+  ).flat();
   // Projects on one Coolify resource (the services of a compose app) share its deploys.
   const byResource = new Map<string, typeof linked>();
   for (const l of linked) {

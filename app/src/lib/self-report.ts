@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
 import { latestBuild, recordBuild, reportHash } from "@/lib/ingest/ingest";
 import { normalizePlatform, type IngestMeta } from "@/lib/ingest/request";
+import { linkProject } from "@/lib/coolify/access";
 import { kvGet, kvSet } from "@/lib/kv";
 import { publish } from "@/lib/notify/publish";
 import { adminPb, isNotFound } from "@/lib/pb/admin";
@@ -89,9 +90,16 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     labels: null,
     domains: null,
     reporter: null,
+    coolify: null,
   };
 
   const project = await selfProject();
+  // On Coolify the compose file passes this application's uuid: Observator's own link.
+  const coolify = process.env.COOLIFY_RESOURCE_UUID?.trim().toLowerCase() ?? "";
+  if (/^[a-z0-9]{8,64}$/.test(coolify) && coolify !== project.coolifyUuid)
+    await linkProject(project.id, coolify, "self").catch((err) =>
+      console.error("[self-report] linking to Coolify failed", err),
+    );
   const latest = await latestBuild(project.id);
   const id = buildId();
   const unchanged =

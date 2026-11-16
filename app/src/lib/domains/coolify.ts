@@ -1,33 +1,19 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
-import { WEBHOOK_TOKEN, WEBHOOK_URL } from "@/lib/data/projects";
+import { projectCoolify } from "@/lib/coolify/access";
+import { coolifyAnswer, coolifyGet } from "@/lib/coolify/client";
 import { kvGet, kvSet } from "@/lib/kv";
 import { checkOutbound, OutboundError } from "@/lib/outbound";
-import type { ProjectRecord } from "@/lib/pb/types";
-import { SecretsKeyError, unseal } from "@/lib/secrets";
+import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
 import { parseNames, type ParsedName } from "./names";
 
-/*
- * The domains a Coolify resource is served on, from the project's deploy webhook: its URL names
- * the Coolify server and the resource (…/api/v1/deploy?uuid=…), its token authenticates. Reading
- * needs the token's "read" permission; a deploy-only token gets 403, and then nothing changes.
- */
+export { coolifyTarget } from "@/lib/coolify/client";
 
-/** The Coolify server and resource a deploy webhook points at, or null when it is not one. */
-export function coolifyTarget(webhookUrl: string): { base: string; uuid: string } | null {
-  let url: URL;
-  try {
-    url = new URL(webhookUrl);
-  } catch {
-    return null;
-  }
-  const at = url.pathname.replace(/\/+$/, "").lastIndexOf("/api/v1/deploy");
-  if (at < 0 || !url.pathname.replace(/\/+$/, "").endsWith("/api/v1/deploy")) return null;
-  // The parameter may list several resources; the first is the one this project is.
-  const uuid = (url.searchParams.get("uuid") ?? "").split(",")[0].trim();
-  if (!/^[a-z0-9-]{8,64}$/i.test(uuid)) return null;
-  return { base: `${url.origin}${url.pathname.slice(0, at)}`, uuid };
-}
+/*
+ * The domains a Coolify resource is served on, through the project's link to a Coolify server in
+ * Settings, or its deploy webhook (…/api/v1/deploy?uuid=…). Reading needs the token's "read"
+ * permission; a deploy-only token gets 403, and then nothing changes.
+ */
 
 /** "https://a.example.com,https://b.example.com:8443" to bare names. */
 const fqdnNames = (fqdn: unknown): string[] =>
@@ -69,42 +55,18 @@ export interface CoolifySync {
 const statusKey = (projectId: string) => `coolify:domains:${projectId}`;
 export const coolifyStatus = (projectId: string) => kvGet<CoolifySync>(statusKey(projectId));
 
-export async function coolifyGet(url: string, token: string): Promise<Response> {
-  return fetch(url, {
-    headers: { accept: "application/json", authorization: `Bearer ${token}`, "user-agent": "observator" },
-    redirect: "manual",
-    signal: AbortSignal.timeout(15_000),
-  });
-}
-
-/**
- * The Coolify server, resource and token behind a project's deploy webhook, or null when it has
- * none (or the secrets cannot be opened).
- */
-export function coolifyAccess(
-  project: Pick<ProjectRecord, "deployWebhookUrl" | "deployWebhookToken">,
-): { base: string; uuid: string; token: string } | null {
-  let url: string;
-  let token: string;
-  try {
-    url = unseal(project.deployWebhookUrl, WEBHOOK_URL);
-    token = unseal(project.deployWebhookToken, WEBHOOK_TOKEN);
-  } catch (err) {
-    if (err instanceof SecretsKeyError) return null;
-    throw err;
-  }
-  const target = url ? coolifyTarget(url) : null;
-  return target && token ? { ...target, token } : null;
-}
-
 /**
  * The names a project's Coolify resource is served on, or why they could not be read. Null when
- * the project has no Coolify webhook. The outcome is kept for the project's page.
+ * the project has no Coolify link or webhook. The outcome is kept for the project's page.
  */
 export async function coolifyNames(
-  project: Pick<ProjectRecord, "id" | "deployWebhookUrl" | "deployWebhookToken">,
+  project: Pick<
+    ProjectRecord,
+    "id" | "coolifyServer" | "coolifyUuid" | "deployWebhookUrl" | "deployWebhookToken"
+  >,
+  servers?: Map<string, CoolifyServerRecord>,
 ): Promise<ParsedName[] | null> {
-  const access = coolifyAccess(project);
+  const access = await projectCoolify(project, servers);
   if (!access) return null;
   const { token, ...target } = access;
 
@@ -143,10 +105,4 @@ export async function coolifyNames(
       err instanceof Error && err.name === "TimeoutError" ? "Coolify timed out" : "Coolify unreachable",
     );
   }
-}
-
-export function coolifyAnswer(status: number): string {
-  if (status === 401 || status === 403)
-    return "the token cannot read this resource; give it the read permission (next to deploy)";
-  return `Coolify answered HTTP ${status}`;
 }

@@ -14,7 +14,9 @@ import {
   saveProjectSettings,
   setLabels,
 } from "@/lib/data/projects";
-import { triggerRedeploy } from "@/lib/deploy";
+import { canRedeploy, triggerRedeploy } from "@/lib/deploy";
+import { linkProject } from "@/lib/coolify/access";
+import { COOLIFY_UUID } from "@/lib/coolify/client";
 import { displayEntry } from "@/lib/ingest/allowlist";
 import { EVENT_TYPES } from "@/lib/issues/events";
 import { runAllChecks } from "@/lib/jobs/checks";
@@ -82,7 +84,7 @@ export const writeTools: Record<string, Tool> = {
   update_project: defineTool({
     title: "Update a project",
     description:
-      "Changes a project's name, its own labels (replacing them; labels from builds stay) or its deploy webhook. Fields left out stay as they are; the webhook URL and token are never shown back.",
+      "Changes a project's name, its own labels (replacing them; labels from builds stay), its deploy webhook, or the Coolify application it is (coolify: a uuid from list_coolify_applications, null to unlink; Dockerfile apps link themselves through their build, Docker Compose apps are linked this way). Fields left out stay as they are; the webhook URL and token are never shown back.",
     input: z.object({
       project: projectRef,
       name: z.string().trim().min(1).max(100).optional(),
@@ -97,10 +99,16 @@ export const writeTools: Record<string, Tool> = {
           clear: z.boolean().optional().describe("Remove the webhook"),
         })
         .optional(),
+      coolify: z
+        .string()
+        .regex(COOLIFY_UUID, "a Coolify application uuid")
+        .nullable()
+        .optional()
+        .describe("The Coolify application's uuid, from list_coolify_applications; null unlinks"),
     }),
     write: true,
     idempotent: true,
-    run: async ({ project: ref, name, labels, deployWebhook }) => {
+    run: async ({ project: ref, name, labels, deployWebhook, coolify }) => {
       let p = await resolveProject(ref);
       if (name !== undefined || deployWebhook) {
         const settings = projectSettingsSchema.parse({
@@ -113,6 +121,10 @@ export const writeTools: Record<string, Tool> = {
         p = await saveProjectSettings(p.id, settings);
       }
       if (labels !== undefined) p = await setLabels(p.id, labelsOrThrow(labels));
+      if (coolify !== undefined) {
+        await linkProject(p.id, coolify, "picked");
+        p = await resolveProject(p.slug);
+      }
       changed();
       return {
         slug: p.slug,
@@ -120,6 +132,9 @@ export const writeTools: Record<string, Tool> = {
         url: projectUrl(p.slug),
         labels: { own: p.labels ?? [], fromBuild: p.buildLabels ?? [], all: effectiveLabels(p) },
         deployWebhook: p.deployWebhookUrl ? { method: p.deployWebhookMethod || "POST" } : null,
+        coolify: p.coolifyUuid
+          ? { uuid: p.coolifyUuid, linked: Boolean(p.coolifyServer), source: p.coolifySource || "picked" }
+          : null,
       };
     },
   }),
@@ -276,14 +291,16 @@ export const writeTools: Record<string, Tool> = {
   redeploy: defineTool({
     title: "Redeploy a project",
     description:
-      "Calls the project's deploy webhook (Coolify, Dokploy, Portainer), for example after pinning a newer Node image. Only for projects with a webhook (see get_project).",
+      "Redeploys the project: over the Coolify API when it is linked to a Coolify application, otherwise through its deploy webhook (Coolify, Dokploy, Portainer), for example after pinning a newer Node image. On Coolify it is always a rebuild without cache, which pulls the newest image behind a moving tag; a plain Coolify redeploy would reuse the image built for the same commit.",
     input: z.object({ project: projectRef }),
     write: true,
     openWorld: true,
     run: async ({ project: ref }) => {
       const p = await resolveProject(ref);
-      if (!p.deployWebhookUrl)
-        throw new ToolError(`${p.name} has no deploy webhook; set one with update_project.`);
+      if (!canRedeploy(p))
+        throw new ToolError(
+          `${p.name} has no Coolify link or deploy webhook; link it with update_project (coolify) or set a webhook.`,
+        );
       const result = await triggerRedeploy(p);
       return { project: p.slug, ...result };
     },

@@ -7,6 +7,7 @@ import { adminPb } from "@/lib/pb/admin";
 import type { DomainRecord, ProjectRecord, RegistrationInfo } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
 import { checkCert } from "./cert";
+import { COOLIFY_FIELDS, serverMap } from "@/lib/coolify/access";
 import { coolifyNames } from "./coolify";
 import { listDomains, syncHosts, type WatchedDomain } from "./data";
 import { certPhase, nextAlert, registrationExpiry, registrationPhase, type Limits } from "./phase";
@@ -84,15 +85,16 @@ async function alerts(watched: WatchedDomain[], limits: Limits, now: Date): Prom
   return events;
 }
 
-/** Projects deployed by Coolify bring their domains along; a failed read leaves them as they were. */
+/** Projects on Coolify bring their domains along; a failed read leaves them as they were. */
 async function syncCoolify(): Promise<void> {
   const pb = await adminPb();
   const projects = await pb.collection("projects").getFullList<ProjectRecord>({
-    filter: 'deployWebhookUrl != ""',
-    fields: "id,deployWebhookUrl,deployWebhookToken",
+    filter: 'deployWebhookUrl != "" || coolifyServer != ""',
+    fields: `id,${COOLIFY_FIELDS}`,
   });
+  const servers = await serverMap();
   for (const p of projects) {
-    const names = await coolifyNames(p).catch((err) => {
+    const names = await coolifyNames(p, servers).catch((err) => {
       console.error(`[domains] Coolify read failed for project ${p.id}`, err);
       return null;
     });

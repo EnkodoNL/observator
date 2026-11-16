@@ -16,6 +16,7 @@ ARG OBSERVATOR_FAIL_ON=""
 ARG OBSERVATOR_PROJECT=""
 ARG OBSERVATOR_LABELS=""
 ARG OBSERVATOR_DOMAINS=""
+ARG COOLIFY_RESOURCE_UUID=""
 RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
       rt=""; \
       v="$(node -v 2>/dev/null)" && rt="$rt,node/${v#v}"; \
@@ -38,6 +39,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           -H "X-Project: $OBSERVATOR_PROJECT" \
           -H "X-Labels: $OBSERVATOR_LABELS" \
           -H "X-Domains: $OBSERVATOR_DOMAINS" \
+          -H "X-Coolify-Resource: $COOLIFY_RESOURCE_UUID" \
           --data-binary @/tmp/obs.tgz "$OBSERVATOR_URL/api/ingest"; \
       elif command -v wget >/dev/null; then \
         base64 /tmp/obs.tgz > /tmp/obs.b64 && wget -q -O /tmp/obs.txt -T 30 \
@@ -49,6 +51,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
           --header "X-Project: $OBSERVATOR_PROJECT" \
           --header "X-Labels: $OBSERVATOR_LABELS" \
           --header "X-Domains: $OBSERVATOR_DOMAINS" \
+          --header "X-Coolify-Resource: $COOLIFY_RESOURCE_UUID" \
           --post-file /tmp/obs.b64 "$OBSERVATOR_URL/api/ingest"; \
       elif command -v node >/dev/null; then \
         node -e 'const fs = require("fs"), e = process.env; \
@@ -62,6 +65,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             "X-Project": e.OBSERVATOR_PROJECT || "", \
             "X-Labels": e.OBSERVATOR_LABELS || "", \
             "X-Domains": e.OBSERVATOR_DOMAINS || "", \
+            "X-Coolify-Resource": e.COOLIFY_RESOURCE_UUID || "", \
           } }).then(async (r) => { const t = await r.text(); if (!r.ok) { console.log(t.trim()); process.exit(1); } \
           fs.writeFileSync("/tmp/obs.txt", t); }).catch((x) => { console.log(String(x)); process.exit(1); }) \
         '; \
@@ -75,6 +79,7 @@ RUN key="$(env | sed -n 's/^OBSERVATOR_KEY=//p')"; [ -z "$key" ] || { \
             ("X-Project", "OBSERVATOR_PROJECT"), \
             ("X-Labels", "OBSERVATOR_LABELS"), \
             ("X-Domains", "OBSERVATOR_DOMAINS"), \
+            ("X-Coolify-Resource", "COOLIFY_RESOURCE_UUID"), \
           ]}; \
           h["Authorization"] = "Bearer " + e["OBS_KEY"]; \
           r = u.urlopen(u.Request(e["OBSERVATOR_URL"] + "/api/ingest", data=open("/tmp/obs.tgz", "rb").read(), headers=h), timeout=30); \

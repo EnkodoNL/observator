@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/settings/projects", label: "Projects" },
   { href: "/settings/badges", label: "Badges" },
   { href: "/settings/channels", label: "Notifications" },
+  { href: "/settings/coolify", label: "Coolify" },
   { href: "/settings/account", label: "Account", personal: true },
   { href: "/settings/users", label: "Users", personal: true },
 ];

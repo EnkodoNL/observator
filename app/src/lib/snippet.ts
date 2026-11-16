@@ -25,6 +25,7 @@ const HEADERS: [header: string, value: string][] = [
   ["X-Project", "$OBSERVATOR_PROJECT"],
   ["X-Labels", "$OBSERVATOR_LABELS"],
   ["X-Domains", "$OBSERVATOR_DOMAINS"],
+  ["X-Coolify-Resource", "$COOLIFY_RESOURCE_UUID"],
 ];
 
 // node and python3 read the same values from the environment (OBS_KEY instead of $key).
@@ -212,6 +213,8 @@ export function dockerSnippet(
     `ARG OBSERVATOR_PROJECT="${argValue(project)}"`,
     `ARG OBSERVATOR_LABELS="${argValue(labels)}"`,
     `ARG OBSERVATOR_DOMAINS="${argValue(domains)}"`,
+    // Coolify passes its application's uuid to every build: it links the project by itself.
+    `ARG COOLIFY_RESOURCE_UUID=""`,
     ...(reporter ? [imageRun(keyless)] : shellRun(keyless)),
     "",
     `FROM ${stage}`,

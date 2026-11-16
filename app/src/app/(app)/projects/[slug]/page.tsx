@@ -7,7 +7,9 @@ import { DockerfileSetup } from "@/components/dockerfile-setup";
 import { StatusBadge } from "@/components/status";
 import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
-import { lastRedeploy, maskedWebhook } from "@/lib/deploy";
+import { canRedeploy, lastRedeploy, maskedWebhook } from "@/lib/deploy";
+import { projectCoolify } from "@/lib/coolify/access";
+import { listServers } from "@/lib/coolify/servers";
 import { latestVersions, outdatedLevel } from "@/lib/npm-latest";
 import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
 import { env } from "@/lib/env";
@@ -30,6 +32,7 @@ import { coolifyStatus } from "@/lib/domains/coolify";
 import { deployStatus } from "@/lib/deploys/coolify";
 import { getSettings } from "@/lib/settings";
 import { ProjectSettings } from "./project-settings";
+import { CoolifyLink } from "./coolify-link";
 import { RedeployButton } from "./redeploy-button";
 import { PackagesTable, type PackageRow } from "./packages-table";
 import { VulnList } from "./vuln-list";
@@ -66,7 +69,13 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
-  const coolify = project.deployWebhookUrl ? await coolifyStatus(project.id) : null;
+  // The Coolify application behind the project: linked in Settings, or its deploy webhook.
+  const coolifyAccess = await projectCoolify(project);
+  const coolifyServer =
+    project.coolifyServer && coolifyAccess?.via === "link"
+      ? (await listServers()).find((s) => s.id === project.coolifyServer)
+      : undefined;
+  const coolify = coolifyAccess ? await coolifyStatus(project.id) : null;
   const appUrl = env().APP_URL;
   // The app badge is worth showing once the app is more than this project.
   const app = {
@@ -78,8 +87,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const evaluations = new Map(
     evaluateRuntimes(latest?.runtimes ?? [], evaluators).map((e) => [e.runtime, e] as const),
   );
-  const redeploy = project.deployWebhookUrl ? await lastRedeploy(project.id) : null;
-  const deploys = project.deployWebhookUrl ? await deployStatus(project.id) : null;
+  const redeploy = canRedeploy(project) ? await lastRedeploy(project.id) : null;
+  const deploys = coolifyAccess ? await deployStatus(project.id) : null;
   const vulns = issues
     .filter((i) => i.kind === "vuln")
     .sort(
@@ -199,8 +208,13 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <LabelChips labels={effectiveLabels(project)} />
           </div>
           <div className="flex items-center gap-2">
-            {project.deployWebhookUrl && (
-              <RedeployButton projectId={project.id} name={project.name} target={maskedWebhook(project)} />
+            {canRedeploy(project) && (
+              <RedeployButton
+                projectId={project.id}
+                name={project.name}
+                target={coolifyServer ? coolifyServer.name : maskedWebhook(project)}
+                coolify={Boolean(coolifyAccess)}
+              />
             )}
             <ProjectActions
               id={project.id}
@@ -400,6 +414,22 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               projectId={project.id}
               labels={project.labels ?? []}
               buildLabels={project.buildLabels ?? []}
+            />
+          </section>
+          <section className="space-y-3">
+            <h2 className="font-medium">Coolify</h2>
+            <CoolifyLink
+              projectId={project.id}
+              link={
+                project.coolifyUuid
+                  ? {
+                      uuid: project.coolifyUuid,
+                      server: coolifyServer?.name ?? null,
+                      source: project.coolifySource || "picked",
+                    }
+                  : null
+              }
+              servers={(await listServers()).length}
             />
           </section>
           <section className="space-y-3">

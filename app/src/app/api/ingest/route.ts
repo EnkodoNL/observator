@@ -16,6 +16,7 @@ import { RateLimiter } from "@/lib/rate-limit";
 import { Semaphore } from "@/lib/semaphore";
 import { checkDomains } from "@/lib/domains/check";
 import { syncHosts } from "@/lib/domains/data";
+import { linkProject } from "@/lib/coolify/access";
 
 export const dynamic = "force-dynamic";
 
@@ -161,7 +162,14 @@ export async function POST(request: Request) {
 
     // Notifications never hold up the build: OSV lookups and sending happen after the response.
     const projectId = project.id;
+    // The build names its Coolify application: link the project to it (the build wins over a
+    // pick). Finding the server asks Coolify, so it happens after the answer.
+    const coolifyUuid = meta.coolify && meta.coolify !== project.coolifyUuid ? meta.coolify : null;
     after(async () => {
+      if (coolifyUuid)
+        await linkProject(projectId, coolifyUuid, "build").catch((err) =>
+          console.error("[ingest] linking to Coolify failed", err),
+        );
       try {
         await publish(await analyzeInBackground(projectId, analysis));
         for (const domainId of newDomains) await checkDomains({ domainId });

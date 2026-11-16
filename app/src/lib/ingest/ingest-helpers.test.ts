@@ -131,6 +131,7 @@ describe("headers", () => {
       labels: null,
       domains: null,
       reporter: null,
+      coolify: null,
     });
     // An empty header clears the build labels; a missing one leaves them.
     const base = { "x-runtime": "node/22.11.0" };
@@ -161,6 +162,16 @@ describe("headers", () => {
 
   it("records an image without a known runtime", () => {
     expect(parseMeta(new Headers({ "x-runtime": "" })).runtimes).toEqual([]);
+  });
+
+  it("reads the Coolify application a build names, and nothing that is not a uuid", () => {
+    const coolify = (value: string) =>
+      parseMeta(new Headers({ "x-runtime": "node/22.11.0", "x-coolify-resource": value })).coolify;
+    expect(coolify("abc123def456ghi789jkl012")).toBe("abc123def456ghi789jkl012");
+    expect(coolify(" ABC123DEF456GHI789JKL012 ")).toBe("abc123def456ghi789jkl012");
+    expect(coolify("")).toBeNull();
+    expect(coolify("../etc/passwd")).toBeNull();
+    expect(parseMeta(new Headers({ "x-runtime": "node/22.11.0" })).coolify).toBeNull();
   });
 
   it("reads the reporter's release, and knows which ones drop OBSERVATOR_DOMAINS", () => {

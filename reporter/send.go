@@ -21,7 +21,9 @@ type Report struct {
 	Project  string
 	Labels   string
 	Domains  string
-	Body     []byte
+	// The Coolify application's uuid, which Coolify passes to every build: it links the project.
+	Coolify string
+	Body    []byte
 }
 
 // The answer is a few lines of text for the build log.
@@ -36,16 +38,17 @@ func send(ctx context.Context, url string, r Report) (string, error) {
 	}
 	agent := "observator-reporter/" + version
 	for name, value := range map[string]string{
-		"X-Runtime":    r.Runtimes,
-		"X-Platform":   r.Platform,
-		"X-Os":         r.OS,
-		"X-Fail-On":    r.FailOn,
-		"X-Project":    r.Project,
-		"X-Labels":     r.Labels,
-		"X-Domains":    r.Domains,
-		"X-Reporter":   agent,
-		"User-Agent":   agent,
-		"Content-Type": "application/gzip",
+		"X-Runtime":          r.Runtimes,
+		"X-Platform":         r.Platform,
+		"X-Os":               r.OS,
+		"X-Fail-On":          r.FailOn,
+		"X-Project":          r.Project,
+		"X-Labels":           r.Labels,
+		"X-Domains":          r.Domains,
+		"X-Coolify-Resource": r.Coolify,
+		"X-Reporter":         agent,
+		"User-Agent":         agent,
+		"Content-Type":       "application/gzip",
 	} {
 		req.Header.Set(name, value)
 	}

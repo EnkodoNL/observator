@@ -59,6 +59,18 @@ export interface ProjectRecord extends BaseRecord {
   labels: string[] | null;
   /** Labels from the latest report (OBSERVATOR_LABELS). */
   buildLabels: string[] | null;
+  /** The Coolify server and application this project is, when known. */
+  coolifyServer: string;
+  coolifyUuid: string;
+  /** Where the link came from: "build", "picked" or "self". */
+  coolifySource: "" | "build" | "picked" | "self";
+}
+
+export interface CoolifyServerRecord extends BaseRecord {
+  name: string;
+  url: string;
+  /** Sealed with SECRETS_KEY. */
+  token: string;
 }
 
 export interface McpTokenRecord extends BaseRecord {

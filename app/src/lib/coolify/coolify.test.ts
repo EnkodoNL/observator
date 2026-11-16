@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { randomBytes } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
+import { coolifyBase, deployApplication, parseApplications } from "./client";
+
+// A Coolify server on the internet as far as the outbound check goes.
+vi.mock("@/lib/outbound", () => ({
+  checkOutbound: async () => {},
+  OutboundError: class extends Error {},
+  isRedirect: (status: number) => status >= 300 && status < 400,
+}));
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+describe("coolifyBase", () => {
+  it("takes the server's address however it is typed", () => {
+    expect(coolifyBase("https://coolify.example.com/")).toBe("https://coolify.example.com");
+    expect(coolifyBase(" https://coolify.example.com/api/v1 ")).toBe("https://coolify.example.com");
+    expect(coolifyBase("https://example.com/coolify/api/v1/")).toBe("https://example.com/coolify");
+    expect(coolifyBase("coolify.example.com")).toBeNull();
+    expect(coolifyBase("ftp://coolify.example.com")).toBeNull();
+  });
+});
+
+describe("parseApplications", () => {
+  it("reads name, uuid, domains and build pack, and skips the rest", () => {
+    expect(
+      parseApplications([
+        {
+          uuid: "abc123def456ghi789jkl012",
+          name: "webshop",
+          fqdn: "https://www.example.org,https://example.org/shop",
+          build_pack: "dockerfile",
+        },
+        { uuid: "not a uuid!", name: "x" },
+        { name: "no uuid" },
+      ]),
+    ).toEqual([
+      {
+        uuid: "abc123def456ghi789jkl012",
+        name: "webshop",
+        domains: ["www.example.org", "example.org"],
+        buildPack: "dockerfile",
+      },
+    ]);
+    expect(parseApplications({ message: "Unauthenticated." })).toEqual([]);
+  });
+});
+
+describe("deployApplication", () => {
+  const access = { base: "https://coolify.example.com", uuid: "abc123def456ghi789jkl012", token: "tok" };
+
+  it("always starts a rebuild: without force Coolify reuses the old image", async () => {
+    const fetch = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () =>
+      Response.json({ deployments: [] }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    expect(await deployApplication(access)).toMatchObject({ ok: true, message: "Rebuild started" });
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual([
+      "https://coolify.example.com/api/v1/deploy?uuid=abc123def456ghi789jkl012&force=true",
+    ]);
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({ authorization: "Bearer tok" }),
+    });
+  });
+
+  it("says when the token may not deploy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({}, { status: 403 })),
+    );
+    expect(await deployApplication(access)).toMatchObject({
+      ok: false,
+      message: "the token cannot deploy; give it the deploy permission",
+    });
+  });
+});
+
+describe("projectCoolify", () => {
+  async function load() {
+    vi.resetModules();
+    vi.stubEnv("SECRETS_KEY", randomBytes(32).toString("base64"));
+    const secrets = await import("@/lib/secrets");
+    const access = await import("./access");
+    const { SERVER_TOKEN } = await import("./servers");
+    const { WEBHOOK_TOKEN, WEBHOOK_URL } = await import("@/lib/data/projects");
+    return { secrets, access, SERVER_TOKEN, WEBHOOK_TOKEN, WEBHOOK_URL };
+  }
+
+  it("uses the linked server before the deploy webhook", async () => {
+    const { secrets, access, SERVER_TOKEN, WEBHOOK_TOKEN, WEBHOOK_URL } = await load();
+    const server = {
+      id: "srv1",
+      name: "cooli",
+      url: "https://coolify.example.com",
+      token: secrets.seal("server-token", SERVER_TOKEN),
+    } as CoolifyServerRecord;
+    const webhook = {
+      deployWebhookUrl: secrets.seal(
+        "https://other.example.com/api/v1/deploy?uuid=abcd1234efgh",
+        WEBHOOK_URL,
+      ),
+      deployWebhookToken: secrets.seal("webhook-token", WEBHOOK_TOKEN),
+    };
+    const project = (fields: Partial<ProjectRecord>) => ({
+      coolifyServer: "",
+      coolifyUuid: "",
+      ...webhook,
+      ...fields,
+    });
+    const servers = new Map([[server.id, server]]);
+
+    expect(
+      await access.projectCoolify(
+        project({ coolifyServer: "srv1", coolifyUuid: "abc123def456ghi789jkl012" }),
+        servers,
+      ),
+    ).toEqual({
+      base: "https://coolify.example.com",
+      uuid: "abc123def456ghi789jkl012",
+      token: "server-token",
+      via: "link",
+    });
+    // Not linked to a server: the deploy webhook, as before.
+    expect(await access.projectCoolify(project({}), servers)).toEqual({
+      base: "https://other.example.com",
+      uuid: "abcd1234efgh",
+      token: "webhook-token",
+      via: "webhook",
+    });
+    expect(
+      await access.projectCoolify({
+        coolifyServer: "",
+        coolifyUuid: "",
+        deployWebhookUrl: "",
+        deployWebhookToken: "",
+      }),
+    ).toBeNull();
+  });
+});

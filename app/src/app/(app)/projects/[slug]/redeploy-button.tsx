@@ -9,14 +9,20 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { redeployAction } from "./actions";
 
+/**
+ * target: what is called, for the confirmation. coolify: the project deploys on Coolify, where
+ * Observator always asks for a rebuild without cache (a plain redeploy reuses the old image).
+ */
 export function RedeployButton({
   projectId,
   name,
   target,
+  coolify,
 }: {
   projectId: string;
   name: string;
   target: string;
+  coolify: boolean;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -42,8 +48,12 @@ export function RedeployButton({
         </Button>
       }
       title={`Redeploy ${name}?`}
-      description={`This calls the deploy webhook (${target}). Rebuilding pulls a newer base image only if the Dockerfile pins it or the build pulls.`}
-      confirmLabel="Redeploy"
+      description={
+        coolify
+          ? `This has Coolify (${target}) rebuild the app without cache, so a moving tag such as node:26 gets its newest image. That takes longer than a normal deploy.`
+          : `This calls the deploy webhook (${target}). Rebuilding pulls a newer base image only if the Dockerfile pins it or the build pulls.`
+      }
+      confirmLabel={coolify ? "Rebuild" : "Redeploy"}
       onConfirm={async () => {
         const res = await redeployAction(projectId);
         if (res.ok) toast.success(`${res.message} for ${name}`);

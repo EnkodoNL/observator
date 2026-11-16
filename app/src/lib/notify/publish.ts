@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import type { DomainEvent, EventType, IssueEvent } from "@/lib/issues/events";
 import { adminPb, isUniqueViolation, toPbDate } from "@/lib/pb/admin";
 import type { ChannelRecord, ProjectRecord } from "@/lib/pb/types";
+import { canRedeploy } from "@/lib/deploy";
 import { getSettings } from "@/lib/settings";
 import { atLeast } from "@/lib/severity";
 import { isDevVuln } from "@/lib/status";
@@ -17,11 +18,11 @@ export async function renderContext(): Promise<RenderContext> {
   const pb = await adminPb();
   const projects = await pb
     .collection("projects")
-    .getFullList<ProjectRecord>({ fields: "id,name,slug,deployWebhookUrl" });
+    .getFullList<ProjectRecord>({ fields: "id,name,slug,deployWebhookUrl,coolifyServer,coolifyUuid" });
   return {
     appUrl: env().APP_URL,
     projects: new Map<string, ProjectInfo>(
-      projects.map((p) => [p.id, { name: p.name, slug: p.slug, canRedeploy: Boolean(p.deployWebhookUrl) }]),
+      projects.map((p) => [p.id, { name: p.name, slug: p.slug, canRedeploy: canRedeploy(p) }]),
     ),
   };
 }

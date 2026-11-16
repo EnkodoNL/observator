@@ -49,8 +49,8 @@ export function pinLine(runtime: string, version: string, os: string): string | 
 /** Why and where to pin, per runtime. */
 export const pinAdvice = (runtime: string): string =>
   runtime === "go"
-    ? "Pin the golang image in the stage that builds the program, keeping your -alpine or -bookworm suffix, and rebuild without cache: Go is compiled into the binary."
-    : "Pin the image and redeploy: rebuilding a floating tag often reuses a cached base image.";
+    ? "Pin the golang image in the stage that builds the program, keeping your -alpine or -bookworm suffix, and redeploy: Go is compiled into the binary. A moving tag only gets the new version from a fresh build: Coolify reuses the image of an unchanged commit, and a plain docker build keeps a cached base image without --pull."
+    : "Pin the image and redeploy. A moving tag only gets the new version from a fresh build: Coolify reuses the image of an unchanged commit, and a plain docker build keeps a cached base image without --pull.";
 
 /** "node 22.11.0 · python 3.12.4" */
 export const formatRuntimes = (runtimes: readonly Runtime[]) =>

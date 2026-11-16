@@ -3,7 +3,8 @@ import "server-only";
 import { WEBHOOK_TOKEN, WEBHOOK_URL } from "@/lib/data/projects";
 import { secretFields } from "@/lib/notify/channels";
 import { adminPb } from "@/lib/pb/admin";
-import type { ChannelRecord, ProjectRecord } from "@/lib/pb/types";
+import type { ChannelRecord, CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
+import { SERVER_TOKEN } from "@/lib/coolify/servers";
 import { isCurrent, seal, secretsKeySet, unseal } from "@/lib/secrets";
 
 /**
@@ -13,12 +14,13 @@ import { isCurrent, seal, secretsKeySet, unseal } from "@/lib/secrets";
  */
 export async function sealStoredSecrets(): Promise<void> {
   const pb = await adminPb();
-  const [projects, channels] = await Promise.all([
+  const [projects, channels, servers] = await Promise.all([
     pb.collection("projects").getFullList<ProjectRecord>({
       filter: 'deployWebhookUrl != "" || deployWebhookToken != ""',
       fields: "id,deployWebhookUrl,deployWebhookToken",
     }),
     pb.collection("channels").getFullList<ChannelRecord>({ fields: "id,type,config" }),
+    pb.collection("coolify_servers").getFullList<CoolifyServerRecord>({ fields: "id,token" }),
   ]);
 
   const stale = (v: unknown): v is string => typeof v === "string" && v !== "" && !isCurrent(v);
@@ -55,6 +57,17 @@ export async function sealStoredSecrets(): Promise<void> {
         }
         return pb.collection("channels").update(c.id, { config });
       },
+    });
+  }
+
+  for (const s of servers) {
+    if (!stale(s.token)) continue;
+    work.push({
+      label: `Coolify server ${s.id}`,
+      save: () =>
+        pb
+          .collection("coolify_servers")
+          .update(s.id, { token: seal(unseal(s.token, SERVER_TOKEN), SERVER_TOKEN) }),
     });
   }
 

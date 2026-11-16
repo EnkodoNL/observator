@@ -93,6 +93,7 @@ func run(args []string, getenv func(string) string, out io.Writer, cfg config) i
 		Project:  getenv("OBSERVATOR_PROJECT"),
 		Labels:   getenv("OBSERVATOR_LABELS"),
 		Domains:  getenv("OBSERVATOR_DOMAINS"),
+		Coolify:  getenv("COOLIFY_RESOURCE_UUID"),
 		Body:     body,
 	}
 	answer, err := send(ctx, url+"/api/ingest", report)
