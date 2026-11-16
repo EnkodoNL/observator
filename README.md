@@ -18,8 +18,9 @@ schedule and OSV.dev, and stays quiet until there is something to do.
   standard library has advisories for it. Bun, Deno, Python, PHP and Ruby are detected and shown as
   well, without release checks so far.
 - **Packages:** every npm package from `package-lock.json`, `yarn.lock` (v1 and Berry) or
-  `pnpm-lock.yaml`, and every Go module linked into a Go program, checked against OSV.dev, with
-  severity, the fixed version and whether it is a direct or transitive dependency.
+  `pnpm-lock.yaml`, every Go module linked into a Go program, and a downloaded Go program itself
+  (PocketBase, for one), checked against OSV.dev, with severity, the fixed version and whether it is
+  a direct or transitive dependency.
 - **Notifications:** Slack, Telegram, Discord, e-mail, ntfy, Gotify, Pushover, Apprise and webhooks.
   One message per problem, bundled per build, retried in the background.
 - **In the build log:** every report prints a short status line, so Coolify's deploy log already
@@ -49,8 +50,8 @@ And for the days you do open it:
   repository's Dockerfiles in one go. It can create and change, never delete.
 - **Status badge** for a README, a **command palette** (Cmd/Ctrl+K), and **invite links** for other
   users.
-- **It watches itself:** Observator reports the Node.js version it runs on and its own packages at
-  every start and daily, as the *Observator* project. No key or snippet involved.
+- **It watches itself:** Observator reports the Node.js version it runs on, its own packages and its
+  PocketBase at every start and daily, as the *Observator* project. No key or snippet involved.
 
 ## Quickstart
 
@@ -201,8 +202,14 @@ without `OBSERVATOR_KEY` and still uses a key when one is set, so the same Docke
 - **Go programs read from the binary.** A Go binary keeps the Go version it was built with and every
   module linked into it, also with `-trimpath -ldflags "-s -w"`. The reporter reads that (Go's own
   `debug/buildinfo`) from the executables at the top of `/`, `/app`, `/srv`, `/ko-app`,
-  `/usr/local/bin` and the working directory, skipping itself, the Go toolchain and `gosu`. With
-  several programs it reports the oldest Go version and all their modules.
+  `/usr/local/bin`, `/pb` and the working directory, skipping itself, the Go toolchain and `gosu`.
+  With several programs it reports the oldest Go version and all their modules.
+- **A downloaded program is checked itself.** A Go program that is a release (a tagged version, not
+  built from source in the Dockerfile) is a package too, with its own advisories and the advice to
+  take a newer release. PocketBase is the common case: its Docker guide unzips the release into
+  `/pb`, and reporter 1.4 reads it there. PocketBase moved to `ganigeorgiev.com/pocketbase/pocketbase`
+  in v0.41.0 while OSV still lists its advisories under `github.com/pocketbase/pocketbase`, so
+  Observator asks under both.
 
 ### Base images
 
@@ -340,7 +347,8 @@ The `*` makes each lockfile optional, so the same line works for npm, pnpm and y
 A Go program needs none of this: the report stage is based on the final stage, which has the binary.
 Go itself lives in the build stage, so its pin advice is for that stage: `FROM golang:1.26.10 AS build`,
 keeping your `-alpine` or `-bookworm` suffix. The new pin is a new commit, so the next deploy rebuilds
-the program.
+the program. A downloaded release such as PocketBase carries the Go it was built with: there the
+advice is a newer release (`PB_VERSION`), not a golang pin.
 
 ### Build gate (optional)
 

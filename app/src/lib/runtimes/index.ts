@@ -5,7 +5,7 @@ import { node } from "./node";
 import type { Evaluator, Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
 
 export type { Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
-export { pinFor, pinStage, runtimeLabel } from "./labels";
+export { pinAction, pinFor, pinStage, runtimeLabel } from "./labels";
 
 /** Runtimes with release checks. Others are reported and shown, not checked. */
 export const PROVIDERS: Record<string, RuntimeProvider> = { node, go };

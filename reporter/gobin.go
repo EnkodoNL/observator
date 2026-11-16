@@ -29,8 +29,9 @@ type GoModule struct {
 }
 
 // Where images put the program: the top of these folders, not below. PATH and /usr/bin are left
-// out on purpose: base images keep helpers there that are not the app.
-var goDirs = []string{"/", "/app", "/srv", "/ko-app", "/usr/local/bin"}
+// out on purpose: base images keep helpers there that are not the app. /pb is where PocketBase's
+// Docker guide unzips its release binary.
+var goDirs = []string{"/", "/app", "/srv", "/ko-app", "/usr/local/bin", "/pb"}
 
 // Go programs that are tooling, not the app: the toolchain (cmd/go, cmd/compile...) and gosu,
 // which many base images carry.

@@ -34,7 +34,7 @@ const LOCKFILE_TYPE: Record<LockfileName, (text: string) => LockfileType> = {
 };
 
 /** Bump when the parsers classify differently, so the next build parses an unchanged lockfile again. */
-const PARSER_VERSION = 2;
+const PARSER_VERSION = 3;
 
 /**
  * Identifies a package.json + lockfile pair, and the Go programs' modules when there are any; a

@@ -9,7 +9,7 @@ import {
   type StaleData,
   type VulnIssueData,
 } from "@/lib/issues/types";
-import { pinFor, pinStage, runtimeLabel } from "@/lib/runtimes/labels";
+import { pinAction, runtimeLabel } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
 import { formatDate } from "@/lib/time";
@@ -66,11 +66,8 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
 
   switch (type) {
     case "runtime.security_update": {
-      const pinText = (d: RuntimeSecurityData) => {
-        const pin = pinFor(d.runtime, d.target, d.os);
-        const where = pinStage(d.runtime) === "build" ? " in the build stage" : "";
-        return pin ? `pin ${pin}${where} and redeploy` : `move to ${d.target} and redeploy`;
-      };
+      const pinText = (d: RuntimeSecurityData) =>
+        `${pinAction(d.runtime, d.target, d.os) ?? `move to ${d.target}`} and redeploy`;
       const items = events.map((e) => {
         const d = e.data as unknown as RuntimeSecurityData;
         return {
@@ -140,7 +137,14 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
       const items = sorted.map((e) => {
         const d = e.data as unknown as VulnIssueData;
         const where = projects.length > 1 ? `${name(ctx, e.projectId)}: ` : "";
-        const via = d.direct ? "direct" : d.via?.length ? `via ${d.via.join(", ")}` : "transitive";
+        // A direct Go component is the program itself (lockfile/go.ts).
+        const via = d.direct
+          ? d.ecosystem === "Go"
+            ? "the program itself"
+            : "direct"
+          : d.via?.length
+            ? `via ${d.via.join(", ")}`
+            : "transitive";
         return {
           severity: e.severity,
           title: `${where}${d.package}@${d.version}`,

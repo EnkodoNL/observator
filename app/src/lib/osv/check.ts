@@ -7,6 +7,7 @@ import { fixedIn } from "./fixed";
 import { osvSeverity } from "./severity";
 import type { OsvVuln } from "./types";
 import { mapLimit } from "@/lib/map-limit";
+import { OSV_NAMES } from "@/lib/lockfile/go";
 
 const g = globalThis as typeof globalThis & { __osvDetails?: Map<string, OsvVuln> };
 const details = (g.__osvDetails ??= new Map());
@@ -23,6 +24,12 @@ async function detail(id: string, modified: string, signal?: AbortSignal): Promi
 
 const pairKey = (p: OsvQuery) => `${p.ecosystem}:${p.name}@${p.version}`;
 
+/** The names OSV knows a package by: its own, and the old path of a moved Go module. */
+const osvNames = (p: OsvQuery) => {
+  const old = p.ecosystem === "Go" ? OSV_NAMES[p.name] : undefined;
+  return old ? [p.name, old] : [p.name];
+};
+
 /**
  * Checks ecosystem:name@version pairs against OSV and brings the vulnerabilities cache in line:
  * new advisories are added, changed ones updated, and withdrawn or no longer matching
@@ -35,7 +42,17 @@ export async function checkPackages(
   const unique = [...new Map(pairs.map((p) => [pairKey(p), p])).values()];
   if (unique.length === 0) return { checked: 0, vulnerable: 0 };
 
-  const results = await queryBatch(unique, signal);
+  // A moved module is asked under both names; its hits remember which, for the fixed version.
+  const queries = unique.flatMap((pair, i) => osvNames(pair).map((name) => ({ i, osvName: name })));
+  const answers = await queryBatch(
+    queries.map(({ i, osvName }) => ({ ...unique[i], name: osvName })),
+    signal,
+  );
+  const results: { id: string; modified: string; osvName: string }[][] = unique.map(() => []);
+  queries.forEach(({ i, osvName }, q) => {
+    for (const hit of answers[q])
+      if (!results[i].some((h) => h.id === hit.id)) results[i].push({ ...hit, osvName });
+  });
   const pb = await adminPb();
   const existing = await pb.collection("vulnerabilities").getFullList<VulnerabilityRecord>();
   const byPair = new Map<string, VulnerabilityRecord[]>();
@@ -82,7 +99,7 @@ export async function checkPackages(
         aliases: vuln.aliases ?? [],
         severity: osvSeverity(vuln),
         summary: (vuln.summary || vuln.details || "").slice(0, 2000),
-        fixedIn: fixedIn(vuln, pair),
+        fixedIn: fixedIn(vuln, { ...pair, name: hit.osvName }),
         url: osvUrl(vuln.id),
         modified: vuln.modified ? toPbDate(new Date(vuln.modified)) : "",
         checkedAt: now,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "vitest";
-import { goAppName, parseGoBinaries } from "./go";
+import { goAppName, isRelease, parseGoBinaries, pocketbaseBinaries, pocketbaseModule } from "./go";
 import { LockfileError } from "./types";
 
 // As reporter/gobin.go writes it; the modules are those of a small Go server, read from its binary.
@@ -48,8 +48,66 @@ describe("parseGoBinaries", () => {
       ],
     };
     const result = parseGoBinaries(file([{ ...server, main: 42 }, worker]));
-    expect(result.components).toHaveLength(4);
+    // Three modules, plus the worker itself: a release.
+    expect(result.components).toHaveLength(4 + 1);
+    expect(result.components.filter((c) => c.direct).map((c) => c.name)).toEqual(["github.com/acme/worker"]);
     expect(result).toMatchObject({ main: "github.com/acme/worker", version: "v2.3.0" });
+  });
+
+  it("checks a downloaded release as the program itself, but not one built from source", () => {
+    // A release binary as PocketBase publishes it: the main module has a tag.
+    const pocketbase = {
+      path: "/pb/pocketbase",
+      go: "1.27.4",
+      main: "ganigeorgiev.com/pocketbase/pocketbase",
+      version: "v0.42.3",
+      modules: [{ path: "golang.org/x/net", version: "v0.20.0" }],
+    };
+    const result = parseGoBinaries(file([pocketbase]));
+    expect(result.components).toContainEqual({
+      name: "ganigeorgiev.com/pocketbase/pocketbase",
+      version: "v0.42.3",
+      direct: true,
+      dev: false,
+      via: [],
+      ecosystem: "Go",
+    });
+    expect(result.components.filter((c) => c.direct)).toHaveLength(1);
+    // Built here: no version, a commit or a dirty tree; the program is not a package then.
+    for (const version of [undefined, "v0.0.0-20261116101500-0123456789ab", "v1.2.3+dirty"]) {
+      const own = parseGoBinaries(file([{ ...server, version }]));
+      expect(own.components.some((c) => c.name === server.main)).toBe(false);
+    }
+  });
+
+  it("tells a release from a commit", () => {
+    expect(isRelease("v0.42.3")).toBe(true);
+    expect(isRelease("v2.0.0-rc.1")).toBe(true);
+    expect(isRelease("v1.3.1-0.20261116101500-0123456789ab")).toBe(false);
+    expect(isRelease("v0.0.0-20261116101500-0123456789ab")).toBe(false);
+    expect(isRelease("v1.2.3+incompatible")).toBe(false);
+    expect(isRelease("")).toBe(false);
+  });
+
+  it("knows where PocketBase's module lives per version", () => {
+    expect(pocketbaseModule("0.40.6")).toBe("github.com/pocketbase/pocketbase");
+    expect(pocketbaseModule("v0.22.57")).toBe("github.com/pocketbase/pocketbase");
+    expect(pocketbaseModule("0.41.0")).toBe("ganigeorgiev.com/pocketbase/pocketbase");
+    expect(pocketbaseModule("0.42.3")).toBe("ganigeorgiev.com/pocketbase/pocketbase");
+  });
+
+  it("describes Observator's own PocketBase as a program to check", () => {
+    const own = parseGoBinaries(pocketbaseBinaries("0.42.3"));
+    expect(own.components).toEqual([
+      {
+        name: "ganigeorgiev.com/pocketbase/pocketbase",
+        version: "v0.42.3",
+        direct: true,
+        dev: false,
+        via: [],
+        ecosystem: "Go",
+      },
+    ]);
   });
 
   it("refuses a file that is not what the reporter writes", () => {

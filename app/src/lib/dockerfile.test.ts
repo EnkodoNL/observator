@@ -203,6 +203,30 @@ ENTRYPOINT ["/server"]`;
     );
   });
 
+  it("recognizes a PocketBase download as a Go program the reporter reads", () => {
+    const pb = `FROM alpine:3.24
+ARG PB_VERSION=0.42.3
+RUN wget -q -O /tmp/pb.zip "https://example.com/v\${PB_VERSION}/pocketbase_\${PB_VERSION}_linux_amd64.zip" \\
+    && unzip /tmp/pb.zip -d /pb
+EXPOSE 8080
+CMD ["/pb/pocketbase", "serve", "--http=0.0.0.0:8080"]`;
+    const image = ok(pb);
+    const texts = image.notes.map((n) => n.text).join("\n");
+    expect(texts).toContain("Line 3 installs PocketBase. The reporter (1.4 or newer) reads its version");
+    expect(texts).not.toContain("No stage has a package.json");
+    expect(image.notes.some((n) => n.level === "warn")).toBe(false);
+    const shell = analyzeDockerfile(pb, URL, { form: "shell" });
+    if (!shell.ok) throw new Error(shell.error);
+    expect(shell.notes.find((n) => n.text.includes("installs PocketBase"))?.level).toBe("warn");
+    // The JS SDK is not PocketBase itself.
+    const sdk = ok(`FROM node:24-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci && npm install pocketbase pocketbase-typegen
+CMD ["node", "server.js"]`);
+    expect(sdk.notes.some((n) => n.text.includes("PocketBase"))).toBe(false);
+  });
+
   it("follows folders copied between stages", () => {
     const a = ok(`FROM node:22-alpine AS deps
 WORKDIR /src

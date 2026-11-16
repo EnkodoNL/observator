@@ -46,10 +46,23 @@ export function pinLine(runtime: string, version: string, os: string): string | 
   return pin ? `FROM ${pin} AS ${pinStage(runtime)}` : null;
 }
 
+/**
+ * What to do for a runtime security update, as a phrase: "pin node:22.23.4-alpine". Go is
+ * compiled into the program, so it is pinned where the program is built; a downloaded release
+ * such as PocketBase carries the Go it was built with, and needs a newer release instead.
+ */
+export function pinAction(runtime: string, version: string, os: string): string | null {
+  const pin = pinFor(runtime, version, os);
+  if (!pin) return null;
+  return pinStage(runtime) === "build"
+    ? `pin ${pin} in the build stage, or update a downloaded program such as PocketBase to a release built with Go ${version}`
+    : `pin ${pin}`;
+}
+
 /** Why and where to pin, per runtime. */
 export const pinAdvice = (runtime: string): string =>
   runtime === "go"
-    ? "Pin the golang image in the stage that builds the program, keeping your -alpine or -bookworm suffix, and redeploy: Go is compiled into the binary. A moving tag only gets the new version from a fresh build: Coolify reuses the image of an unchanged commit, and a plain docker build keeps a cached base image without --pull."
+    ? "Pin the golang image in the stage that builds the program, keeping your -alpine or -bookworm suffix, and redeploy: Go is compiled into the binary. A downloaded release such as PocketBase carries the Go it was built with: update it to a newer release instead. A moving tag only gets the new version from a fresh build: Coolify reuses the image of an unchanged commit, and a plain docker build keeps a cached base image without --pull."
     : "Pin the image and redeploy. A moving tag only gets the new version from a fresh build: Coolify reuses the image of an unchanged commit, and a plain docker build keeps a cached base image without --pull.";
 
 /** "node 22.11.0 · python 3.12.4" */

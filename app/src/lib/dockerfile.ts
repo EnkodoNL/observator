@@ -85,6 +85,8 @@ interface Stage {
   observator: boolean;
   /** Builds a Go program: based on golang, or runs go build. Stages built on it inherit it. */
   go: boolean;
+  /** The line that brings in PocketBase's release binary (image, download or copy), or 0. */
+  pocketbase: number;
 }
 
 interface Instruction {
@@ -299,6 +301,8 @@ function baseNote(base: string, form: SnippetForm, go = false): DockerfileNote {
 }
 
 const GOLANG = /(^|\/)golang(:|@|$)/i;
+/** The release zip (pocketbase_0.42.3_linux_amd64.zip), its path (/pb/pocketbase) or an image. */
+const POCKETBASE = /pocketbase_|\/pocketbase\b/i;
 
 /** ${NAME}, $NAME and ${NAME:-default} in a FROM line, from the ARGs before the first FROM. */
 function withArgs(value: string, args: Map<string, string>): string {
@@ -394,12 +398,15 @@ export function analyzeDockerfile(
         // The snippet's stages: the reporter image (image form) and the report stage.
         observator: name === "observator" || name === "observator-reporter",
         go: parent?.go ?? GOLANG.test(image),
+        pocketbase: parent?.pocketbase ?? (POCKETBASE.test(image) ? ins.start : 0),
       });
       continue;
     }
     const stage = stages.at(-1);
     if (!stage) continue;
     if (ins.keyword === "RUN" && /\bgo\s+(build|install)\b/.test(ins.args)) stage.go = true;
+    if (!stage.pocketbase && /^(RUN|ADD|COPY|CMD|ENTRYPOINT)$/.test(ins.keyword) && POCKETBASE.test(ins.args))
+      stage.pocketbase = ins.start;
     if (ins.keyword === "WORKDIR") stage.workdir = resolve(stage.workdir, tokens(ins.args)[0] ?? "/");
     if (ins.keyword === "COPY" || ins.keyword === "ADD") {
       const standalone = copy(ins, stage, stages);
@@ -476,15 +483,29 @@ export function analyzeDockerfile(
     });
   }
 
-  // A Go program: the reporter reads it from the binary, the sh snippet cannot.
+  // A Go program: the reporter reads it from the binary, the sh snippet cannot. PocketBase is
+  // one too, downloaded rather than built; a Go build that extends it gets the Go note.
   const goStage = app.find((s) => s.go);
-  notes.push(baseNote(last.base, options.form ?? "image", Boolean(goStage)));
+  const pbStage = goStage ? undefined : app.find((s) => s.pocketbase);
+  notes.push(baseNote(last.base, options.form ?? "image", Boolean(goStage ?? pbStage)));
+  if (pbStage)
+    notes.push(
+      (options.form ?? "image") === "image"
+        ? {
+            level: "ok",
+            text: `Line ${pbStage.pocketbase} installs PocketBase. The reporter (1.4 or newer) reads its version, Go version and modules from the binary in /pb, /usr/local/bin, /app, /, /srv or the working directory, and PocketBase itself is checked too.`,
+          }
+        : {
+            level: "warn",
+            text: `Line ${pbStage.pocketbase} installs PocketBase, a Go program the sh snippet cannot read: it would report no PocketBase version and no modules. Use the reporter image (form image) instead.`,
+          },
+    );
   if (goStage)
     notes.push(
       (options.form ?? "image") === "image"
         ? {
             level: "ok",
-            text: `Line ${goStage.line} builds a Go program. The reporter reads its Go version and modules from the binary in the last stage, in /, /app, /srv, /ko-app, /usr/local/bin or the working directory.`,
+            text: `Line ${goStage.line} builds a Go program. The reporter reads its Go version and modules from the binary in the last stage, in /, /app, /srv, /ko-app, /usr/local/bin, /pb or the working directory.`,
           }
         : {
             level: "warn",
@@ -528,8 +549,8 @@ export function analyzeDockerfile(
         level: "info",
         text: `${why} The snippet copies both from ${pick.s.name ?? `stage ${pick.s.index}`} (${pick.dir}, ${describe(pick.f.lock!)}).`,
       });
-    } else if (!anyPackageJson && goStage) {
-      // The Go note above says what is read.
+    } else if (!anyPackageJson && (goStage || pbStage)) {
+      // The Go or PocketBase note above says what is read.
     } else if (!anyPackageJson) {
       // Most likely an app in another language: its runtime is still reported.
       notes.push({

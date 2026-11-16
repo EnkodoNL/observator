@@ -9,6 +9,7 @@ import {
   CHECKED_RUNTIMES,
   formatRuntimes,
   lineDescription,
+  pinAction,
   pinFor,
   primaryRuntime,
   runtimeLabel,
@@ -77,6 +78,14 @@ describe("labels", () => {
   it("pins an image only where it knows one", () => {
     expect(pinFor("node", "22.23.4", "alpine")).toBe("node:22.23.4-alpine");
     expect(pinFor("python", "3.12.8", "debian")).toBeNull();
+  });
+
+  it("says what to do for an update, also for a Go program that was downloaded", () => {
+    expect(pinAction("node", "22.23.4", "alpine")).toBe("pin node:22.23.4-alpine");
+    expect(pinAction("go", "1.27.5", "alpine")).toBe(
+      "pin golang:1.27.5 in the build stage, or update a downloaded program such as PocketBase to a release built with Go 1.27.5",
+    );
+    expect(pinAction("python", "3.12.8", "debian")).toBeNull();
   });
 
   it("leads with the first checked runtime", () => {

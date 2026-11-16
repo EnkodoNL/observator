@@ -32,6 +32,25 @@ describe("packageAdvice", () => {
       );
   });
 
+  it("updates a release binary itself instead of raising a module", () => {
+    const program = {
+      ...base,
+      ecosystem: "Go",
+      version: "v0.39.0",
+      fixedIn: "v0.39.7",
+      direct: true,
+      via: [],
+    };
+    const pocketbase = packageAdvice({ ...program, package: "ganigeorgiev.com/pocketbase/pocketbase" }, "go");
+    expect(pocketbase.text).toMatch(/^Update PocketBase to 0\.39\.7 or later/);
+    expect(pocketbase.snippets).toEqual([{ label: "Dockerfile", code: "ARG PB_VERSION=0.39.7" }]);
+    const other = packageAdvice({ ...program, package: "github.com/acme/tool" }, "go");
+    expect(other.text).toMatch(
+      /^Update github\.com\/acme\/tool to v0\.39\.7 or later: this is the program itself/,
+    );
+    expect(other.snippets).toEqual([]);
+  });
+
   it("upgrades direct dependencies with the right package manager", () => {
     const d = { ...base, package: "lodash", version: "4.17.20", fixedIn: "4.17.21", direct: true, via: [] };
     expect(packageAdvice(d, "npm").snippets[0].code).toBe("npm install lodash@4.17.21");

@@ -10,6 +10,7 @@ import { latestBuild, recordBuild, reportHash } from "@/lib/ingest/ingest";
 import { normalizePlatform, type IngestMeta } from "@/lib/ingest/request";
 import { linkProject } from "@/lib/coolify/access";
 import { kvGet, kvSet } from "@/lib/kv";
+import { pocketbaseBinaries } from "@/lib/lockfile/go";
 import { publish } from "@/lib/notify/publish";
 import { adminPb, isNotFound } from "@/lib/pb/admin";
 import type { ProjectRecord } from "@/lib/pb/types";
@@ -46,6 +47,23 @@ function buildId(): string | null {
  */
 export const sameBuild = (current: string | null, recorded: string | null): boolean =>
   current === null || current === recorded;
+
+/**
+ * The version of the PocketBase Observator runs on, from its own hook (pb_hooks/observator.pb.js);
+ * null for an image without that hook or without PB_VERSION, which then leaves PocketBase out.
+ */
+async function pocketbaseVersion(): Promise<string | null> {
+  try {
+    const res = await (
+      await adminPb()
+    ).send<{ version?: unknown }>("/api/observator/pocketbase", {
+      method: "GET",
+    });
+    return typeof res.version === "string" && /^\d+\.\d+\.\d+$/.test(res.version) ? res.version : null;
+  } catch {
+    return null;
+  }
+}
 
 async function selfProject(): Promise<ProjectRecord> {
   const pb = await adminPb();
@@ -100,6 +118,9 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     await linkProject(project.id, coolify, "self").catch((err) =>
       console.error("[self-report] linking to Coolify failed", err),
     );
+  // Observator's own PocketBase, as a Go program: checked against OSV like the rest.
+  const pocketbase = await pocketbaseVersion();
+  const goBinaries = pocketbase ? pocketbaseBinaries(pocketbase) : null;
   const latest = await latestBuild(project.id);
   const id = buildId();
   const unchanged =
@@ -108,10 +129,10 @@ export async function reportSelf(): Promise<"recorded" | "unchanged" | "skipped"
     JSON.stringify(latest.runtimes ?? []) === JSON.stringify(meta.runtimes) &&
     latest.os === meta.os &&
     latest.arch === meta.arch &&
-    latest.lockfileHash === reportHash(packageJson, "package-lock.json", lockfile);
+    latest.lockfileHash === reportHash(packageJson, "package-lock.json", lockfile, goBinaries);
   if (unchanged) return "unchanged";
 
-  const files = { packageJson, lockfiles: { "package-lock.json": lockfile }, goBinaries: null };
+  const files = { packageJson, lockfiles: { "package-lock.json": lockfile }, goBinaries };
   const outcome = await recordBuild(project, files, meta);
   if (id) await kvSet("self:build", { id });
   const analysis = await analyzeInline(project, outcome, meta);

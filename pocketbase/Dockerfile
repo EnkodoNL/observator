@@ -2,11 +2,12 @@
 # Minimal PocketBase image for Observator. PocketBase has no official image.
 FROM alpine:3.24.3
 
-ARG PB_VERSION=0.40.6
-# 0.40.6 is likely the last release published on GitHub; override this when the download location moves.
-ARG PB_DOWNLOAD_BASE=https://github.com/pocketbase/pocketbase/releases/download
-ARG PB_SHA256_AMD64=0e1f609158ed945f809f8a02ae012aa0427129c66ebb63c1aee76f2c0309373f
-ARG PB_SHA256_ARM64=d22c66ceb67ca92b7d767f36d826e848a276bcfa3c197ead20bf87c42208984f
+ARG PB_VERSION=0.42.3
+# PocketBase left GitHub in v0.41.0. Releases and their checksums.txt are at
+# <base>/v<version>/; a new version needs both checksums from that file.
+ARG PB_DOWNLOAD_BASE=https://ganigeorgiev.com/meta/pocketbase/pocketbase/download
+ARG PB_SHA256_AMD64=89b1ded352404c648dd92c2d884fc8ff7858138697cb1ccb52722ccaa0bbd2a9
+ARG PB_SHA256_ARM64=f2af25259c5565e856aac5907a8fd9a7ce01d18375ac70b18121c9d41fd56dbe
 ARG TARGETARCH
 
 RUN apk add --no-cache ca-certificates \
@@ -26,6 +27,8 @@ RUN apk add --no-cache ca-certificates \
 COPY pb_migrations /pb/pb_migrations
 COPY pb_hooks /pb/pb_hooks
 COPY entrypoint.sh /pb/entrypoint.sh
+# The running version, for Observator's check of its own PocketBase (pb_hooks/observator.pb.js).
+ENV PB_VERSION=$PB_VERSION
 
 USER pb
 WORKDIR /pb

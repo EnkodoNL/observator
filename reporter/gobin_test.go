@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,16 @@ func TestScanGoReadsTheBinary(t *testing.T) {
 	}
 	if !fallback {
 		t.Errorf("modules %v", b.Modules)
+	}
+}
+
+// Release binaries land in a few usual places: /usr/local/bin, /app, and /pb, where PocketBase's
+// Docker guide unzips it.
+func TestGoDirsCoverTheUsualPlaces(t *testing.T) {
+	for _, dir := range []string{"/app", "/usr/local/bin", "/pb"} {
+		if !slices.Contains(goDirs, dir) {
+			t.Errorf("goDirs %v lacks %s", goDirs, dir)
+		}
 	}
 }
 

@@ -16,6 +16,20 @@ const majorOf = (v: string) => semver.coerce(v)?.major ?? null;
  * gets `go get` whatever the project's lockfile, since one image can hold both.
  */
 export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice {
+  if (d.ecosystem === GO_ECOSYSTEM && d.fixedIn && d.direct) {
+    // The only direct Go component is a program that is a release itself (lockfile/go.ts):
+    // there is no go.mod to raise, only a newer release to take.
+    const version = d.fixedIn.replace(/^v/, "");
+    return d.package.endsWith("/pocketbase/pocketbase")
+      ? {
+          text: `Update PocketBase to ${version} or later: this is the program itself. Raise PB_VERSION in the Dockerfile (and its checksum, if it checks one), then rebuild.`,
+          snippets: [{ label: "Dockerfile", code: `ARG PB_VERSION=${version}` }],
+        }
+      : {
+          text: `Update ${d.package} to ${d.fixedIn} or later: this is the program itself, a release binary, so take a newer release and rebuild.`,
+          snippets: [],
+        };
+  }
   if (d.ecosystem === GO_ECOSYSTEM && d.fixedIn) {
     // go get works the same for a module the app imports and one pulled in further down: it
     // raises the requirement in go.mod, marked // indirect when nothing imports it directly.
