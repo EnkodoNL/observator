@@ -30,8 +30,10 @@ describe("fetchDeployments", () => {
   });
 
   it("says why when Coolify will not tell", async () => {
-    vi.stubGlobal("fetch", answer({ message: "Forbidden" }, 403));
-    expect(await fetchDeployments(access)).toMatch(/read permission/);
+    vi.stubGlobal("fetch", answer({ message: "Missing required permissions: read" }, 403));
+    expect(await fetchDeployments(access)).toMatch(/lacks the read permission/);
+    vi.stubGlobal("fetch", answer({ message: "You are not allowed to access the API." }, 403));
+    expect(await fetchDeployments(access)).toMatch(/under Allowed IPs/);
     vi.stubGlobal("fetch", answer({ message: "Application not found" }, 404));
     expect(await fetchDeployments(access)).toMatch(/no deployment history/);
     vi.stubGlobal(

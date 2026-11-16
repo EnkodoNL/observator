@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { projectCoolify } from "@/lib/coolify/access";
-import { coolifyAnswer, coolifyGet } from "@/lib/coolify/client";
+import { coolifyGet, coolifyRefusal } from "@/lib/coolify/client";
 import { kvGet, kvSet } from "@/lib/kv";
 import { checkOutbound, OutboundError } from "@/lib/outbound";
 import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
@@ -89,9 +89,9 @@ export async function coolifyNames(
     const app = await coolifyGet(`${target.base}/api/v1/applications/${target.uuid}`, token);
     if (app.status === 404) {
       const service = await coolifyGet(`${target.base}/api/v1/services/${target.uuid}`, token);
-      if (!service.ok) return fail(coolifyAnswer(service.status));
+      if (!service.ok) return fail(await coolifyRefusal(service));
       names = serviceDomains(await service.json());
-    } else if (!app.ok) return fail(coolifyAnswer(app.status));
+    } else if (!app.ok) return fail(await coolifyRefusal(app));
     else names = applicationDomains(await app.json());
     const parsed = parseNames(names).names;
     await kvSet(statusKey(project.id), {

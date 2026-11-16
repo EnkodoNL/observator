@@ -36,10 +36,65 @@ export async function coolifyGet(url: string, token: string): Promise<Response> 
   });
 }
 
-export function coolifyAnswer(status: number): string {
-  if (status === 401 || status === 403)
-    return "the token cannot read this resource; give it the read permission (next to deploy)";
-  return `Coolify answered HTTP ${status}`;
+/** The start of a response body, at most max bytes; the rest is not read. */
+async function bodyStart(res: Response, max = 4096): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch {
+    // A body that breaks off: what arrived is enough.
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, max));
+}
+
+/** Coolify's own words, as data: one line, at most 200 characters. */
+const clean = (message: string) =>
+  message
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .trim()
+    .slice(0, 200);
+
+/**
+ * Why Coolify refused a request, from its own message, with what to do about it. The messages
+ * are Coolify's API middleware (v4.x, app/Http/Middleware): a 401 or 403 can mean an unknown
+ * token, an API that is off or limited to some IPs, or a missing permission. A refusal without
+ * Coolify's JSON comes from something in front of it.
+ */
+export async function coolifyRefusal(res: Response): Promise<string> {
+  let message: string | null = null;
+  try {
+    const body = JSON.parse(await bodyStart(res)) as { message?: unknown } | null;
+    if (typeof body?.message === "string" && body.message.trim()) message = clean(body.message);
+  } catch {
+    // Not JSON: not Coolify's API.
+  }
+  const status = res.status;
+  if (message === null)
+    return status === 401 || status === 403
+      ? `HTTP ${status}, not from Coolify's API: is something in front of it (a proxy, Cloudflare) blocking Observator?`
+      : `Coolify answered HTTP ${status}`;
+  if (message === "Unauthenticated.")
+    return "Coolify does not know this token (Unauthenticated.): paste the whole token, including the number and | in front, and check that it has not expired or been revoked";
+  if (message === "Invalid token.")
+    return "Coolify refused the token (Invalid token.): its team is not one of its creator's teams; create a new token";
+  if (message === "API is disabled.")
+    return "Coolify's API is off: turn on API access under Settings → Advanced in Coolify";
+  if (message === "You are not allowed to access the API.")
+    return "Coolify accepts the API only from certain IPs: add the public IPv4 and IPv6 address of Observator's server under Allowed IPs (Settings → Advanced in Coolify)";
+  const missing = /^Missing required permissions: (.+)$/.exec(message);
+  if (missing)
+    return `the token lacks the ${missing[1]} permission; add it in Coolify (Keys & Tokens → API Tokens)`;
+  return `Coolify answered HTTP ${status}: ${message}`;
 }
 
 /** "https://coolify.example.com/" or "…/api/v1" to the server's base URL; null when not a URL. */
@@ -115,7 +170,7 @@ export async function listApplications(server: {
 }): Promise<CoolifyApplication[] | { error: string }> {
   return coolifyRequest(server.base, async () => {
     const res = await coolifyGet(`${server.base}/api/v1/applications`, server.token);
-    if (!res.ok) return { error: coolifyAnswer(res.status) };
+    if (!res.ok) return { error: await coolifyRefusal(res) };
     return parseApplications(await res.json());
   });
 }
@@ -155,11 +210,7 @@ export async function deployApplication(
     return {
       ok: res.ok,
       status: res.status,
-      message: res.ok
-        ? "Rebuild started"
-        : res.status === 401 || res.status === 403
-          ? "the token cannot deploy; give it the deploy permission"
-          : `Coolify answered HTTP ${res.status}`,
+      message: res.ok ? "Rebuild started" : await coolifyRefusal(res),
     };
   });
   return "error" in answer ? { ok: false, message: answer.error } : answer;

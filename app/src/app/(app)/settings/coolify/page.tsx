@@ -32,7 +32,9 @@ export default async function CoolifySettingsPage() {
           Make an API token in Coolify (<em>Keys &amp; Tokens → API Tokens</em>) with the{" "}
           <code className="font-mono text-foreground">read</code> and{" "}
           <code className="font-mono text-foreground">deploy</code> permissions, nothing more. Read lists the
-          applications, their domains and deploys; deploy starts a redeploy.
+          applications, their domains and deploys; deploy starts a redeploy. If Coolify limits its API to some
+          IPs (<em>Settings → Advanced → Allowed IPs</em>), add the public IPv4 and IPv6 address of the server
+          Observator runs on. <em>Test</em> shows Coolify&rsquo;s own reason when it refuses.
         </p>
         <p>
           Dockerfile apps link themselves: Coolify passes{" "}

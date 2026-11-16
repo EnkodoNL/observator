@@ -400,6 +400,11 @@ Connect your Coolify server once under **Settings → Coolify**: its URL and an 
 (*Keys & Tokens → API Tokens*) with the `read` and `deploy` permissions, nothing more. Several servers
 can be connected. The token is stored encrypted, so this needs `SECRETS_KEY`.
 
+*Test* asks Coolify for its applications and shows Coolify's own reason when it refuses: an unknown
+token, a missing permission, or the API switched off or limited to some IPs (*Settings → Advanced →
+Access and API* in Coolify). With *Allowed IPs* set, add the public IPv4 and IPv6 address of the
+server Observator runs on: behind Cloudflare, Coolify checks the caller's own address.
+
 A project is linked to its Coolify application:
 
 - **Dockerfile apps link themselves.** Coolify passes `COOLIFY_RESOURCE_UUID` to every build of a

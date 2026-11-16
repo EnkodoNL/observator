@@ -7,7 +7,7 @@ import { checkOutbound, isRedirect, OutboundError } from "@/lib/outbound";
 import { SecretsKeyError, unseal } from "@/lib/secrets";
 import type { ProjectRecord } from "@/lib/pb/types";
 import { projectCoolify } from "@/lib/coolify/access";
-import { coolifyTarget, deployApplication } from "@/lib/coolify/client";
+import { coolifyRefusal, coolifyTarget, deployApplication } from "@/lib/coolify/client";
 
 export interface RedeployResult {
   at: string;
@@ -89,7 +89,12 @@ export async function triggerRedeploy(project: ProjectRecord): Promise<RedeployR
       status: res.status,
       message: res.ok
         ? "Deploy triggered"
-        : `HTTP ${res.status}${isRedirect(res.status) ? ": redirects are not followed" : ""}`,
+        : isRedirect(res.status)
+          ? `HTTP ${res.status}: redirects are not followed`
+          : // Coolify says why it refused; Dokploy and Portainer get the status.
+            coolifyTarget(url)
+            ? await coolifyRefusal(res)
+            : `HTTP ${res.status}`,
     };
   } catch (err) {
     result = {

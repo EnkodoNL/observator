@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
 import { COOLIFY_FIELDS, projectCoolify, serverFor, serverMap } from "@/lib/coolify/access";
-import { coolifyAnswer, coolifyGet } from "@/lib/coolify/client";
+import { coolifyGet, coolifyRefusal } from "@/lib/coolify/client";
 import { evaluateProject } from "@/lib/issues/evaluate";
 import type { IssueEvent } from "@/lib/issues/events";
 import { kvGet, kvSet } from "@/lib/kv";
@@ -45,7 +45,7 @@ export async function fetchDeployments(access: {
     );
     if (res.status === 404)
       return "no deployment history in Coolify (a service, or no such application); the age check applies";
-    if (!res.ok) return coolifyAnswer(res.status);
+    if (!res.ok) return coolifyRefusal(res);
     return parseDeployments(await res.json());
   } catch (err) {
     return err instanceof Error && err.name === "TimeoutError" ? "Coolify timed out" : "Coolify unreachable";

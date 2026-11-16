@@ -2,7 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
-import { coolifyBase, deployApplication, parseApplications } from "./client";
+import { coolifyBase, coolifyRefusal, deployApplication, parseApplications } from "./client";
 
 // A Coolify server on the internet as far as the outbound check goes.
 vi.mock("@/lib/outbound", () => ({
@@ -71,12 +71,58 @@ describe("deployApplication", () => {
   it("says when the token may not deploy", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({}, { status: 403 })),
+      vi.fn(async () => Response.json({ message: "Missing required permissions: deploy" }, { status: 403 })),
     );
     expect(await deployApplication(access)).toMatchObject({
       ok: false,
-      message: "the token cannot deploy; give it the deploy permission",
+      message: "the token lacks the deploy permission; add it in Coolify (Keys & Tokens → API Tokens)",
     });
+  });
+});
+
+describe("coolifyRefusal", () => {
+  const refusal = (message: string, status = 403) => coolifyRefusal(Response.json({ message }, { status }));
+
+  it("explains each refusal of Coolify's API middleware", async () => {
+    expect(await refusal("Unauthenticated.", 401)).toMatch(/^Coolify does not know this token/);
+    expect(await refusal("Invalid token.", 401)).toMatch(/its team is not one of its creator's teams/);
+    expect(await refusal("API is disabled.")).toMatch(/^Coolify's API is off/);
+    // Seen on a real server with a valid token: Allowed IPs did not include the caller.
+    expect(await refusal("You are not allowed to access the API.")).toMatch(
+      /add the public IPv4 and IPv6 address of Observator's server under Allowed IPs/,
+    );
+    expect(await refusal("Missing required permissions: read")).toBe(
+      "the token lacks the read permission; add it in Coolify (Keys & Tokens → API Tokens)",
+    );
+    // Anything else is passed on as Coolify wrote it.
+    expect(
+      await refusal(
+        "This API token has more access than you have in this team. Revoke it and create a new token.",
+      ),
+    ).toBe(
+      "Coolify answered HTTP 403: This API token has more access than you have in this team. Revoke it and create a new token.",
+    );
+  });
+
+  it("tells a proxy's refusal apart from Coolify's", async () => {
+    const html = new Response("<html><title>Attention Required! | Cloudflare</title></html>", {
+      status: 403,
+    });
+    expect(await coolifyRefusal(html)).toBe(
+      "HTTP 403, not from Coolify's API: is something in front of it (a proxy, Cloudflare) blocking Observator?",
+    );
+    expect(await coolifyRefusal(new Response("Bad Gateway", { status: 502 }))).toBe(
+      "Coolify answered HTTP 502",
+    );
+  });
+
+  it("keeps Coolify's text to one short line", async () => {
+    const shown = await refusal(`line one\nline two ${"x".repeat(500)}`, 500);
+    expect(shown).toMatch(/^Coolify answered HTTP 500: line one line two x+$/);
+    expect(shown.length).toBeLessThan(260);
+    // A body too long to be a refusal is not read to the end, and is not Coolify's JSON.
+    const huge = new Response(JSON.stringify({ message: "x".repeat(10_000) }), { status: 403 });
+    expect(await coolifyRefusal(huge)).toMatch(/^HTTP 403, not from Coolify's API/);
   });
 });
 
