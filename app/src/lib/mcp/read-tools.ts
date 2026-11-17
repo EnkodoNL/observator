@@ -312,6 +312,11 @@ export const readTools: Record<string, Tool> = {
                 source: i.source,
                 error: i.error,
               })),
+              // Apps by their GitHub repository: the version checked (assumed for a moving tag),
+              // the newest release, and advisories whose range could not be read.
+              apps: resource?.apps ?? [],
+              // Coolify's own image scan: fixable findings are advisories, the rest is counted.
+              scan: resource?.scan ?? null,
             }
           : null,
         setup: {
@@ -325,7 +330,7 @@ export const readTools: Record<string, Tool> = {
                 uuid: p.coolifyUuid,
                 // false: no connected Coolify server has this application (yet).
                 linked: Boolean(p.coolifyServer),
-                source: p.coolifySource || "picked",
+                source: p.coolifyKind ? "sync" : p.coolifySource || "picked",
               }
             : null,
           // Coolify's deploys against the reports (a token with read permission): no deploy since

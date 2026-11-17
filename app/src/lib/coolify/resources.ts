@@ -5,7 +5,7 @@ import { uniqueSlug } from "@/lib/data/projects";
 import type { ImageInventory } from "@/lib/images/describe";
 import { inspectImage } from "@/lib/images/inspect";
 import { analyzeInBackground, analyzeInline } from "@/lib/ingest/analyze";
-import { latestBuild, recordBuild } from "@/lib/ingest/ingest";
+import { latestBuild, recordBuild, reportHash } from "@/lib/ingest/ingest";
 import type { IngestMeta } from "@/lib/ingest/request";
 import { evaluateProject } from "@/lib/issues/evaluate";
 import type { IssueEvent } from "@/lib/issues/events";
@@ -16,11 +16,18 @@ import { adminPb, toPbDate } from "@/lib/pb/admin";
 import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
 import type { Runtime } from "@/lib/runtimes/types";
 import { slugify } from "@/lib/slug";
-import { listDatabases, listServices, serviceImages } from "./client";
+import { repoAdvisories, repoReleases } from "@/lib/github/client";
+import { inRange } from "@/lib/github/ranges";
+import { newestIn } from "@/lib/github/repos";
+import type { Component } from "@/lib/lockfile/types";
+import { GITHUB } from "@/lib/osv/check";
+import { listDatabases, listServices, resourceScan, serviceImages } from "./client";
+import { FindingStore, findingComponents, findingCounts, isCoolifyEcosystem } from "./findings";
 import {
   inventoryKey,
   resourceInventory,
   syncStatusKey,
+  type AppInventory,
   type ResourceInventory,
   type ResourceKind,
   type ResourceSyncStatus,
@@ -90,12 +97,44 @@ async function projectFor(
   });
 }
 
+/** The app in an image, by its GitHub repository: which version it is, the newest, what is unclear. */
+async function appOf(
+  image: ResourceInventory["images"][number],
+): Promise<{ app: AppInventory; component: Component | null }> {
+  const source = image.source!;
+  const releases = await repoReleases(source);
+  const list = "error" in releases ? [] : releases;
+  // A pinned tag is the version; a moving one is assumed to be the newest release in its line.
+  const exact = image.pinned ? image.version : null;
+  const version = exact ?? image.versionNow ?? newestIn(list, image.version)?.version ?? null;
+  const advisories = version ? await repoAdvisories(source) : { error: "" };
+  const unclear =
+    version && !("error" in advisories)
+      ? [...new Set(advisories.filter((a) => inRange(version, a.vulnerable) === null).map((a) => a.id))]
+      : [];
+  const app: AppInventory = {
+    part: image.part,
+    source,
+    version,
+    assumed: !exact,
+    latest: list[0]?.version ?? null,
+    unclear,
+    error: "error" in releases ? releases.error : null,
+  };
+  const component = version
+    ? { name: source, version, direct: true, dev: false, via: [], ecosystem: GITHUB }
+    : null;
+  return { app, component };
+}
+
 /** Brings one resource's project up to date; records a build only when what it runs changed. */
 async function syncResource(
   server: CoolifyServerRecord,
+  access: { base: string; token: string },
   resource: Listed,
   existing: ProjectRecord[],
-): Promise<IssueEvent[]> {
+  store: FindingStore,
+): Promise<{ events: IssueEvent[]; scanRead: boolean; scanOff: boolean }> {
   const wasGone = existing.some(
     (p) => p.coolifyServer === server.id && p.coolifyUuid === resource.uuid && Boolean(p.coolifyGoneAt),
   );
@@ -113,26 +152,59 @@ async function syncResource(
     return known ? { ...known, error: image.error } : image;
   });
   const runtimes = resourceRuntimes(images);
+
+  // Apps (no product of their own, a repository on GitHub): their own advisories and releases.
+  const apps = await mapLimit(
+    images.filter((i) => !i.product && i.source),
+    2,
+    appOf,
+  );
+  // Coolify's own scan of what runs: its fixable findings are advisories of their own.
+  const scan = await resourceScan(access, resource.kind, resource.uuid);
+  const scanRead = !("error" in scan);
+  let scanComponents: Component[];
+  let rowsChanged = false;
+  if (scanRead) {
+    scanComponents = findingComponents(scan.findings);
+    rowsChanged = await store.write(scan.findings);
+  } else {
+    // Unreadable this time: keep what the last scan gave, rows included.
+    scanComponents = (previous?.components ?? []).filter((c) => isCoolifyEcosystem(c.ecosystem ?? ""));
+    store.keep(scanComponents);
+  }
+  const components = [...apps.flatMap((a) => (a.component ? [a.component] : [])), ...scanComponents];
+
   const inventory: ResourceInventory = {
     kind: resource.kind,
     server: server.name,
     type: resource.type,
     images: resource.error && previous ? previous.images : images,
+    apps: apps.map((a) => a.app),
+    scan: scanRead
+      ? { ...findingCounts(scan.findings), off: scan.off, scannedAt: scan.scannedAt, error: null }
+      : {
+          ...(previous?.scan ?? { fixable: 0, unfixable: 0, off: null, scannedAt: null }),
+          error: scan.error,
+        },
+    components,
     error: resource.error,
     syncedAt: new Date().toISOString(),
   };
   await kvSet(inventoryKey(project.id), inventory);
   // A service whose parts could not be read keeps what it had.
-  if (resource.error) return [];
+  const scanOff = scanRead && scan.off !== null;
+  if (resource.error) return { events: [], scanRead, scanOff };
 
   const latest = await latestBuild(project.id);
   const unchanged =
     latest !== null &&
     JSON.stringify(latest.runtimes ?? []) === JSON.stringify(runtimes) &&
     previous !== null &&
-    sameImages(previous.images, images);
-  // Back after being gone: its issues come back without waiting for a change.
-  if (unchanged) return wasGone ? evaluateProject(project.id) : [];
+    sameImages(previous.images, images) &&
+    latest.lockfileHash === reportHash("", null, "", null, components);
+  // Back after being gone, or new findings for the same packages: evaluate without a new build.
+  if (unchanged)
+    return { events: wasGone || rowsChanged ? await evaluateProject(project.id) : [], scanRead, scanOff };
 
   const meta: IngestMeta = {
     runtimes,
@@ -146,9 +218,13 @@ async function syncResource(
     reporter: null,
     coolify: null,
   };
-  const outcome = await recordBuild(project, { packageJson: null, lockfiles: {}, goBinaries: null }, meta);
+  const outcome = await recordBuild(
+    project,
+    { packageJson: null, lockfiles: {}, goBinaries: null, components },
+    meta,
+  );
   const analysis = await analyzeInline(project, outcome, meta);
-  return analyzeInBackground(project.id, analysis);
+  return { events: await analyzeInBackground(project.id, analysis), scanRead, scanOff };
 }
 
 /** Lists a server's databases and services; null for a kind whose listing failed. */
@@ -199,6 +275,9 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
     .collection("projects")
     .getFullList<ProjectRecord>({ filter: 'coolifyKind != ""' });
   const events: IssueEvent[] = [];
+  // The scan's advisories that no resource has any more go, but only after a sync read them all.
+  const store = await FindingStore.open();
+  let complete = true;
 
   for (const server of servers) {
     const access = serverAccess(server);
@@ -209,6 +288,7 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
       error: null,
     };
     if (!access) {
+      complete = false;
       status.error = "the token cannot be decrypted (SECRETS_KEY)";
       await kvSet(syncStatusKey(server.id), status);
       continue;
@@ -218,10 +298,16 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
     status.services = listed.services?.length ?? null;
     status.error = listed.error;
 
+    if (!listed.databases || !listed.services) complete = false;
     for (const resource of [...(listed.databases ?? []), ...(listed.services ?? [])]) {
       try {
-        events.push(...(await syncResource(server, resource, existing)));
+        const result = await syncResource(server, access, resource, existing, store);
+        events.push(...result.events);
+        if (!result.scanRead) complete = false;
+        else if (result.scanOff) status.scanOff = (status.scanOff ?? 0) + 1;
+        else status.scanned = (status.scanned ?? 0) + 1;
       } catch (err) {
+        complete = false;
         console.error(`[coolify] syncing ${resource.kind} ${resource.uuid} failed`, err);
       }
     }
@@ -235,6 +321,7 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
     }
     await kvSet(syncStatusKey(server.id), status);
   }
+  await store.finish(complete);
   await publish(events);
   return events;
 }

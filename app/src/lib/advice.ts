@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import semver from "semver";
 import { vulnVersions, type VulnIssueData } from "@/lib/issues/types";
+import { GITHUB_ECOSYSTEM, isCoolifyEcosystem } from "@/lib/ecosystems";
 import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import type { LockfileType } from "@/lib/pb/types";
 
@@ -16,6 +17,20 @@ const majorOf = (v: string) => semver.coerce(v)?.major ?? null;
  * gets `go get` whatever the project's lockfile, since one image can hold both.
  */
 export function packageAdvice(d: VulnIssueData, lockfile: LockfileType): Advice {
+  // An app in a Coolify service, by its repository: a newer release of its image.
+  if (d.ecosystem === GITHUB_ECOSYSTEM && d.fixedIn) {
+    return {
+      text: `Update ${d.package} to ${d.fixedIn} or later: set its image to that release in Coolify and restart (for a moving tag, Pull latest).`,
+      snippets: [],
+    };
+  }
+  // A package Coolify's scan found in an image: only a newer image carries the fix.
+  if (isCoolifyEcosystem(d.ecosystem) && d.fixedIn) {
+    return {
+      text: `${d.package} is fixed in ${d.fixedIn}. Take an image that carries it: a newer tag in Coolify, or Pull latest for a moving tag, then restart. Coolify's scan sees the fix once the new image runs.`,
+      snippets: [],
+    };
+  }
   if (d.ecosystem === GO_ECOSYSTEM && d.fixedIn && d.direct) {
     // The only direct Go component is a program that is a release itself (lockfile/go.ts):
     // there is no go.mod to raise, only a newer release to take.

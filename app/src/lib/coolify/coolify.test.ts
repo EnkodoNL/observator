@@ -8,6 +8,7 @@ import {
   deployApplication,
   parseApplications,
   parseDatabases,
+  parseFindings,
   parseServiceImages,
   parseServices,
 } from "./client";
@@ -79,6 +80,56 @@ describe("databases and services", () => {
       { name: "web", image: "ghcr.io/acme/web-app:2" },
       { name: "db", image: "postgres:16-alpine" },
     ]);
+  });
+});
+
+describe("parseFindings", () => {
+  it("reads Coolify's scan findings and what the page says about the scan", () => {
+    const parsed = parseFindings({
+      off_reason: null,
+      images: [{ scanned_at: "2026-11-17T09:00:00Z" }, { scanned_at: "2026-11-17T10:00:00Z" }],
+      findings: [
+        {
+          display_id: "CVE-2026-0001",
+          aliases: ["GHSA-aaaa-bbbb-cccc", 3],
+          title: "Heap overflow",
+          severity: "High",
+          package: "libexample",
+          version: "1.0.1",
+          package_type: "deb",
+          fixed_in: "1.0.2",
+          kev: true,
+          advisory_url: "https://example.com/CVE-2026-0001",
+          ignore: null,
+        },
+        { display_id: "CVE-2026-0002", package: "", version: "1" },
+        {
+          display_id: "CVE-2026-0003",
+          package: "libother",
+          version: "2.0",
+          package_type: "java archive",
+          ignore: { reason: "x" },
+        },
+      ],
+      pagination: { page: 1, per_page: 200, total: 3 },
+    });
+    expect(parsed.findings).toEqual([
+      {
+        id: "CVE-2026-0001",
+        aliases: ["GHSA-aaaa-bbbb-cccc"],
+        title: "Heap overflow",
+        severity: "high",
+        package: "libexample",
+        version: "1.0.1",
+        type: "deb",
+        fixedIn: "1.0.2",
+        kev: true,
+        url: "https://example.com/CVE-2026-0001",
+        ignored: false,
+      },
+      expect.objectContaining({ id: "CVE-2026-0003", type: "javaarchive", fixedIn: "", ignored: true }),
+    ]);
+    expect(parsed).toMatchObject({ total: 3, off: null, scannedAt: "2026-11-17T10:00:00Z" });
   });
 });
 

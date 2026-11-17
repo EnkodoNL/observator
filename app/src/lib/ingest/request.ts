@@ -3,6 +3,7 @@ import { gunzipSync } from "node:zlib";
 import semver from "semver";
 import { parseLabels } from "@/lib/labels";
 import { GO_BINARIES, LOCKFILE_NAMES, type LockfileName } from "@/lib/lockfile";
+import type { Component } from "@/lib/lockfile/types";
 import { runtimeLabel } from "@/lib/runtimes/labels";
 import type { Runtime } from "@/lib/runtimes/types";
 import { readTar, TarError } from "./tar";
@@ -52,6 +53,11 @@ export interface IngestFiles {
   lockfiles: Partial<Record<LockfileName, string>>;
   /** The reporter's go-binaries.json: the Go programs in the image and their modules. */
   goBinaries: string | null;
+  /**
+   * Packages known without a lockfile: a Coolify database's or service's app (from GitHub) and
+   * the fixable findings of Coolify's own image scan. Never from a report.
+   */
+  components?: Component[];
 }
 
 /** Reads the request body with a hard cap, without trusting Content-Length. */

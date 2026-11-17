@@ -7,6 +7,7 @@ const rows: Record<string, unknown>[] = [];
 vi.mock("@/lib/pb/admin", () => ({
   toPbDate: (d: Date) => d.toISOString().replace("T", " "),
   adminPb: async () => ({
+    filter: (q: string) => q,
     collection: () => ({
       getFullList: async () => rows.map((r) => ({ ...r })),
       create: async (data: Record<string, unknown>) => void rows.push({ id: `r${rows.length}`, ...data }),
@@ -27,6 +28,9 @@ vi.mock("./client", () => ({
   getVuln: (id: string) => getVuln(id),
   osvUrl: (id: string) => `https://osv.dev/vulnerability/${id}`,
 }));
+
+const repoAdvisories = vi.fn();
+vi.mock("@/lib/github/client", () => ({ repoAdvisories: (repo: string) => repoAdvisories(repo) }));
 
 const { checkPackages } = await import("./check");
 
@@ -83,5 +87,70 @@ describe("checkPackages and a moved Go module", () => {
     queryBatch.mockImplementation(async (q) => q.map(() => []));
     await checkPackages([{ ecosystem: "Go", name: "golang.org/x/net", version: "v0.20.0" }]);
     expect(queryBatch.mock.calls[0][0].map((x) => x.name)).toEqual(["golang.org/x/net"]);
+  });
+});
+
+describe("checkPackages for apps and Coolify's scan", () => {
+  const app = { ecosystem: "GitHub", name: "example/app", version: "2.4.0" };
+
+  it("checks an app against its repository's advisories, and never asks OSV about it", async () => {
+    queryBatch.mockImplementation(async (q) => q.map(() => []));
+    repoAdvisories.mockResolvedValue([
+      {
+        id: "GHSA-aaaa-bbbb-cccc",
+        cve: "CVE-2026-0001",
+        severity: "high",
+        summary: "Injection",
+        url: "https://github.com/example/app/security/advisories/GHSA-aaaa-bbbb-cccc",
+        vulnerable: ">= 2.1.0, <= 2.5.8",
+        patched: "2.5.9",
+        updated: "2026-11-01T00:00:00Z",
+      },
+      {
+        id: "GHSA-dddd-eeee-ffff",
+        cve: null,
+        severity: "low",
+        summary: "",
+        url: "",
+        vulnerable: "< 2.0.0",
+        patched: "2.0.0",
+        updated: "",
+      },
+      {
+        id: "GHSA-gggg-hhhh-iiii",
+        cve: null,
+        severity: "low",
+        summary: "",
+        url: "",
+        vulnerable: "some old versions",
+        patched: "",
+        updated: "",
+      },
+    ]);
+    const result = await checkPackages([
+      app,
+      { ecosystem: "coolify:deb", name: "libexample", version: "1.0.1" },
+      { ecosystem: "npm", name: "left-pad", version: "1.3.0" },
+    ]);
+    expect(queryBatch.mock.calls[0][0].map((x) => x.name)).toEqual(["left-pad"]);
+    expect(rows).toMatchObject([
+      {
+        ecosystem: "GitHub",
+        name: "example/app",
+        osvId: "GHSA-aaaa-bbbb-cccc",
+        aliases: ["CVE-2026-0001"],
+        severity: "high",
+        fixedIn: "2.5.9",
+      },
+    ]);
+    expect(result).toEqual({ checked: 2, vulnerable: 1 });
+
+    // Fixed upstream and taken: the row goes; an unreadable repository leaves rows alone.
+    repoAdvisories.mockResolvedValue({ error: "GitHub unreachable" });
+    await checkPackages([app]);
+    expect(rows).toHaveLength(1);
+    repoAdvisories.mockResolvedValue([]);
+    await checkPackages([app]);
+    expect(rows).toHaveLength(0);
   });
 });

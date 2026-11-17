@@ -51,6 +51,37 @@ describe("packageAdvice", () => {
     expect(other.snippets).toEqual([]);
   });
 
+  it("asks for a newer image for an app in Coolify or a package Coolify's scan found", () => {
+    const app = packageAdvice(
+      {
+        ...base,
+        ecosystem: "GitHub",
+        package: "example/app",
+        version: "2.4.0",
+        fixedIn: "2.5.9",
+        direct: true,
+        via: [],
+      },
+      "none",
+    );
+    expect(app.text).toMatch(
+      /^Update example\/app to 2\.5\.9 or later: set its image to that release in Coolify/,
+    );
+    const scanned = packageAdvice(
+      {
+        ...base,
+        ecosystem: "coolify:deb",
+        package: "libexample",
+        version: "1.0.1",
+        fixedIn: "1.0.2",
+        via: [],
+      },
+      "none",
+    );
+    expect(scanned.text).toMatch(/^libexample is fixed in 1\.0\.2\. Take an image that carries it/);
+    expect(scanned.snippets).toEqual([]);
+  });
+
   it("upgrades direct dependencies with the right package manager", () => {
     const d = { ...base, package: "lodash", version: "4.17.20", fixedIn: "4.17.21", direct: true, via: [] };
     expect(packageAdvice(d, "npm").snippets[0].code).toBe("npm install lodash@4.17.21");

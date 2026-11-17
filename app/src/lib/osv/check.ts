@@ -8,6 +8,9 @@ import { osvSeverity } from "./severity";
 import type { OsvVuln } from "./types";
 import { mapLimit } from "@/lib/map-limit";
 import { OSV_NAMES } from "@/lib/lockfile/go";
+import { GITHUB_ECOSYSTEM, isCoolifyEcosystem } from "@/lib/ecosystems";
+import { repoAdvisories } from "@/lib/github/client";
+import { fixedFor, inRange } from "@/lib/github/ranges";
 
 const g = globalThis as typeof globalThis & { __osvDetails?: Map<string, OsvVuln> };
 const details = (g.__osvDetails ??= new Map());
@@ -39,9 +42,68 @@ export async function checkPackages(
   pairs: OsvQuery[],
   signal?: AbortSignal,
 ): Promise<{ checked: number; vulnerable: number }> {
-  const unique = [...new Map(pairs.map((p) => [pairKey(p), p])).values()];
-  if (unique.length === 0) return { checked: 0, vulnerable: 0 };
+  const all = [...new Map(pairs.map((p) => [pairKey(p), p])).values()];
+  // An app in a Coolify service is checked against its GitHub repository's own advisories;
+  // the findings of Coolify's image scan are written by the sync and never asked for here.
+  const github = all.filter((p) => p.ecosystem === GITHUB);
+  const osv = all.filter((p) => p.ecosystem !== GITHUB && !isCoolifyEcosystem(p.ecosystem));
+  const a = osv.length ? await checkOsv(osv, signal) : { checked: 0, vulnerable: 0 };
+  const b = github.length ? await checkGitHub(github) : { checked: 0, vulnerable: 0 };
+  return { checked: a.checked + b.checked, vulnerable: a.vulnerable + b.vulnerable };
+}
 
+/** The ecosystem of an app named by its GitHub repository (owner/repo). */
+export const GITHUB = GITHUB_ECOSYSTEM;
+
+/**
+ * Apps against their repository's security advisories. A range the repository wrote as free text
+ * that cannot be read matches nothing here; the project's Setup tab lists it to check by hand.
+ * An unreadable repository leaves its rows as they were.
+ */
+async function checkGitHub(pairs: OsvQuery[]): Promise<{ checked: number; vulnerable: number }> {
+  const pb = await adminPb();
+  const existing = await pb
+    .collection("vulnerabilities")
+    .getFullList<VulnerabilityRecord>({ filter: pb.filter("ecosystem = {:e}", { e: GITHUB }) });
+  const now = toPbDate(new Date());
+  let vulnerable = 0;
+  for (const pair of pairs) {
+    const advisories = await repoAdvisories(pair.name);
+    if ("error" in advisories) continue;
+    const version = pair.version.replace(/^v/, "");
+    const hits = new Map<string, (typeof advisories)[number]>();
+    for (const a of advisories)
+      if (inRange(version, a.vulnerable) === true && !hits.has(a.id)) hits.set(a.id, a);
+    const rows = existing.filter((r) => r.name === pair.name && r.version === pair.version);
+    for (const a of hits.values()) {
+      const data = {
+        name: pair.name,
+        version: pair.version,
+        ecosystem: GITHUB,
+        osvId: a.id,
+        aliases: a.cve ? [a.cve] : [],
+        severity: a.severity,
+        summary: a.summary,
+        fixedIn: fixedFor(version, a.patched),
+        url: /^https:\/\//.test(a.url) ? a.url : "",
+        modified: a.updated ? toPbDate(new Date(a.updated)) : "",
+        checkedAt: now,
+      };
+      const row = rows.find((r) => r.osvId === a.id);
+      if (row) await pb.collection("vulnerabilities").update(row.id, data);
+      else await pb.collection("vulnerabilities").create(data);
+    }
+    for (const row of rows) if (!hits.has(row.osvId)) await pb.collection("vulnerabilities").delete(row.id);
+    if (hits.size) vulnerable++;
+  }
+  return { checked: pairs.length, vulnerable };
+}
+
+/** OSV for every ecosystem it knows (npm, Go). */
+async function checkOsv(
+  unique: OsvQuery[],
+  signal?: AbortSignal,
+): Promise<{ checked: number; vulnerable: number }> {
   // A moved module is asked under both names; its hits remember which, for the fixed version.
   const queries = unique.flatMap((pair, i) => osvNames(pair).map((name) => ({ i, osvName: name })));
   const answers = await queryBatch(

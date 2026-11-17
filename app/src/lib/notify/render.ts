@@ -9,6 +9,7 @@ import {
   type StaleData,
   type VulnIssueData,
 } from "@/lib/issues/types";
+import { coolifyPackageType, GITHUB_ECOSYSTEM, isCoolifyEcosystem } from "@/lib/ecosystems";
 import { runtimeLabel, updateAction } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
@@ -143,14 +144,20 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
       const items = sorted.map((e) => {
         const d = e.data as unknown as VulnIssueData;
         const where = projects.length > 1 ? `${name(ctx, e.projectId)}: ` : "";
-        // A direct Go component is the program itself (lockfile/go.ts).
-        const via = d.direct
-          ? d.ecosystem === "Go"
-            ? "the program itself"
-            : "direct"
-          : d.via?.length
-            ? `via ${d.via.join(", ")}`
-            : "transitive";
+        // A direct Go component is the program itself (lockfile/go.ts); GitHub is an app in a
+        // Coolify service; coolify:<type> is a package Coolify's scan found in an image.
+        const via =
+          d.ecosystem === GITHUB_ECOSYSTEM
+            ? "the app itself"
+            : isCoolifyEcosystem(d.ecosystem)
+              ? `${coolifyPackageType(d.ecosystem)} package in the image`
+              : d.direct
+                ? d.ecosystem === "Go"
+                  ? "the program itself"
+                  : "direct"
+                : d.via?.length
+                  ? `via ${d.via.join(", ")}`
+                  : "transitive";
         return {
           severity: e.severity,
           title: `${where}${d.package}@${d.version}`,

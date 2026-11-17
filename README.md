@@ -458,6 +458,25 @@ anonymously, the way `docker pull` reads them:
   `mariadb:11.8.10` in Coolify and restart", or for Node inside an app's image, a newer release of
   that app.
 
+Advisories come from two places:
+
+- **Coolify's own image scan.** Since 4.7, Coolify scans what a database or service runs (Grype),
+  after every start, once the image is pulled; turn it on per server in Coolify. Observator reads
+  the findings with the same `read` token. A finding with a fixed version becomes an advisory of its
+  own (an OS or language package in the image, marked when it is known to be exploited); findings
+  without a fix are counted on the *Setup* tab only, so Observator stays quiet until there is
+  something to do. A finding ignored in Coolify stays ignored.
+- **The app's own repository.** An app such as uptime-kuma, umami or Dragonfly publishes its own
+  security advisories on GitHub, which no package scanner matches. Observator finds the repository
+  through the image (its source label, its GHCR path, or a short list of known images), takes the
+  version from the tag (or, for a moving tag such as `1`, the newest release in that line, marked as
+  assumed) and checks the repository's advisories against it. A range the repository wrote in words
+  that cannot be read is listed on the *Setup* tab to check by hand, never taken as safe. The newest
+  release is shown too.
+
+GitHub allows 60 requests an hour without a token; every answer is kept a day, which covers a few
+dozen apps. With more, set `GITHUB_TOKEN` (any token, no scopes: only public data is read).
+
 Such a project has no key, no snippet and no Redeploy button. Its *Setup* tab lists the images with
 their tag, what the tag points to now, the runtimes inside and the source repository. A database or
 service that a successful listing no longer has is marked gone and its issues close; delete it from
@@ -698,6 +717,7 @@ All settings are environment variables; see [`.env.example`](.env.example).
 | `TRUST_CLOUDFLARE` | `off` | Cloudflare proxies Observator: take the visitor from `CF-Connecting-IP` |
 | `REPORTER_IMAGE` | `ghcr.io/enkodonl/observator-reporter:1` | Where the snippet copies the reporter from, such as your own mirror |
 | `SOURCE_URL` | this repository | Linked in the footer; point it at your fork if you change the code |
+| `GITHUB_TOKEN` | | Optional. Raises GitHub's limit from 60 to 5000 requests an hour for the releases and advisories of apps in Coolify services. Any token without scopes will do |
 | `SECRETS_KEY` | | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets; without it, deploy webhooks, Coolify servers and channels with credentials cannot be saved. See [Secrets at rest](#secrets-at-rest) |
 | `SECRETS_KEY_PREVIOUS` | | The previous key during a rotation |
 | `DEMO_MODE` | `off` | A public read-only demo; see [Demo](#demo) |
@@ -816,7 +836,8 @@ log instead of dropping it silently.
   knows (MariaDB, PostgreSQL, Redis, ...) for Coolify databases and services; other runtimes are
   shown, not checked.
 - Coolify databases and services: only public images can be read from their registry, a moving tag
-  says what it points to now rather than what runs, and packages inside their images are not read.
+  says what it points to now rather than what runs, and packages inside their images are known only
+  through Coolify's own image scan (Coolify 4.7 or newer, turned on per server).
 - npm packages and Go modules only, and only the root `package.json` of a workspace. A Go binary does
   not record which modules the app imports itself, so Go modules are not split into direct and
   transitive, and there is no "latest version" lookup for them yet.

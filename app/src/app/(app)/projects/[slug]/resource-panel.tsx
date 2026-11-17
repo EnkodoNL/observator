@@ -69,6 +69,60 @@ export function ResourcePanel({
           ))}
         </ul>
       )}
+      {inventory.apps && inventory.apps.length > 0 && (
+        <div className="space-y-1">
+          <h3 className="font-medium">Apps, by their repository</h3>
+          <ul className="space-y-1 text-muted-foreground">
+            {inventory.apps.map((app) => (
+              <li key={`${app.part}/${app.source}`}>
+                <a
+                  href={`https://github.com/${app.source}`}
+                  className="text-foreground underline-offset-4 hover:underline"
+                  rel="noreferrer"
+                >
+                  {app.source}
+                </a>
+                {": "}
+                {app.version
+                  ? `${app.version}${app.assumed ? " (assumed: the newest release in the tag's line)" : ""}`
+                  : "version unknown"}
+                {app.latest && app.latest !== app.version && `, newest release ${app.latest}`}
+                {app.error && <span className="text-warn"> GitHub: {app.error}</span>}
+                {app.unclear.length > 0 && (
+                  <span className="block text-warn">
+                    {app.unclear.length === 1 ? "An advisory names" : `${app.unclear.length} advisories name`}{" "}
+                    its versions in words Observator cannot read; check by hand:{" "}
+                    {app.unclear.map((id, i) => (
+                      <span key={id}>
+                        {i > 0 && ", "}
+                        <a
+                          href={`https://github.com/${app.source}/security/advisories/${id}`}
+                          className="font-mono underline-offset-4 hover:underline"
+                          rel="noreferrer"
+                        >
+                          {id}
+                        </a>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {inventory.scan !== undefined && (
+        <p className="text-muted-foreground">
+          Coolify&rsquo;s image scan:{" "}
+          {inventory.scan === null
+            ? "none yet."
+            : inventory.scan.error
+              ? `could not be read this time (${inventory.scan.error}); the last findings stay.`
+              : inventory.scan.off
+                ? `none (${inventory.scan.off}). Turn it on per server in Coolify for advisories on what runs.`
+                : `${inventory.scan.fixable} ${inventory.scan.fixable === 1 ? "finding" : "findings"} with a fix, listed as advisories on the overview; ${inventory.scan.unfixable} without one yet, counted only.${inventory.scan.scannedAt ? ` Scanned ${timeAgo(new Date(inventory.scan.scannedAt))}.` : ""}`}
+        </p>
+      )}
     </div>
   );
 }

@@ -254,6 +254,117 @@ export const listServices = (server: { base: string; token: string }) =>
 export const serviceImages = (server: { base: string; token: string }, uuid: string) =>
   coolifyList(server, `services/${encodeURIComponent(uuid)}`, parseServiceImages);
 
+/** One finding of Coolify's own image scan (Grype, since Coolify 4.7) on what a resource runs. */
+export interface CoolifyFinding {
+  /** CVE-…, GHSA-… */
+  id: string;
+  aliases: string[];
+  title: string;
+  /** critical, high, medium, low, negligible or unknown, as Coolify writes it. */
+  severity: string;
+  package: string;
+  version: string;
+  /** deb, apk, npm, python, go-module, java-archive, binary, ... */
+  type: string;
+  /** "" when no fixed version exists. */
+  fixedIn: string;
+  /** In CISA's catalogue of known exploited vulnerabilities. */
+  kev: boolean;
+  url: string;
+  /** Accepted in Coolify itself. */
+  ignored: boolean;
+}
+
+export interface CoolifyScan {
+  findings: CoolifyFinding[];
+  /** Why there is no scan: off on the server, not supported, ... */
+  off: string | null;
+  scannedAt: string | null;
+}
+
+export function parseFindings(body: unknown): {
+  findings: CoolifyFinding[];
+  total: number;
+  off: string | null;
+  scannedAt: string | null;
+} {
+  const b = (body ?? {}) as {
+    findings?: unknown;
+    pagination?: { total?: unknown };
+    off_reason?: unknown;
+    images?: unknown;
+  };
+  const findings = (Array.isArray(b.findings) ? b.findings : []).flatMap((f: Record<string, unknown>) => {
+    const id = text(f?.display_id) || text(f?.id);
+    const pkg = text(f?.package);
+    const version = text(f?.version);
+    if (!id || !pkg || !version) return [];
+    return [
+      {
+        id: id.slice(0, 64),
+        aliases: (Array.isArray(f.aliases) ? f.aliases : [])
+          .filter((a): a is string => typeof a === "string")
+          .slice(0, 20),
+        title: text(f.title).slice(0, 500),
+        severity: text(f.severity).toLowerCase(),
+        package: pkg.slice(0, 214),
+        version: version.slice(0, 128),
+        type: (text(f.package_type) || "unknown")
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "")
+          .slice(0, 24),
+        fixedIn: text(f.fixed_in).slice(0, 128),
+        kev: f.kev === true,
+        url: text(f.advisory_url).slice(0, 500),
+        ignored: f.ignore !== null && f.ignore !== undefined,
+      },
+    ];
+  });
+  const scanned = (Array.isArray(b.images) ? b.images : [])
+    .map((i: Record<string, unknown>) => text(i?.scanned_at))
+    .filter(Boolean)
+    .sort();
+  return {
+    findings,
+    total: typeof b.pagination?.total === "number" ? b.pagination.total : findings.length,
+    off: text(b.off_reason) || null,
+    scannedAt: scanned.at(-1) ?? null,
+  };
+}
+
+/**
+ * Coolify's scan of what a database or service runs, every page of it (permission read). A
+ * Coolify without image scanning (before 4.7) answers 404: then there is simply no scan.
+ */
+export async function resourceScan(
+  server: { base: string; token: string },
+  kind: "database" | "service",
+  uuid: string,
+): Promise<CoolifyScan | { error: string }> {
+  return coolifyRequest(server.base, async () => {
+    const findings: CoolifyFinding[] = [];
+    let off: string | null = null;
+    let scannedAt: string | null = null;
+    for (let page = 1; page <= 10; page++) {
+      const url = `${server.base}/api/v1/${kind}s/${encodeURIComponent(uuid)}/vulnerabilities?per_page=200&page=${page}`;
+      const res = await coolifyGet(url, server.token);
+      if (res.status === 404)
+        return {
+          findings: [],
+          off: "no image scanning in this Coolify (4.7 or newer has it)",
+          scannedAt: null,
+        };
+      if (!res.ok) return { error: await coolifyRefusal(res) };
+      const parsed = parseFindings(await res.json());
+      findings.push(...parsed.findings);
+      off ??= parsed.off;
+      scannedAt ??= parsed.scannedAt;
+      if (page * 200 >= parsed.total || parsed.findings.length === 0) break;
+    }
+    return { findings, off, scannedAt };
+  });
+}
+
 /** Whether this server has the application: how a uuid from a build finds its server. */
 export async function hasApplication(
   server: { base: string; token: string },

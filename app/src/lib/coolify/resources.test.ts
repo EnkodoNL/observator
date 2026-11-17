@@ -7,24 +7,39 @@ import type { ProjectRecord } from "@/lib/pb/types";
 // PocketBase, kv, Coolify and the registry in memory; neutral, made-up names and uuids only.
 const projects: (Partial<ProjectRecord> & { id: string })[] = [];
 const kv = new Map<string, unknown>();
-const builds = new Map<string, { runtimes: { name: string; version: string }[] }>();
+const builds = new Map<string, { runtimes: { name: string; version: string }[]; lockfileHash: string }>();
+const vulns: Record<string, unknown>[] = [];
 
+const projectStore = {
+  getFullList: async () => projects.filter((p) => p.coolifyKind).map((p) => ({ ...p })),
+  create: async (data: Partial<ProjectRecord>) => {
+    const p = { id: `p${projects.length + 1}`, coolifyGoneAt: "", ...data };
+    projects.push(p);
+    return { ...p };
+  },
+  update: async (id: string, data: Partial<ProjectRecord>) => {
+    const p = projects.find((x) => x.id === id)!;
+    Object.assign(p, data);
+    return { ...p };
+  },
+};
+let vulnId = 0;
+const vulnStore = {
+  getFullList: async () => vulns.map((v) => ({ ...v })),
+  create: async (data: Record<string, unknown>) => void vulns.push({ id: `v${++vulnId}`, ...data }),
+  update: async (id: string, data: Record<string, unknown>) =>
+    void Object.assign(vulns.find((v) => v.id === id) ?? {}, data),
+  delete: async (id: string) =>
+    void vulns.splice(
+      vulns.findIndex((v) => v.id === id),
+      1,
+    ),
+};
 vi.mock("@/lib/pb/admin", () => ({
   toPbDate: (d: Date) => d.toISOString().replace("T", " "),
   adminPb: async () => ({
-    collection: () => ({
-      getFullList: async () => projects.filter((p) => p.coolifyKind).map((p) => ({ ...p })),
-      create: async (data: Partial<ProjectRecord>) => {
-        const p = { id: `p${projects.length + 1}`, coolifyGoneAt: "", ...data };
-        projects.push(p);
-        return { ...p };
-      },
-      update: async (id: string, data: Partial<ProjectRecord>) => {
-        const p = projects.find((x) => x.id === id)!;
-        Object.assign(p, data);
-        return { ...p };
-      },
-    }),
+    collection: (name: string) => (name === "vulnerabilities" ? vulnStore : projectStore),
+    filter: (q: string) => q,
   }),
 }));
 vi.mock("@/lib/kv", () => ({
@@ -39,10 +54,18 @@ vi.mock("./servers", () => ({
 const listDatabases = vi.fn();
 const listServices = vi.fn();
 const serviceImages = vi.fn();
+const resourceScan = vi.fn();
 vi.mock("./client", () => ({
   listDatabases: () => listDatabases(),
   listServices: () => listServices(),
   serviceImages: () => serviceImages(),
+  resourceScan: (_access: unknown, kind: string) => resourceScan(kind),
+}));
+const repoReleases = vi.fn();
+const repoAdvisories = vi.fn();
+vi.mock("@/lib/github/client", () => ({
+  repoReleases: (repo: string) => repoReleases(repo),
+  repoAdvisories: (repo: string) => repoAdvisories(repo),
 }));
 // What the registry says per image; a missing one is an outage.
 const registry = new Map<string, Record<string, string>>();
@@ -52,13 +75,15 @@ vi.mock("@/lib/images/inspect", () => ({
     return describeImage(parseImageRef(raw)!, env ? { env, labels: {} } : null, env ? null : "unreachable");
   },
 }));
-const recordBuild = vi.fn(async (project: { id: string }, _files: unknown, meta: { runtimes: never[] }) => {
-  builds.set(project.id, { runtimes: meta.runtimes });
+type Files = { components?: { ecosystem?: string; name: string; version: string }[] };
+const recordBuild = vi.fn(async (project: { id: string }, files: Files, meta: { runtimes: never[] }) => {
+  builds.set(project.id, { runtimes: meta.runtimes, lockfileHash: JSON.stringify(files.components ?? []) });
   return {};
 });
 vi.mock("@/lib/ingest/ingest", () => ({
   latestBuild: async (id: string) => builds.get(id) ?? null,
-  recordBuild: (p: { id: string }, f: unknown, m: { runtimes: never[] }) => recordBuild(p, f, m),
+  recordBuild: (p: { id: string }, f: Files, m: { runtimes: never[] }) => recordBuild(p, f, m),
+  reportHash: (...args: unknown[]) => JSON.stringify(args[4] ?? []),
 }));
 vi.mock("@/lib/ingest/analyze", () => ({
   analyzeInline: async () => ({}),
@@ -78,7 +103,11 @@ beforeEach(() => {
   kv.clear();
   builds.clear();
   registry.clear();
+  vulns.length = 0;
   recordBuild.mockClear();
+  resourceScan.mockReset().mockResolvedValue({ findings: [], off: null, scannedAt: null });
+  repoReleases.mockReset().mockResolvedValue([]);
+  repoAdvisories.mockReset().mockResolvedValue([]);
   evaluateProject.mockClear();
   registry.set("mariadb:11", { MARIADB_VERSION: "1:11.8.9+maria~ubu2404" });
   registry.set("ghcr.io/acme/web-app:2", { NODE_VERSION: "22.23.4" });
@@ -134,6 +163,101 @@ describe("syncCoolifyResources", () => {
     expect(projects[0].coolifyGoneAt).not.toBe("");
     expect(evaluateProject).toHaveBeenCalledWith("p1");
     expect(projects[1].coolifyGoneAt).toBe("");
+  });
+});
+
+describe("Coolify's scan and apps on GitHub", () => {
+  const finding = (fields: Record<string, unknown>) => ({
+    id: "CVE-2026-0001",
+    aliases: [],
+    title: "Heap overflow in a parser",
+    severity: "high",
+    package: "libexample",
+    version: "1.0.1",
+    type: "deb",
+    fixedIn: "1.0.2",
+    kev: false,
+    url: "https://example.com/advisory",
+    ignored: false,
+    ...fields,
+  });
+
+  it("makes fixable findings advisories, and only counts the rest", async () => {
+    resourceScan.mockImplementation(async (kind: string) =>
+      kind === "database"
+        ? {
+            findings: [
+              finding({ kev: true }),
+              finding({ id: "CVE-2026-0002", package: "libother", fixedIn: "" }),
+              finding({ id: "CVE-2026-0003", package: "libignored", ignored: true }),
+            ],
+            off: null,
+            scannedAt: "2026-11-17T10:00:00Z",
+          }
+        : { findings: [], off: "image scanning is off", scannedAt: null },
+    );
+    await syncCoolifyResources();
+    const db = recordBuild.mock.calls[0][1].components;
+    expect(db).toEqual([
+      { name: "libexample", version: "1.0.1", direct: false, dev: false, via: [], ecosystem: "coolify:deb" },
+    ]);
+    expect(vulns).toMatchObject([
+      {
+        ecosystem: "coolify:deb",
+        name: "libexample",
+        osvId: "CVE-2026-0001",
+        severity: "high",
+        fixedIn: "1.0.2",
+      },
+    ]);
+    expect(String(vulns[0].summary)).toMatch(/^Known to be exploited/);
+    expect(kv.get("coolify:resource:p1")).toMatchObject({ scan: { fixable: 1, unfixable: 1, error: null } });
+    expect(kv.get("coolify:resource:p2")).toMatchObject({ scan: { off: "image scanning is off" } });
+  });
+
+  it("drops a finding's advisory only after a sync that read every scan", async () => {
+    resourceScan.mockResolvedValue({ findings: [finding({})], off: null, scannedAt: null });
+    await syncCoolifyResources();
+    expect(vulns).toHaveLength(1);
+    resourceScan.mockResolvedValue({ error: "Coolify timed out" });
+    await syncCoolifyResources();
+    expect(vulns).toHaveLength(1);
+    resourceScan.mockResolvedValue({ findings: [], off: null, scannedAt: null });
+    await syncCoolifyResources();
+    expect(vulns).toHaveLength(0);
+  });
+
+  it("checks an app by its repository, a moving tag as the newest release in its line", async () => {
+    repoReleases.mockResolvedValue([
+      { version: "3.0.0", tag: "v3.0.0", published: "" },
+      { version: "2.4.1", tag: "v2.4.1", published: "" },
+      { version: "2.3.0", tag: "v2.3.0", published: "" },
+    ]);
+    repoAdvisories.mockResolvedValue([
+      { id: "GHSA-aaaa-bbbb-cccc", vulnerable: "current (>= 2.3.1, latest)", patched: "" },
+      { id: "GHSA-dddd-eeee-ffff", vulnerable: "all versions before the rewrite", patched: "" },
+    ]);
+    await syncCoolifyResources();
+    const service = recordBuild.mock.calls[1][1].components;
+    expect(service).toContainEqual({
+      name: "acme/web-app",
+      version: "2.4.1",
+      direct: true,
+      dev: false,
+      via: [],
+      ecosystem: "GitHub",
+    });
+    expect(kv.get("coolify:resource:p2")).toMatchObject({
+      apps: [
+        {
+          source: "acme/web-app",
+          version: "2.4.1",
+          assumed: true,
+          latest: "3.0.0",
+          unclear: ["GHSA-dddd-eeee-ffff"],
+        },
+      ],
+    });
   });
 });
 

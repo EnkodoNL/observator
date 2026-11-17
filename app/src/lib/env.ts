@@ -53,6 +53,11 @@ const schema = z.object({
   SECRETS_KEY: secretsKey,
   SECRETS_KEY_PREVIOUS: secretsKey,
   /**
+   * Optional GitHub token for the releases and security advisories of apps in Coolify services:
+   * 5000 requests an hour instead of 60. Public data only, so a token without any scope will do.
+   */
+  GITHUB_TOKEN: z.string().trim().optional(),
+  /**
    * A public, read-only demo: visitors without a session are let in as a viewer who can look at
    * everything except users and accounts, and change nothing. Signing in still works as usual.
    */

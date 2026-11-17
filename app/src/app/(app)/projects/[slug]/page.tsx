@@ -270,7 +270,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               actions={actions}
               empty={
                 project.coolifyKind
-                  ? "Packages inside its images are not read yet; the runtimes and products above are."
+                  ? "No advisory with a fix for what this runs: Coolify's image scan and the apps' own advisories found none. The Setup tab says what was read."
                   : !latest
                     ? "Packages are checked after the first build reports."
                     : latest.lockfileType === "none"

@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { describe, expect, it } from "vitest";
+import { fixedFor, inRange, parseRange } from "./ranges";
+import { newestIn, parseAdvisories, parseReleases } from "./repos";
+
+describe("advisory ranges", () => {
+  it("reads the ranges repositories write", () => {
+    expect(inRange("2.5.7", ">= 1.0.6, <= 2.5.7")).toBe(true);
+    expect(inRange("2.5.8", ">= 1.0.6, <= 2.5.7")).toBe(false);
+    expect(inRange("1.39.0", "< 1.40.1")).toBe(true);
+    expect(inRange("2.0.0", "<=2.0.0")).toBe(true);
+    expect(inRange("3.4.0", "3.4.0")).toBe(true);
+    expect(inRange("1.2.3", "v1.2.3")).toBe(true);
+  });
+
+  it("reads free text as far as it says something, and never guesses the rest", () => {
+    expect(inRange("2.4.0", "current (≥ 2.3.1, latest)")).toBe(true);
+    expect(inRange("2.3.0", "current (≥ 2.3.1, latest)")).toBe(false);
+    expect(parseRange("all versions before the rewrite")).toBeNull();
+    expect(inRange("1.0.0", "all versions before the rewrite")).toBeNull();
+    expect(inRange("latest", "< 2.0.0")).toBeNull();
+  });
+
+  it("reads all versions, a hyphen range and a list of exact (pre-)releases", () => {
+    expect(inRange("2.5.9", "*")).toBe(true);
+    expect(inRange("1.23.10", "1.23.0 - 1.23.15")).toBe(true);
+    expect(inRange("1.23.16", "1.23.0 - 1.23.15")).toBe(false);
+    expect(inRange("2.5.9", "2.0.0-beta.0, 2.0.0-beta.1")).toBe(false);
+    expect(inRange("2.0.0", "2.0.0, 2.0.1")).toBe(true);
+  });
+
+  it("takes the lowest patched version above the running one", () => {
+    expect(fixedFor("2.5.7", "2.5.9")).toBe("2.5.9");
+    expect(fixedFor("1.23.0", "2.0.1, 1.23.17")).toBe("1.23.17");
+    expect(fixedFor("3.0.0", "2.5.9")).toBe("");
+    expect(fixedFor("1.0.0", "")).toBe("");
+  });
+});
+
+describe("repository data", () => {
+  it("keeps stable releases with a version, newest first, and finds the newest in a line", () => {
+    const releases = parseReleases([
+      { tag_name: "v1.9.0", published_at: "2026-01-01T00:00:00Z" },
+      { tag_name: "2.0.0-beta.1", prerelease: true },
+      { tag_name: "app-1.10.2", published_at: "2026-02-01T00:00:00Z" },
+      { tag_name: "nightly", published_at: "2026-03-01T00:00:00Z" },
+      { tag_name: "v2.1.0", draft: true },
+    ]);
+    expect(releases.map((r) => r.version)).toEqual(["1.10.2", "1.9.0"]);
+    expect(newestIn(releases, "1")?.version).toBe("1.10.2");
+    expect(newestIn(releases, "1.9")?.version).toBe("1.9.0");
+    expect(newestIn(releases, "2")).toBeNull();
+    expect(newestIn(releases, null)?.version).toBe("1.10.2");
+  });
+
+  it("reads published advisories, one per affected range", () => {
+    const advisories = parseAdvisories([
+      {
+        ghsa_id: "GHSA-aaaa-bbbb-cccc",
+        cve_id: "CVE-2026-0001",
+        severity: "medium",
+        summary: "Header injection",
+        html_url: "https://github.com/example/app/security/advisories/GHSA-aaaa-bbbb-cccc",
+        updated_at: "2026-11-01T00:00:00Z",
+        vulnerabilities: [
+          { vulnerable_version_range: ">= 2.1.0, <= 2.5.8", patched_versions: "2.5.9" },
+          { vulnerable_version_range: "< 1.23.17", patched_versions: "1.23.17" },
+        ],
+      },
+      { ghsa_id: "GHSA-dddd-eeee-ffff", severity: "critical", withdrawn_at: "2026-10-01T00:00:00Z" },
+      { ghsa_id: "not-an-id" },
+    ]);
+    expect(advisories).toHaveLength(2);
+    expect(advisories[0]).toMatchObject({
+      id: "GHSA-aaaa-bbbb-cccc",
+      cve: "CVE-2026-0001",
+      severity: "moderate",
+    });
+    expect(advisories.map((a) => a.patched)).toEqual(["2.5.9", "1.23.17"]);
+  });
+});

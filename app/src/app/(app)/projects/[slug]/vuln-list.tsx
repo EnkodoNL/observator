@@ -4,6 +4,7 @@ import { CodeBlock } from "@/components/code-block";
 import { SeverityBadge } from "@/components/status";
 import { packageAdvice } from "@/lib/advice";
 import type { VulnIssueData } from "@/lib/issues/types";
+import { coolifyPackageType, GITHUB_ECOSYSTEM, isCoolifyEcosystem } from "@/lib/ecosystems";
 import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import type { IssueRecord, LockfileType } from "@/lib/pb/types";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 /** How the package got in, from any of its advisories: they share the dependency path. */
 function origin(d: VulnIssueData): string {
   // A Go binary does not say which modules the app imports itself.
-  if (d.ecosystem === GO_ECOSYSTEM) return "Go module";
+  if (d.ecosystem === GO_ECOSYSTEM) return d.direct ? "the program itself" : "Go module";
+  if (d.ecosystem === GITHUB_ECOSYSTEM) return "the app itself";
+  if (isCoolifyEcosystem(d.ecosystem)) return `${coolifyPackageType(d.ecosystem)} package in the image`;
   return d.direct ? "direct" : d.via.length ? `via ${d.via.join(", ")}` : "transitive";
 }
 

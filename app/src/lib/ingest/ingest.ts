@@ -45,9 +45,11 @@ export function reportHash(
   lockfileName: string | null,
   lockfileText: string,
   goBinaries: string | null = null,
+  components: readonly Component[] = [],
 ): string {
   const go = goBinaries === null ? "" : `\0go\0${goBinaries}`;
-  return sha256(`${PARSER_VERSION}\0${packageJson}\0${lockfileName ?? ""}\0${lockfileText}${go}`);
+  const extra = components.length ? `\0components\0${JSON.stringify(components)}` : "";
+  return sha256(`${PARSER_VERSION}\0${packageJson}\0${lockfileName ?? ""}\0${lockfileText}${go}${extra}`);
 }
 
 export async function latestBuild(projectId: string): Promise<BuildRecord | null> {
@@ -107,7 +109,14 @@ export async function recordBuild(
     : files.goBinaries !== null
       ? "go"
       : "none";
-  const lockfileHash = reportHash(files.packageJson ?? "", lockfileName, lockfileText, files.goBinaries);
+  const extra = files.components ?? [];
+  const lockfileHash = reportHash(
+    files.packageJson ?? "",
+    lockfileName,
+    lockfileText,
+    files.goBinaries,
+    extra,
+  );
   // A bad file is reported as a parse error below, with the other packages kept as they were.
   const go = (() => {
     if (files.goBinaries === null) return null;
@@ -146,6 +155,7 @@ export async function recordBuild(
       const components = [
         ...(pkg && lockfileName ? parseLockfile(lockfileName, lockfileText, pkg).components : []),
         ...(goApp?.components ?? []),
+        ...extra,
       ];
       Object.assign(changes, diffComponents(await currentComponents(project.id), components));
       await replaceComponents(project.id, components);
