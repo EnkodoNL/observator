@@ -94,6 +94,42 @@ describe("renderEvents", () => {
     expect(single.summary).toContain("Pin node:22.23.4-alpine and redeploy.");
   });
 
+  it("calls a newer patch from endoflife.date an update, with the image to set in Coolify", () => {
+    const patch: IssueEvent = {
+      ...runtimeEvent("p1", "mariadb"),
+      key: "runtime_security:mariadb:11.8",
+      severity: "moderate",
+      data: {
+        runtime: "mariadb",
+        running: "11.8.9",
+        target: "11.8.10",
+        line: "11.8",
+        securityReleases: [],
+        os: "",
+        image: { name: "mariadb", embedded: false },
+      },
+    };
+    const msg = renderEvents("runtime.security_update", [patch], ctx);
+    expect(msg.title).toBe("MariaDB update for api: 11.8.10");
+    expect(msg.tone).toBe("moderate");
+    expect(msg.summary).toContain("11.8.10 is the newest patch of 11.8.");
+    expect(msg.summary).toContain("Set the image to mariadb:11.8.10 in Coolify and restart.");
+    expect(msg.summary).not.toContain("security release");
+    const inside = renderEvents(
+      "runtime.security_update",
+      [
+        {
+          ...runtimeEvent("p1"),
+          data: { ...runtimeEvent("p1").data, image: { name: "acme/app", embedded: true } },
+        },
+      ],
+      ctx,
+    );
+    expect(inside.summary).toContain(
+      "Update acme/app to a release built with Node.js 22.23.4 or newer, and restart it in Coolify.",
+    );
+  });
+
   it("says no new build plainly, and a deploy without a report as the problem it is", () => {
     const stale = (projectId: string, data: object): IssueEvent => ({
       type: "project.stale",

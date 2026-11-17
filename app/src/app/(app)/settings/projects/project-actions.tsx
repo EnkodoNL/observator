@@ -23,10 +23,13 @@ export function ProjectActions({
   appUrl,
   badge,
   sharedKey,
+  canRotate = true,
 }: {
   id: string;
   name: string;
   appUrl: string;
+  /** false for a project without a key: Observator itself, a Coolify database or service. */
+  canRotate?: boolean;
   /** The project badge as Markdown, for a README. */
   badge?: string;
   /** The shared key that created the project; it keeps reporting to it after a rotate. */
@@ -54,9 +57,11 @@ export function ProjectActions({
               <ShieldCheckIcon /> Copy badge
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={() => setConfirm("rotate")}>
-            <KeyIcon /> Rotate API key
-          </DropdownMenuItem>
+          {canRotate && (
+            <DropdownMenuItem onClick={() => setConfirm("rotate")}>
+              <KeyIcon /> Rotate API key
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => setConfirm("delete")}>
             <TrashIcon /> Delete project

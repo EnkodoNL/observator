@@ -60,7 +60,7 @@ export async function checkDeploys(): Promise<IssueEvent[]> {
   const pb = await adminPb();
   // A uuid from a build that no server had yet (a server added later): look again.
   const unresolved = await pb.collection("projects").getFullList<ProjectRecord>({
-    filter: 'coolifyUuid != "" && coolifyServer = ""',
+    filter: 'coolifyUuid != "" && coolifyServer = "" && coolifyKind = ""',
     fields: "id,coolifyUuid",
   });
   for (const p of unresolved) {
@@ -69,7 +69,8 @@ export async function checkDeploys(): Promise<IssueEvent[]> {
   }
 
   const projects = await pb.collection("projects").getFullList<ProjectRecord>({
-    filter: 'deployWebhookUrl != "" || coolifyServer != ""',
+    // Applications only: databases and services have no deployment history in Coolify.
+    filter: '(deployWebhookUrl != "" || coolifyServer != "") && coolifyKind = ""',
     fields: `id,lastBuildAt,${COOLIFY_FIELDS}`,
   });
   const servers = await serverMap();

@@ -9,9 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { CoolifyServerView } from "@/lib/coolify/servers";
+import { timeAgo } from "@/lib/time";
 import { deleteServerAction, saveServerAction, testServerAction } from "./actions";
 
-type Server = CoolifyServerView & { projects: number };
+type Server = CoolifyServerView & {
+  projects: number;
+  /** The last sync of its databases and services. */
+  synced: { at: string; databases: number | null; services: number | null; error: string | null } | null;
+};
+
+/** "8 databases and 18 services, synced 5 min. ago", or why not. */
+function syncLine(synced: Server["synced"]): string {
+  if (!synced) return "Databases and services: not synced yet.";
+  const n = (count: number | null, one: string, many: string) =>
+    count === null ? `${many}: not readable` : `${count} ${count === 1 ? one : many}`;
+  return `${n(synced.databases, "database", "databases")} and ${n(synced.services, "service", "services")}, synced ${timeAgo(new Date(synced.at))}.`;
+}
 
 function ServerForm({ server, onDone }: { server?: Server; onDone?: () => void }) {
   const [value, setValue] = useState({
@@ -109,6 +122,10 @@ export function CoolifyServers({ servers, canStore }: { servers: Server[]; canSt
               {s.projects === 1 ? "1 linked project" : `${s.projects} linked projects`}
             </span>
           </div>
+          <p className="text-sm text-muted-foreground">
+            {syncLine(s.synced)}
+            {s.synced?.error && <span className="text-warn"> {s.synced.error}</span>}
+          </p>
           <ServerForm server={s} />
           <ConfirmDialog
             trigger={

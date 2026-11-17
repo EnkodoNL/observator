@@ -24,6 +24,15 @@ describe("redeploy", () => {
     expect(canRedeploy({ ...none, coolifyServer: "srv1", coolifyUuid: "abc123def456ghi789jkl012" })).toBe(
       true,
     );
+    // A Coolify database or service is restarted in Coolify, not redeployed from here.
+    expect(
+      canRedeploy({
+        ...none,
+        coolifyServer: "srv1",
+        coolifyUuid: "abc123def456ghi789jkl012",
+        coolifyKind: "database",
+      }),
+    ).toBe(false);
     // A uuid that no connected server has yet is not enough.
     expect(canRedeploy({ ...none, coolifyUuid: "abc123def456ghi789jkl012" })).toBe(false);
   });

@@ -175,6 +175,85 @@ export async function listApplications(server: {
   });
 }
 
+/** One standalone database: its kind ("mariadb" from "standalone-mariadb") and its image. */
+export interface CoolifyDatabase {
+  uuid: string;
+  name: string;
+  kind: string;
+  image: string;
+}
+
+export function parseDatabases(body: unknown): CoolifyDatabase[] {
+  if (!Array.isArray(body)) return [];
+  return body.flatMap((d: Record<string, unknown>) => {
+    const uuid = text(d?.uuid);
+    if (!COOLIFY_UUID.test(uuid)) return [];
+    return [
+      {
+        uuid,
+        name: text(d.name).slice(0, 100) || uuid,
+        kind: text(d.database_type)
+          .replace(/^standalone-/, "")
+          .slice(0, 32),
+        image: text(d.image).slice(0, 500),
+      },
+    ];
+  });
+}
+
+/** One service (a compose stack Coolify runs: a one-click app or your own compose). */
+export interface CoolifyService {
+  uuid: string;
+  name: string;
+  type: string;
+}
+
+export function parseServices(body: unknown): CoolifyService[] {
+  if (!Array.isArray(body)) return [];
+  return body.flatMap((s: Record<string, unknown>) => {
+    const uuid = text(s?.uuid);
+    if (!COOLIFY_UUID.test(uuid)) return [];
+    return [{ uuid, name: text(s.name).slice(0, 100) || uuid, type: text(s.service_type).slice(0, 64) }];
+  });
+}
+
+/** The images of a service's parts, from GET /api/v1/services/{uuid}: its applications and databases. */
+export function parseServiceImages(body: unknown): { name: string; image: string }[] {
+  const service = (body ?? {}) as { applications?: unknown; databases?: unknown };
+  const parts = [service.applications, service.databases].flatMap((list) =>
+    Array.isArray(list) ? list : [],
+  );
+  return parts.flatMap((p: Record<string, unknown>) => {
+    const image = text(p?.image).slice(0, 500);
+    return image ? [{ name: text(p.name).slice(0, 100), image }] : [];
+  });
+}
+
+/** A Coolify list endpoint, or why it could not be read. */
+async function coolifyList<T>(
+  server: { base: string; token: string },
+  path: string,
+  parse: (body: unknown) => T,
+): Promise<T | { error: string }> {
+  return coolifyRequest(server.base, async () => {
+    const res = await coolifyGet(`${server.base}/api/v1/${path}`, server.token);
+    if (!res.ok) return { error: await coolifyRefusal(res) };
+    return parse(await res.json());
+  });
+}
+
+/** Every standalone database the token can read (permission read), or why not. */
+export const listDatabases = (server: { base: string; token: string }) =>
+  coolifyList(server, "databases", parseDatabases);
+
+/** Every service the token can read, or why not. */
+export const listServices = (server: { base: string; token: string }) =>
+  coolifyList(server, "services", parseServices);
+
+/** The images of one service's parts, or why they could not be read. */
+export const serviceImages = (server: { base: string; token: string }, uuid: string) =>
+  coolifyList(server, `services/${encodeURIComponent(uuid)}`, parseServiceImages);
+
 /** Whether this server has the application: how a uuid from a build finds its server. */
 export async function hasApplication(
   server: { base: string; token: string },

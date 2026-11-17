@@ -9,7 +9,7 @@ import {
   type StaleData,
   type VulnIssueData,
 } from "@/lib/issues/types";
-import { pinAction, runtimeLabel } from "@/lib/runtimes/labels";
+import { runtimeLabel, updateAction } from "@/lib/runtimes/labels";
 import type { Severity } from "@/lib/pb/types";
 import { maxSeverity, severityRank } from "@/lib/severity";
 import { formatDate } from "@/lib/time";
@@ -66,32 +66,37 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
 
   switch (type) {
     case "runtime.security_update": {
-      const pinText = (d: RuntimeSecurityData) =>
-        `${pinAction(d.runtime, d.target, d.os) ?? `move to ${d.target}`} and redeploy`;
+      // A security release (Node, Go), or only a newer patch (endoflife.date has no security flag).
+      const isSecurity = (d: RuntimeSecurityData) => d.securityReleases.length > 0;
       const items = events.map((e) => {
         const d = e.data as unknown as RuntimeSecurityData;
         return {
-          severity: "high" as Severity,
+          severity: (isSecurity(d) ? "high" : "moderate") as Severity,
           title: name(ctx, e.projectId),
-          detail: `runs ${runtimeLabel(d.runtime)} ${d.running}; ${pinText(d)}`,
+          detail: `runs ${runtimeLabel(d.runtime)} ${d.running}; ${updateAction(d)}`,
           url: `${ctx.appUrl}/projects/${ctx.projects.get(e.projectId)?.slug ?? ""}`,
         };
       });
       const all = events.map((e) => e.data as unknown as RuntimeSecurityData);
+      const security = all.some(isSecurity);
+      const kind = security ? "security update" : "update";
       const runtimes = [...new Set(all.map((d) => runtimeLabel(d.runtime)))].join(" and ");
       const targets = [...new Set(all.map((d) => d.target))];
       const first = all[0];
+      const why = isSecurity(first)
+        ? `${first.securityReleases.at(-1)} is a security release.`
+        : `${first.target} is the newest patch of ${first.line}.`;
       return {
         event: type,
-        tone: "high",
+        tone: security ? "high" : "moderate",
         title:
           projects.length === 1 && events.length === 1
-            ? `${prefix}${runtimeLabel(first.runtime)} security update for ${name(ctx, projects[0])}: ${first.target}`
-            : `${prefix}${runtimes} security update for ${plural(projects.length, "project")}`,
+            ? `${prefix}${runtimeLabel(first.runtime)} ${kind} for ${name(ctx, projects[0])}: ${first.target}`
+            : `${prefix}${runtimes} ${kind} for ${plural(projects.length, "project")}`,
         summary:
           projects.length === 1 && events.length === 1
-            ? `${name(ctx, projects[0])} runs ${runtimeLabel(first.runtime)} ${first.running}. ${first.securityReleases.at(-1)} is a security release. ${pinText(first).replace(/^./, (c) => c.toUpperCase())}.`
-            : `A newer ${runtimes} security release is out (${targets.join(", ")}). These projects still run an older version:`,
+            ? `${name(ctx, projects[0])} runs ${runtimeLabel(first.runtime)} ${first.running}. ${why} ${updateAction(first).replace(/^./, (c) => c.toUpperCase())}.`
+            : `A newer ${runtimes} ${security ? "security release" : "patch"} is out (${targets.join(", ")}). These projects still run an older version:`,
         ...cap(projects.length === 1 && events.length === 1 ? [] : items),
         actions:
           projects.length === 1
@@ -106,10 +111,11 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
         return {
           severity: e.severity,
           title: name(ctx, e.projectId),
-          detail:
+          detail: `${
             d.phase === "eol"
               ? `${runtimeLabel(d.runtime)} ${d.line} has been end-of-life since ${d.end}`
-              : `${runtimeLabel(d.runtime)} ${d.line} ends on ${d.end}`,
+              : `${runtimeLabel(d.runtime)} ${d.line} ends on ${d.end}`
+          }${d.image ? ` (image ${d.image.name})` : ""}`,
         };
       });
       const d = events[0].data as unknown as RuntimeEolData;

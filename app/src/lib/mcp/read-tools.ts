@@ -6,7 +6,7 @@ import { listChannels, toView } from "@/lib/data/channels";
 import { listIngestKeys } from "@/lib/data/ingest-keys";
 import { runtimeOverview } from "@/lib/data/runtime-overview";
 import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages";
-import { listProjects } from "@/lib/data/projects";
+import { isKeyless, listProjects } from "@/lib/data/projects";
 import { getOverview, getProjectView } from "@/lib/data/views";
 import { analyzeDockerfile } from "@/lib/dockerfile";
 import { appId } from "@/lib/app-board";
@@ -23,16 +23,25 @@ import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/i
 import { staleReason, vulnVersions } from "@/lib/issues/types";
 import { jobStates } from "@/lib/jobs/scheduler";
 import { effectiveLabels, hasLabels, parseLabels } from "@/lib/labels";
-import type { BuildChanges, BuildRecord, IssueRecord } from "@/lib/pb/types";
+import type { BuildChanges, BuildRecord, IssueRecord, ProjectRecord } from "@/lib/pb/types";
+import { adminPb } from "@/lib/pb/admin";
 import { loadEvaluators } from "@/lib/runtimes";
-import { CHECKED_RUNTIMES, lineDescription, pinAdvice, pinLine, runtimeLabel } from "@/lib/runtimes/labels";
+import {
+  CHECKED_RUNTIMES,
+  imageAction,
+  lineDescription,
+  pinAdvice,
+  pinLine,
+  runtimeLabel,
+} from "@/lib/runtimes/labels";
 import type { Evaluator } from "@/lib/runtimes/types";
 import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
 import { isStale } from "@/lib/status";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
 import { deployStatus } from "@/lib/deploys/coolify";
-import { listApplications } from "@/lib/coolify/client";
+import { listApplications, listDatabases, listServices } from "@/lib/coolify/client";
+import { resourceInventory } from "@/lib/coolify/inventory";
 import { listServers, serverAccess } from "@/lib/coolify/servers";
 import { listDomains, type WatchedDomain } from "@/lib/domains/data";
 import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
@@ -70,7 +79,16 @@ function describeRuntimes(
       .map((i) => i.data as unknown as RuntimeSecurityData)
       .find((d) => d.runtime === r.name);
     const eol = issues.eol.map((i) => i.data as unknown as RuntimeEolData).find((d) => d.runtime === r.name);
-    const pin = security ? pinLine(r.name, security.target, security.os) : null;
+    // A Coolify database or service gets a new image in Coolify instead of a Dockerfile pin.
+    const image = security?.image;
+    const pin = image
+      ? image.embedded
+        ? null
+        : `${image.name}:${security!.target}`
+      : security
+        ? pinLine(r.name, security.target, security.os)
+        : null;
+    const advice = image ? imageAction(r.name, security!.target, image) : pin ? pinAdvice(r.name) : null;
     return {
       name: r.name,
       label: runtimeLabel(r.name),
@@ -78,7 +96,13 @@ function describeRuntimes(
       checked: CHECKED_RUNTIMES.includes(r.name),
       ...(evaluators ? { line: lineDescription(evaluators.get(r.name)?.(r.version) ?? null) } : {}),
       securityUpdate: security
-        ? { target: security.target, ...(pin ? { pin, advice: pinAdvice(r.name) } : {}) }
+        ? {
+            target: security.target,
+            // false: endoflife.date names no security release, only a newer patch.
+            security: security.securityReleases.length > 0,
+            ...(pin ? { pin } : {}),
+            ...(advice ? { advice } : {}),
+          }
         : null,
       endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
     };
@@ -123,7 +147,7 @@ export const readTools: Record<string, Tool> = {
   list_projects: defineTool({
     title: "List projects",
     description:
-      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, unchecked = a build with nothing Observator can check, such as an unchecked runtime without a lockfile, none = no build yet), runtimes (such as node 22.11.0 or go 1.26.2; Node.js and Go are checked), app version, advisory counts, labels and last build. Advisories in packages only dev dependencies pull in are counted under buildOnly and do not make a project vulnerable, unless the countDevDependencies setting is on. Start here.",
+      "All projects with their status (ok, update = a runtime security or end-of-life update, vulnerable = open package advisories, unchecked = a build with nothing Observator can check, such as an unchecked runtime without a lockfile, none = no build yet), runtimes (such as node 22.11.0, go 1.26.2 or mariadb 11.8.9; Node.js, Go and servers such as MariaDB, PostgreSQL and Redis are checked), app version, advisory counts, labels and last build. Advisories in packages only dev dependencies pull in are counted under buildOnly and do not make a project vulnerable, unless the countDevDependencies setting is on. Start here.",
     input: z.object({
       labels: z
         .array(z.string())
@@ -160,6 +184,9 @@ export const readTools: Record<string, Tool> = {
           lastBuild: lastBuildAt?.toISOString() ?? null,
           sharedKey: p.ingestKey ? (keyName.get(p.ingestKey) ?? "revoked") : null,
           server: p.instance || null,
+          // A Coolify database or service, synced from Coolify rather than reported by a build.
+          source: p.coolifyKind ? `coolify-${p.coolifyKind}` : null,
+          ...(p.coolifyGoneAt ? { goneFromCoolify: p.coolifyGoneAt } : {}),
         }));
       return { count: projects.length, projects };
     },
@@ -178,10 +205,11 @@ export const readTools: Record<string, Tool> = {
       const appUrl = env().APP_URL;
       const app = appId(p);
       const appToken = await appBadgeToken(app);
-      const [watched, settings, deploys] = await Promise.all([
+      const [watched, settings, deploys, resource] = await Promise.all([
         listDomains(),
         getSettings(),
         p.deployWebhookUrl ? deployStatus(p.id) : null,
+        p.coolifyKind ? resourceInventory(p.id) : null,
       ]);
       const domains = watched
         .map((w) => ({ ...w, hosts: w.hosts.filter((h) => h.project === p.id) }))
@@ -264,8 +292,30 @@ export const readTools: Record<string, Tool> = {
               error: latest.error || null,
             }
           : null,
+        // A Coolify database or service: its images as read from the registry. versionNow is what a
+        // moving tag points to now; what runs can be older until Coolify pulls it again.
+        coolifyResource: p.coolifyKind
+          ? {
+              kind: p.coolifyKind,
+              type: resource?.type ?? null,
+              server: resource?.server ?? null,
+              syncedAt: resource?.syncedAt ?? null,
+              goneAt: p.coolifyGoneAt || null,
+              images: (resource?.images ?? []).map((i) => ({
+                part: i.part || null,
+                image: i.ref,
+                pinned: i.pinned,
+                product: i.product,
+                version: i.version,
+                versionNow: i.versionNow,
+                runtimes: i.runtimes,
+                source: i.source,
+                error: i.error,
+              })),
+            }
+          : null,
         setup: {
-          apiKeyPrefix: p.ingestKey || p.apiKeyPrefix === "self" ? null : p.apiKeyPrefix,
+          apiKeyPrefix: p.ingestKey || isKeyless(p) ? null : p.apiKeyPrefix,
           sharedKey: Boolean(p.ingestKey),
           reportedName: p.sourceName || null,
           server: p.instance || null,
@@ -294,13 +344,38 @@ export const readTools: Record<string, Tool> = {
   }),
 
   list_coolify_applications: defineTool({
-    title: "Coolify applications",
+    title: "Coolify applications, databases and services",
     description:
-      "The applications on the Coolify servers connected under Settings → Coolify (name, uuid, domains, build pack), to link a project with update_project's coolify. Dockerfile apps link themselves through COOLIFY_RESOURCE_UUID in their build; Docker Compose apps need this.",
+      "What the Coolify servers connected under Settings → Coolify run: applications (name, uuid, domains, build pack), to link a project with update_project's coolify (Dockerfile apps link themselves through COOLIFY_RESOURCE_UUID in their build; Docker Compose apps need this), and databases and services with their image and the project Observator keeps for each (synced every hour, no snippet).",
     input: z.object({}),
     run: async () => {
-      const servers = await listServers();
-      const out: { server: string; uuid: string; name: string; domains: string[]; buildPack: string }[] = [];
+      const pb = await adminPb();
+      const [servers, synced] = await Promise.all([
+        listServers(),
+        pb.collection("projects").getFullList<ProjectRecord>({
+          filter: 'coolifyKind != ""',
+          fields: "slug,coolifyServer,coolifyUuid,coolifyKind",
+        }),
+      ]);
+      const projectOf = (server: string, uuid: string) =>
+        synced.find((p) => p.coolifyServer === server && p.coolifyUuid === uuid)?.slug ?? null;
+      const applications: {
+        server: string;
+        uuid: string;
+        name: string;
+        domains: string[];
+        buildPack: string;
+      }[] = [];
+      const databases: {
+        server: string;
+        uuid: string;
+        name: string;
+        kind: string;
+        image: string;
+        project: string | null;
+      }[] = [];
+      const services: { server: string; uuid: string; name: string; type: string; project: string | null }[] =
+        [];
       const errors: string[] = [];
       for (const server of servers) {
         const access = serverAccess(server);
@@ -308,13 +383,27 @@ export const readTools: Record<string, Tool> = {
           errors.push(`${server.name}: no token, or SECRETS_KEY changed`);
           continue;
         }
-        const apps = await listApplications(access);
+        const [apps, dbs, svcs] = await Promise.all([
+          listApplications(access),
+          listDatabases(access),
+          listServices(access),
+        ]);
         if ("error" in apps) errors.push(`${server.name}: ${apps.error}`);
-        else out.push(...apps.map((a) => ({ server: server.name, ...a })));
+        else applications.push(...apps.map((a) => ({ server: server.name, ...a })));
+        if (!("error" in dbs))
+          databases.push(
+            ...dbs.map((d) => ({ server: server.name, ...d, project: projectOf(server.id, d.uuid) })),
+          );
+        if (!("error" in svcs))
+          services.push(
+            ...svcs.map((v) => ({ server: server.name, ...v, project: projectOf(server.id, v.uuid) })),
+          );
       }
       return {
         servers: servers.length,
-        applications: out,
+        applications,
+        databases,
+        services,
         errors,
         ...(servers.length === 0
           ? { hint: "No Coolify server is connected; add one in the web UI under Settings → Coolify." }

@@ -15,8 +15,9 @@ schedule and OSV.dev, and stays quiet until there is something to do.
 - **Runtimes:** the exact Node.js version per app, its release line (current, LTS, maintenance,
   end-of-life), and "Security update available: 22.23.4" with the image tag to pin. Go the same way:
   the version the program was compiled with, its support from go.dev, and a security update when the
-  standard library has advisories for it. Bun, Deno, Python, PHP and Ruby are detected and shown as
-  well, without release checks so far.
+  standard library has advisories for it. Servers and databases such as MariaDB, PostgreSQL, Redis and
+  nginx: their release line, end of life and newest patch from endoflife.date. Bun, Deno, Python, PHP
+  and Ruby are detected and shown as well, without release checks so far.
 - **Packages:** every npm package from `package-lock.json`, `yarn.lock` (v1 and Berry) or
   `pnpm-lock.yaml`, every Go module linked into a Go program, and a downloaded Go program itself
   (PocketBase, for one), checked against OSV.dev, with severity, the fixed version and whether it is
@@ -432,6 +433,36 @@ A linked project gets:
 - the application's domains (see [Domains](#domains))
 - a *Redeploy* button, without a deploy webhook
 
+### Coolify databases and services
+
+Databases (MariaDB, PostgreSQL, Redis, Dragonfly, ...) and services (umami, uptime-kuma and the
+other one-click apps, or your own compose) have no Dockerfile of yours, so no snippet reports them.
+With a server connected, Observator lists them every hour through the same token (the `read`
+permission only) and makes each a project of its own, labelled `coolify:database` or
+`coolify:service`. Nothing reports from inside them; instead their images are read from the registry,
+anonymously, the way `docker pull` reads them:
+
+- **The product and its version.** MariaDB, PostgreSQL, MySQL, MongoDB, Redis, Valkey, ClickHouse,
+  RabbitMQ, Meilisearch, nginx, Traefik and Grafana are checked against
+  [endoflife.date](https://endoflife.date): the release line, its end of life (a warning 30 days
+  ahead) and its newest patch. endoflife.date says nothing about security, so a newer patch is
+  offered as an update (moderate), never as a security release.
+- **Runtimes inside.** An image's `NODE_VERSION` is checked like any Node.js: an app image on an
+  end-of-life Node shows up as such. Python, PHP and Ruby are shown.
+- **Moving tags.** `mariadb:11` or `latest` can point to another version every week, and Coolify does
+  not say which one runs. Observator then records only the release line, shows what the tag points to
+  now, and checks the line's end of life, not its patches. Pin the image to an exact version in Coolify
+  (`mariadb:11.8.10`) for the full check. A database restart in Coolify pulls its image again; a
+  service only with *Pull latest*.
+- **The fix** is a new image in Coolify, not a pin in a Dockerfile: "set the image to
+  `mariadb:11.8.10` in Coolify and restart", or for Node inside an app's image, a newer release of
+  that app.
+
+Such a project has no key, no snippet and no Redeploy button. Its *Setup* tab lists the images with
+their tag, what the tag points to now, the runtimes inside and the source repository. A database or
+service that a successful listing no longer has is marked gone and its issues close; delete it from
+the project menu. *Settings → Coolify* shows per server how many were synced, and when.
+
 ### Redeploy
 
 *Redeploy* on the project page or in a notification starts a new deployment, always after a
@@ -781,8 +812,11 @@ log instead of dropping it silently.
 
 ## Limitations
 
-- Node.js and Go are the runtimes with release and end-of-life checks; other runtimes are shown, not
-  checked.
+- Node.js and Go are the runtimes with release and end-of-life checks, plus the servers endoflife.date
+  knows (MariaDB, PostgreSQL, Redis, ...) for Coolify databases and services; other runtimes are
+  shown, not checked.
+- Coolify databases and services: only public images can be read from their registry, a moving tag
+  says what it points to now rather than what runs, and packages inside their images are not read.
 - npm packages and Go modules only, and only the root `package.json` of a workspace. A Go binary does
   not record which modules the app imports itself, so Go modules are not split into direct and
   transitive, and there is no "latest version" lookup for them yet.

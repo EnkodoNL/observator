@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
+import { eolProviders } from "./endoflife";
 import { go } from "./go";
 import { node } from "./node";
 import type { Evaluator, Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
@@ -8,7 +9,7 @@ export type { Runtime, RuntimeEvaluation, RuntimeProvider } from "./types";
 export { pinAction, pinFor, pinStage, runtimeLabel } from "./labels";
 
 /** Runtimes with release checks. Others are reported and shown, not checked. */
-export const PROVIDERS: Record<string, RuntimeProvider> = { node, go };
+export const PROVIDERS: Record<string, RuntimeProvider> = { node, go, ...eolProviders };
 
 export const providerFor = (name: string): RuntimeProvider | null => PROVIDERS[name] ?? null;
 

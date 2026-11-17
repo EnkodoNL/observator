@@ -6,6 +6,7 @@ import { publish } from "@/lib/notify/publish";
 import { sendDigestIfDue } from "@/lib/notify/digest";
 import { processQueue } from "@/lib/notify/queue";
 import { sendReminders } from "@/lib/notify/reminders";
+import { syncCoolifyResources } from "@/lib/coolify/resources";
 import { checkDeploys } from "@/lib/deploys/coolify";
 import { refreshLatest } from "@/lib/npm-latest";
 import { checkAllProjects } from "@/lib/osv/check";
@@ -62,6 +63,15 @@ export const JOBS = {
     lockTtlMs: 10 * MINUTE,
     run: async () => {
       await checkDeploys();
+    },
+  },
+  /** Coolify's databases and services as projects: their images, what runs in them, what is gone. */
+  "coolify-resources": {
+    label: "Coolify databases and services",
+    intervalMs: HOUR,
+    lockTtlMs: 15 * MINUTE,
+    run: async () => {
+      await syncCoolifyResources();
     },
   },
   "notify-queue": {

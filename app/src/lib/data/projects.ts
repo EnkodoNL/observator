@@ -61,8 +61,15 @@ export async function createProject(name: string): Promise<{ project: ProjectRec
   return { project, apiKey: key };
 }
 
+/** Observator itself and Coolify's databases and services are recorded without a key. */
+export const isKeyless = (p: Pick<ProjectRecord, "apiKeyPrefix" | "coolifyKind">) =>
+  p.apiKeyPrefix === "self" || Boolean(p.coolifyKind);
+
 export async function rotateApiKey(projectId: string): Promise<string> {
   const pb = await adminPb();
+  const project = await pb.collection("projects").getOne<ProjectRecord>(projectId);
+  // A key would let anyone who has it report builds into a project nothing reports to.
+  if (isKeyless(project)) throw new Error("This project is recorded by Observator itself and has no key.");
   const { key, hash, prefix } = newApiKey();
   await pb.collection("projects").update(projectId, { apiKeyHash: hash, apiKeyPrefix: prefix });
   return key;

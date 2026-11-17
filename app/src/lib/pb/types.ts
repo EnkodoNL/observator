@@ -64,6 +64,10 @@ export interface ProjectRecord extends BaseRecord {
   coolifyUuid: string;
   /** Where the link came from: "build", "picked" or "self". */
   coolifySource: "" | "build" | "picked" | "self";
+  /** A Coolify database or service synced from the API, with no snippet; "" for an app. */
+  coolifyKind: "" | "database" | "service";
+  /** When a successful listing on its server no longer had it. */
+  coolifyGoneAt: string;
 }
 
 export interface CoolifyServerRecord extends BaseRecord {

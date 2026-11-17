@@ -39,8 +39,11 @@ export function maskUrl(url: string): string {
 
 /** Whether a project can be redeployed from Observator: a Coolify link or a deploy webhook. */
 export const canRedeploy = (
-  project: Pick<ProjectRecord, "deployWebhookUrl" | "coolifyServer" | "coolifyUuid">,
-) => Boolean(project.deployWebhookUrl || (project.coolifyServer && project.coolifyUuid));
+  project: Pick<ProjectRecord, "deployWebhookUrl" | "coolifyServer" | "coolifyUuid"> &
+    Partial<Pick<ProjectRecord, "coolifyKind">>,
+) =>
+  // A Coolify database or service is restarted in Coolify, not redeployed from here.
+  !project.coolifyKind && Boolean(project.deployWebhookUrl || (project.coolifyServer && project.coolifyUuid));
 
 /**
  * A Coolify deploy webhook with force set; any other URL as it is. Coolify's own webhook URL

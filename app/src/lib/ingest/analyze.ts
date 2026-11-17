@@ -4,7 +4,8 @@ import { activeIssues } from "@/lib/data/views";
 import type { IssueEvent } from "@/lib/issues/events";
 import { evaluateProject } from "@/lib/issues/evaluate";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { pinAction, runtimeLabel } from "@/lib/runtimes";
+import { runtimeLabel } from "@/lib/runtimes";
+import { updateAction } from "@/lib/runtimes/labels";
 import { checkProject } from "@/lib/osv/check";
 import type { IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
 import { getSettings } from "@/lib/settings";
@@ -38,9 +39,9 @@ export function describeIssues(issues: IssueRecord[], countDev: boolean): string
   const lines: string[] = [];
   for (const security of open.filter((i) => i.kind === "runtime_security")) {
     const d = security.data as unknown as RuntimeSecurityData;
-    const action = pinAction(d.runtime, d.target, d.os);
+    const action = updateAction(d);
     lines.push(
-      `${runtimeLabel(d.runtime)} security update available: ${d.target}.${action ? ` ${action[0].toUpperCase()}${action.slice(1)} and redeploy.` : ""}`,
+      `${runtimeLabel(d.runtime)} ${d.securityReleases.length ? "security update" : "newer patch"} available: ${d.target}. ${action[0].toUpperCase()}${action.slice(1)}.`,
     );
   }
   for (const eol of open.filter((i) => i.kind === "runtime_eol")) {

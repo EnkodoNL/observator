@@ -4,7 +4,7 @@ import type { Runtime, RuntimeEvaluation } from "@/lib/runtimes/types";
 import { GO_ECOSYSTEM } from "@/lib/lockfile/go";
 import type { DeployState } from "@/lib/deploys/state";
 import { maxSeverity } from "@/lib/severity";
-import type { RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "./types";
+import type { ResourceImage, RuntimeEolData, RuntimeSecurityData, StaleData, VulnIssueData } from "./types";
 
 export interface DesiredIssue {
   kind: IssueKind;
@@ -37,7 +37,8 @@ export interface VulnInput {
 }
 
 export interface DesiredInput {
-  build: { runtimes: Runtime[]; os: string } | null;
+  /** images: per runtime, the image it comes from, for a Coolify database or service. */
+  build: { runtimes: Runtime[]; os: string; images?: Record<string, ResourceImage> } | null;
   lastBuildAt: Date | null;
   components: ComponentInput[];
   vulns: VulnInput[];
@@ -55,13 +56,19 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
   const { build } = input;
 
   for (const ev of build ? input.evaluations : []) {
+    const image = build!.images?.[ev.runtime];
     if (ev.securityUpdate) {
+      // Without named security releases (endoflife.date has no such flag) it is a newer patch:
+      // worth doing, but not claimed to be a security fix.
+      const security = ev.securityUpdate.releases.length > 0;
       out.push({
         kind: "runtime_security",
         key: `runtime_security:${ev.runtime}:${ev.line}`,
         revision: ev.securityUpdate.target,
-        severity: "high",
-        title: `${ev.label} ${ev.version} has a security update: ${ev.securityUpdate.target}`,
+        severity: security ? "high" : "moderate",
+        title: security
+          ? `${ev.label} ${ev.version} has a security update: ${ev.securityUpdate.target}`
+          : `${ev.label} ${ev.version} has a newer patch: ${ev.securityUpdate.target}`,
         data: {
           runtime: ev.runtime,
           running: ev.version,
@@ -69,6 +76,7 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
           line: ev.line,
           securityReleases: ev.securityUpdate.releases,
           os: build!.os,
+          ...(image ? { image } : {}),
         },
       });
     }
@@ -83,7 +91,14 @@ export function computeDesired(input: DesiredInput): DesiredIssue[] {
           phase === "eol"
             ? `${ev.label} ${ev.line} is end-of-life`
             : `${ev.label} ${ev.line} reaches end-of-life on ${ev.end}`,
-        data: { runtime: ev.runtime, running: ev.version, line: ev.line, end: ev.end, phase },
+        data: {
+          runtime: ev.runtime,
+          running: ev.version,
+          line: ev.line,
+          end: ev.end,
+          phase,
+          ...(image ? { image } : {}),
+        },
       });
     }
   }

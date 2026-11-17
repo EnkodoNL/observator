@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { formatDate } from "@/lib/time";
+import { EOL_PRODUCTS } from "./endoflife/products";
 import { pinnedGoImage } from "./go/advice";
 import { pinnedImage } from "./node/advice";
 import type { Runtime, RuntimeEvaluation } from "./types";
@@ -18,10 +19,11 @@ const LABELS: Record<string, string> = {
   go: "Go",
   java: "Java",
   dotnet: ".NET",
+  ...EOL_PRODUCTS,
 };
 
 /** Runtimes with release checks; the rest is shown as "not checked yet". */
-export const CHECKED_RUNTIMES = ["node", "go"];
+export const CHECKED_RUNTIMES = ["node", "go", ...Object.keys(EOL_PRODUCTS)];
 
 export const runtimeLabel = (name: string) => LABELS[name] ?? name;
 
@@ -57,6 +59,32 @@ export function pinAction(runtime: string, version: string, os: string): string 
   return pinStage(runtime) === "build"
     ? `pin ${pin} in the build stage, or update a downloaded program such as PocketBase to a release built with Go ${version}`
     : `pin ${pin}`;
+}
+
+/**
+ * What to do for a newer release of a runtime that comes from a Coolify database's or service's
+ * image: another tag for the image's own product, a newer release of the image for a runtime
+ * that runs inside it.
+ */
+export function imageAction(
+  runtime: string,
+  target: string,
+  image: { name: string; embedded: boolean },
+): string {
+  return image.embedded
+    ? `update ${image.name} to a release built with ${runtimeLabel(runtime)} ${target} or newer, and restart it in Coolify`
+    : `set the image to ${image.name}:${target} in Coolify and restart`;
+}
+
+/** The whole action for an update, as a phrase: a new image in Coolify, or a pin and a redeploy. */
+export function updateAction(d: {
+  runtime: string;
+  target: string;
+  os: string;
+  image?: { name: string; embedded: boolean };
+}): string {
+  if (d.image) return imageAction(d.runtime, d.target, d.image);
+  return `${pinAction(d.runtime, d.target, d.os) ?? `move to ${d.target}`} and redeploy`;
 }
 
 /** Why and where to pin, per runtime. */

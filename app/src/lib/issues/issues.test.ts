@@ -76,6 +76,49 @@ function ignore(fields: Partial<IgnoreRecord>): IgnoreRecord {
   };
 }
 
+describe("computeDesired for a Coolify image", () => {
+  it("opens a moderate update for a newer patch without a security flag, with the image to change", () => {
+    const issues = computeDesired({
+      build: {
+        runtimes: [{ name: "mariadb", version: "11.8.9" }],
+        os: "",
+        images: { mariadb: { name: "mariadb", embedded: false } },
+      },
+      lastBuildAt: null,
+      components: [],
+      vulns: [],
+      evaluations: [
+        {
+          runtime: "mariadb",
+          label: "MariaDB",
+          version: "11.8.9",
+          line: "11.8",
+          phase: "active",
+          phaseLabel: "LTS",
+          codename: null,
+          end: "2028-06-04",
+          daysToEol: 900,
+          eolSoon: false,
+          latestInLine: "11.8.10",
+          securityUpdate: { target: "11.8.10", releases: [] },
+          patchAvailable: true,
+          latestSupported: "12.3.4",
+        },
+      ],
+      staleDays: 14,
+      now: new Date("2026-11-17T00:00:00Z"),
+    });
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "runtime_security",
+        severity: "moderate",
+        title: "MariaDB 11.8.9 has a newer patch: 11.8.10",
+        data: expect.objectContaining({ image: { name: "mariadb", embedded: false }, securityReleases: [] }),
+      }),
+    ]);
+  });
+});
+
 describe("computeDesired", () => {
   it("derives runtime and package issues", () => {
     const issues = computeDesired(input());

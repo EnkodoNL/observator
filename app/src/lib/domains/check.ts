@@ -89,7 +89,8 @@ async function alerts(watched: WatchedDomain[], limits: Limits, now: Date): Prom
 async function syncCoolify(): Promise<void> {
   const pb = await adminPb();
   const projects = await pb.collection("projects").getFullList<ProjectRecord>({
-    filter: 'deployWebhookUrl != "" || coolifyServer != ""',
+    // A database has no domains; a service does, and Coolify lists them like an application's.
+    filter: '(deployWebhookUrl != "" || coolifyServer != "") && coolifyKind != "database"',
     fields: `id,${COOLIFY_FIELDS}`,
   });
   const servers = await serverMap();

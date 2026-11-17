@@ -16,9 +16,9 @@ import { renderDomainEvents, renderEvents, type ProjectInfo, type RenderContext 
 
 export async function renderContext(): Promise<RenderContext> {
   const pb = await adminPb();
-  const projects = await pb
-    .collection("projects")
-    .getFullList<ProjectRecord>({ fields: "id,name,slug,deployWebhookUrl,coolifyServer,coolifyUuid" });
+  const projects = await pb.collection("projects").getFullList<ProjectRecord>({
+    fields: "id,name,slug,deployWebhookUrl,coolifyServer,coolifyUuid,coolifyKind",
+  });
   return {
     appUrl: env().APP_URL,
     projects: new Map<string, ProjectInfo>(

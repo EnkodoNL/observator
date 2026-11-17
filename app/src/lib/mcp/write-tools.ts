@@ -122,6 +122,8 @@ export const writeTools: Record<string, Tool> = {
       }
       if (labels !== undefined) p = await setLabels(p.id, labelsOrThrow(labels));
       if (coolify !== undefined) {
+        if (p.coolifyKind)
+          throw new ToolError(`${p.name} is a Coolify ${p.coolifyKind}; its link comes from the sync.`);
         await linkProject(p.id, coolify, "picked");
         p = await resolveProject(p.slug);
       }
@@ -204,6 +206,8 @@ export const writeTools: Record<string, Tool> = {
     run: async ({ project: ref }) => {
       const p = await resolveProject(ref);
       if (p.apiKeyPrefix === "self") throw new ToolError("Observator's own project reports without a key.");
+      if (p.coolifyKind)
+        throw new ToolError(`${p.name} is a Coolify ${p.coolifyKind}, synced from Coolify; it has no key.`);
       const apiKey = await rotateApiKey(p.id);
       changed();
       return {

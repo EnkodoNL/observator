@@ -31,6 +31,11 @@ export interface RuntimeEvaluation {
   patchAvailable: boolean;
   /** Newest version on a supported long-term line, for "move to" advice. */
   latestSupported: string | null;
+  /**
+   * false when only the line is known, as for a moving image tag ("mariadb:11.8"): then no patch
+   * can be compared, which is not the same as being on the latest one. Absent means known.
+   */
+  versionKnown?: boolean;
 }
 
 /** Evaluates a version against release data that is already loaded. */

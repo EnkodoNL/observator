@@ -3,7 +3,7 @@ import "server-only";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createProject, rotateApiKey, setLabels } from "@/lib/data/projects";
+import { createProject, isKeyless, rotateApiKey, setLabels } from "@/lib/data/projects";
 import { analyzeDockerfile, type DockerfileNote } from "@/lib/dockerfile";
 import { env } from "@/lib/env";
 import { matchKey, sharedNameStatus } from "@/lib/ingest/resolve";
@@ -77,6 +77,10 @@ export const installTools: Record<string, Tool> = {
       } else if (args.rotateKey) {
         if (!args.project) throw new ToolError("rotateKey needs project: the slug of the project.");
         const p = await resolveProject(args.project);
+        if (isKeyless(p))
+          throw new ToolError(
+            `${p.name} is recorded by Observator itself (or synced from Coolify) and has no key.`,
+          );
         key = newKey = await rotateApiKey(p.id);
         project = { slug: p.slug, name: p.name, url: projectUrl(p.slug) };
         notes.push(

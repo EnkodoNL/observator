@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { requireUser } from "@/lib/auth/session";
+import { resourceSyncStatus } from "@/lib/coolify/inventory";
 import { listServers, toServerView } from "@/lib/coolify/servers";
 import { adminPb } from "@/lib/pb/admin";
 import type { ProjectRecord } from "@/lib/pb/types";
@@ -15,11 +16,15 @@ export default async function CoolifySettingsPage() {
   const pb = await adminPb();
   const [servers, linked] = await Promise.all([
     listServers(),
-    pb
-      .collection("projects")
-      .getFullList<ProjectRecord>({ filter: 'coolifyUuid != ""', fields: "coolifyServer" }),
+    pb.collection("projects").getFullList<ProjectRecord>({
+      filter: 'coolifyUuid != "" && coolifyKind = ""',
+      fields: "coolifyServer",
+    }),
   ]);
   const count = (id: string) => linked.filter((p) => p.coolifyServer === id).length;
+  const synced = new Map(
+    await Promise.all(servers.map(async (s) => [s.id, await resourceSyncStatus(s.id)] as const)),
+  );
 
   return (
     <section>
@@ -42,9 +47,19 @@ export default async function CoolifySettingsPage() {
           snippet sends it along. A Docker Compose app gets that value only at runtime; pick it on the
           project&rsquo;s Setup tab.
         </p>
+        <p>
+          Databases and services need no snippet: every hour Observator lists them through the same token and
+          reads their images from the registry (versions, runtimes inside). Each becomes a project of its own,
+          labelled <code className="font-mono text-foreground">coolify:database</code> or{" "}
+          <code className="font-mono text-foreground">coolify:service</code>.
+        </p>
       </div>
       <CoolifyServers
-        servers={servers.map((s) => ({ ...toServerView(s), projects: count(s.id) }))}
+        servers={servers.map((s) => ({
+          ...toServerView(s),
+          projects: count(s.id),
+          synced: synced.get(s.id) ?? null,
+        }))}
         canStore={secretsKeySet()}
       />
     </section>

@@ -2,7 +2,15 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
-import { coolifyBase, coolifyRefusal, deployApplication, parseApplications } from "./client";
+import {
+  coolifyBase,
+  coolifyRefusal,
+  deployApplication,
+  parseApplications,
+  parseDatabases,
+  parseServiceImages,
+  parseServices,
+} from "./client";
 
 // A Coolify server on the internet as far as the outbound check goes.
 vi.mock("@/lib/outbound", () => ({
@@ -22,6 +30,55 @@ describe("coolifyBase", () => {
     expect(coolifyBase("https://example.com/coolify/api/v1/")).toBe("https://example.com/coolify");
     expect(coolifyBase("coolify.example.com")).toBeNull();
     expect(coolifyBase("ftp://coolify.example.com")).toBeNull();
+  });
+});
+
+describe("databases and services", () => {
+  it("reads databases with their kind and image, skipping what is not one", () => {
+    expect(
+      parseDatabases([
+        {
+          uuid: "d1aaaaaaaaaaaaaaaaaaaaaa",
+          name: "shop-db",
+          database_type: "standalone-mariadb",
+          image: "mariadb:11",
+        },
+        {
+          uuid: "d2aaaaaaaaaaaaaaaaaaaaaa",
+          name: "",
+          database_type: "standalone-postgresql",
+          image: "postgres:16",
+        },
+        { uuid: "not a uuid", name: "x", image: "redis:7" },
+      ]),
+    ).toEqual([
+      { uuid: "d1aaaaaaaaaaaaaaaaaaaaaa", name: "shop-db", kind: "mariadb", image: "mariadb:11" },
+      {
+        uuid: "d2aaaaaaaaaaaaaaaaaaaaaa",
+        name: "d2aaaaaaaaaaaaaaaaaaaaaa",
+        kind: "postgresql",
+        image: "postgres:16",
+      },
+    ]);
+    expect(parseDatabases({ message: "no" })).toEqual([]);
+  });
+
+  it("reads services, and the images of a service's parts", () => {
+    expect(
+      parseServices([{ uuid: "s1aaaaaaaaaaaaaaaaaaaaaa", name: "stats", service_type: "analytics" }]),
+    ).toEqual([{ uuid: "s1aaaaaaaaaaaaaaaaaaaaaa", name: "stats", type: "analytics" }]);
+    expect(
+      parseServiceImages({
+        applications: [{ name: "web", image: "ghcr.io/acme/web-app:2" }],
+        databases: [
+          { name: "db", image: "postgres:16-alpine" },
+          { name: "empty", image: "" },
+        ],
+      }),
+    ).toEqual([
+      { name: "web", image: "ghcr.io/acme/web-app:2" },
+      { name: "db", image: "postgres:16-alpine" },
+    ]);
   });
 });
 

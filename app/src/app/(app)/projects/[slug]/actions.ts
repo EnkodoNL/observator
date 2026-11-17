@@ -55,6 +55,8 @@ export async function linkCoolifyAction(projectId: string, uuid: string | null):
   await requireWriter();
   const pb = await adminPb();
   const project = await pb.collection("projects").getOne<ProjectRecord>(z.string().min(1).parse(projectId));
+  if (project.coolifyKind)
+    return { error: "This project is a Coolify resource; its link comes from the sync." };
   const parsed = z.string().regex(COOLIFY_UUID).nullable().safeParse(uuid);
   if (!parsed.success) return { error: "Not a Coolify application" };
   await linkProject(project.id, parsed.data, "picked");

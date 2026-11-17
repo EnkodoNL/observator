@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listIngestKeys, listRefused } from "@/lib/data/ingest-keys";
 import { LabelChips } from "@/components/label-chips";
-import { listProjects } from "@/lib/data/projects";
+import { isKeyless, listProjects } from "@/lib/data/projects";
 import { projectBadge } from "@/lib/badges";
 import { effectiveLabels } from "@/lib/labels";
 import { env } from "@/lib/env";
@@ -66,6 +66,8 @@ export default async function ProjectsSettingsPage() {
                         <span>shared: {keyName.get(p.ingestKey) ?? "revoked"}</span>
                       ) : p.apiKeyPrefix === "self" ? (
                         <span>reports itself</span>
+                      ) : p.coolifyKind ? (
+                        <span>synced from Coolify</span>
                       ) : (
                         <span className="font-mono">{p.apiKeyPrefix}…</span>
                       )}
@@ -78,6 +80,7 @@ export default async function ProjectsSettingsPage() {
                         appUrl={appUrl}
                         badge={projectBadge(appUrl, p).markdown}
                         sharedKey={p.ingestKey ? keyName.get(p.ingestKey) : undefined}
+                        canRotate={!isKeyless(p)}
                       />
                     </TableCell>
                   </TableRow>

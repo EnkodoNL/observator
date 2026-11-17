@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import "server-only";
+import { resourceInventory } from "@/lib/coolify/inventory";
 import { deployStateKey, freshDeployState, type DeployState } from "@/lib/deploys/state";
 import { kvGet } from "@/lib/kv";
 import { adminPb, pbDate, toPbDate } from "@/lib/pb/admin";
@@ -17,6 +18,7 @@ import { getSettings } from "@/lib/settings";
 import { computeDesired } from "./desired";
 import type { IssueEvent } from "./events";
 import { reconcile, type IssueWrite } from "./reconcile";
+import type { ResourceImage } from "./types";
 
 const g = globalThis as typeof globalThis & { __issueLocks?: Map<string, Promise<unknown>> };
 const locks = (g.__issueLocks ??= new Map());
@@ -63,30 +65,45 @@ async function loadShared(): Promise<Shared> {
 async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<IssueEvent[]> {
   const pb = await adminPb();
   const byProject = pb.filter("project = {:id}", { id: project.id });
-  const [builds, components, existing, deploy] = await Promise.all([
+  const [builds, components, existing, deploy, inventory] = await Promise.all([
     pb.collection("builds").getList<BuildRecord>(1, 1, { filter: byProject, sort: "-created" }),
     pb
       .collection("components")
       .getFullList<ComponentRecord>({ filter: byProject, fields: "ecosystem,name,version,direct,dev,via" }),
     pb.collection("issues").getFullList<IssueRecord>({ filter: byProject }),
     kvGet<DeployState>(deployStateKey(project.id)),
+    project.coolifyKind ? resourceInventory(project.id) : null,
   ]);
-  const build = builds.items[0] ?? null;
+  // A database or service gone from Coolify runs nothing any more: everything it had closes.
+  const build = project.coolifyGoneAt ? null : (builds.items[0] ?? null);
   const runtimes = build?.runtimes ?? [];
   const ecosystemOf = (c: ComponentRecord) => c.ecosystem || "npm";
   const names = new Set(components.map((c) => `${ecosystemOf(c)}:${c.name}`));
 
+  // Per runtime, the image it comes from: the image's product (MariaDB) or what runs inside it.
+  const images: Record<string, ResourceImage> = {};
+  for (const image of inventory?.images ?? []) {
+    if (image.product) images[image.product] = { name: image.name, embedded: false };
+    for (const r of image.runtimes) images[r.name] ??= { name: image.name, embedded: true };
+  }
+
   const desired = computeDesired({
-    build: build ? { runtimes, os: build.os } : null,
-    lastBuildAt: pbDate(project.lastBuildAt),
-    components: components.map((c) => ({ ...c, ecosystem: ecosystemOf(c), via: c.via ?? [] })),
+    build: build ? { runtimes, os: build.os, ...(project.coolifyKind ? { images } : {}) } : null,
+    lastBuildAt: project.coolifyGoneAt ? null : pbDate(project.lastBuildAt),
+    components: project.coolifyGoneAt
+      ? []
+      : components.map((c) => ({ ...c, ecosystem: ecosystemOf(c), via: c.via ?? [] })),
     vulns: shared.vulns
       .filter((v) => names.has(`${v.ecosystem}:${v.name}`))
       .map((v) => ({ ...v, aliases: v.aliases ?? [] })),
     evaluations: evaluateRuntimes(runtimes, shared.evaluators, shared.now),
     staleDays: shared.staleDays,
-    // Observator's own project is reported by the running process, so it runs what it reported.
-    deploy: project.apiKeyPrefix === "self" ? { unreported: null } : freshDeployState(deploy, shared.now),
+    // Observator's own project is reported by the running process, so it runs what it reported;
+    // a Coolify database or service is read from Coolify itself, so silence there means nothing.
+    deploy:
+      project.apiKeyPrefix === "self" || project.coolifyKind
+        ? { unreported: null }
+        : freshDeployState(deploy, shared.now),
     now: shared.now,
   });
 

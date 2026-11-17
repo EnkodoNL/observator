@@ -9,6 +9,7 @@ import { TabNav } from "@/components/tab-nav";
 import { getProjectView } from "@/lib/data/views";
 import { canRedeploy, lastRedeploy, maskedWebhook } from "@/lib/deploy";
 import { projectCoolify } from "@/lib/coolify/access";
+import { resourceInventory } from "@/lib/coolify/inventory";
 import { listServers } from "@/lib/coolify/servers";
 import { latestVersions, outdatedLevel } from "@/lib/npm-latest";
 import { evaluateRuntimes, loadEvaluators } from "@/lib/runtimes";
@@ -20,11 +21,12 @@ import { isDevVuln } from "@/lib/status";
 import { appId, reportedName } from "@/lib/app-board";
 import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
 import { BadgeRow } from "@/components/badge-row";
-import { listProjects } from "@/lib/data/projects";
+import { isKeyless, listProjects } from "@/lib/data/projects";
 import type { IssueRecord } from "@/lib/pb/types";
 import { timeAgo } from "@/lib/time";
 import { ProjectActions } from "@/app/(app)/settings/projects/project-actions";
 import { BuildsList } from "./builds-list";
+import { ResourcePanel } from "./resource-panel";
 import { RuntimePanel } from "./runtime-panel";
 import { DomainsPanel } from "./domains-panel";
 import { listDomains } from "@/lib/domains/data";
@@ -69,8 +71,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   if (!view) notFound();
 
   const { project, latest, summary, builds, components, issues } = view;
+  // A Coolify database or service: synced from Coolify, no snippet, no deploys, no redeploy.
+  const resource = project.coolifyKind ? await resourceInventory(project.id) : null;
+  const goneAt = pbDate(project.coolifyGoneAt);
   // The Coolify application behind the project: linked in Settings, or its deploy webhook.
-  const coolifyAccess = await projectCoolify(project);
+  const coolifyAccess = project.coolifyKind ? null : await projectCoolify(project);
   const coolifyServer =
     project.coolifyServer && coolifyAccess?.via === "link"
       ? (await listServers()).find((s) => s.id === project.coolifyServer)
@@ -176,7 +181,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               <StatusBadge status={summary.status} />
             </div>
             <p className="text-sm text-muted-foreground">
-              {view.lastBuildAt ? `Last build ${timeAgo(view.lastBuildAt)}` : "No builds yet"}
+              {project.coolifyKind
+                ? `Coolify ${project.coolifyKind}${resource ? `, synced ${timeAgo(new Date(resource.syncedAt))}` : ", not synced yet"}`
+                : view.lastBuildAt
+                  ? `Last build ${timeAgo(view.lastBuildAt)}`
+                  : "No builds yet"}
+              {goneAt && <span className="text-warn"> Gone from Coolify since {formatDate(goneAt)}.</span>}
               {project.instance && (
                 <>
                   {" "}
@@ -221,6 +231,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               name={project.name}
               appUrl={appUrl}
               badge={projectBadge(appUrl, project).markdown}
+              canRotate={!isKeyless(project)}
             />
           </div>
         </div>
@@ -239,7 +250,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
 
       {tab === "overview" && (
         <div className="space-y-6">
-          <RuntimePanel latest={latest} summary={summary} evaluations={evaluations} />
+          <RuntimePanel latest={latest} summary={summary} evaluations={evaluations} inventory={resource} />
           <DomainsPanel
             slug={project.slug}
             domains={watched
@@ -258,15 +269,17 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               lockfile={lockfile}
               actions={actions}
               empty={
-                !latest
-                  ? "Packages are checked after the first build reports."
-                  : latest.lockfileType === "none"
-                    ? "This project reports without a lockfile, so packages are not checked."
-                    : !project.vulnsCheckedAt
-                      ? "The package check has not run yet."
-                      : devVulns.length
-                        ? "No known vulnerabilities in the packages this project runs with."
-                        : "No known vulnerabilities in the current packages."
+                project.coolifyKind
+                  ? "Packages inside its images are not read yet; the runtimes and products above are."
+                  : !latest
+                    ? "Packages are checked after the first build reports."
+                    : latest.lockfileType === "none"
+                      ? "This project reports without a lockfile, so packages are not checked."
+                      : !project.vulnsCheckedAt
+                        ? "The package check has not run yet."
+                        : devVulns.length
+                          ? "No known vulnerabilities in the packages this project runs with."
+                          : "No known vulnerabilities in the current packages."
               }
             />
           </section>
@@ -347,7 +360,29 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
 
       {tab === "builds" && <BuildsList builds={builds} />}
 
-      {tab === "setup" && (
+      {tab === "setup" && project.coolifyKind && (
+        <div className="max-w-3xl space-y-6">
+          <section className="space-y-2">
+            <h2 className="font-medium">From Coolify</h2>
+            <ResourcePanel inventory={resource} goneAt={goneAt} />
+          </section>
+          <section className="space-y-2">
+            <h2 className="font-medium">Labels</h2>
+            <p className="text-sm text-muted-foreground">
+              For grouping and filtering on the overview, such as{" "}
+              <code className="font-mono">app:weather</code>. The sync adds{" "}
+              <code className="font-mono">coolify:{project.coolifyKind}</code> itself.
+            </p>
+            <LabelsEditor
+              projectId={project.id}
+              labels={project.labels ?? []}
+              buildLabels={project.buildLabels ?? []}
+            />
+          </section>
+        </div>
+      )}
+
+      {tab === "setup" && !project.coolifyKind && (
         <div className="max-w-3xl space-y-6">
           <section className="space-y-2">
             <h2 className="font-medium">Dockerfile</h2>

@@ -2,10 +2,14 @@
 import "server-only";
 import { runJob } from "@/lib/jobs/scheduler";
 
-/** "Run checks now": runtime releases, OSV, npm latest, domains and Coolify deploys, one after the other. */
+/**
+ * "Run checks now": runtime releases, Coolify databases and services, OSV, npm latest, domains and
+ * Coolify deploys, one after the other.
+ */
 export async function runAllChecks(): Promise<{ ok: boolean; error?: string }> {
   const results = [
     await runJob("runtime-releases", { force: true }),
+    await runJob("coolify-resources", { force: true }),
     await runJob("osv-recheck", { force: true }),
     await runJob("npm-latest", { force: true }),
     await runJob("domains", { force: true }),
