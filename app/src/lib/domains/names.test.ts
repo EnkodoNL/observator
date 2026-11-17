@@ -16,12 +16,22 @@ describe("parseName", () => {
     expect(parseName(input)).toEqual({ host, domain });
   });
 
-  it.each(["co.uk", "localhost", "192.0.2.1", "[2001:db8::1]", "not a name", "", "-bad-.com"])(
-    "refuses %j",
-    (input) => {
-      expect(parseName(input)).toBeNull();
-    },
-  );
+  it.each([
+    "co.uk",
+    "localhost",
+    "192.0.2.1",
+    "[2001:db8::1]",
+    "not a name",
+    "",
+    "-bad-.com",
+    // Wildcard DNS: they only point at an IP, as Coolify's default names do.
+    "abc123def456ghi789jkl012.203.0.113.7.sslip.io",
+    "sslip.io",
+    "app.192-0-2-1.nip.io",
+    "https://demo.traefik.me/",
+  ])("refuses %j", (input) => {
+    expect(parseName(input)).toBeNull();
+  });
 });
 
 describe("parseNames", () => {

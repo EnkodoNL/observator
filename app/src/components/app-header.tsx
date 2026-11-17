@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import {
   GearIcon,
   GlobeIcon,
+  ListIcon,
   MonitorIcon,
   MoonIcon,
   SignInIcon,
@@ -31,7 +32,9 @@ import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/(auth)/actions";
 
 const NAV = [
-  { href: "/", label: "Overview", match: (p: string) => p === "/" || p.startsWith("/projects") },
+  { href: "/", label: "Overview", match: (p: string) => p === "/" },
+  // On a phone Projects moves into the account menu too; the Overview still lists the apps.
+  { href: "/projects", label: "Projects", match: (p: string) => p.startsWith("/projects"), wide: true },
   { href: "/runtimes", label: "Runtimes", match: (p: string) => p.startsWith("/runtimes") },
   { href: "/packages", label: "Packages", match: (p: string) => p.startsWith("/packages") },
   // On a phone Domains and Settings move into the account menu, so the rest fits without scrolling.
@@ -111,6 +114,9 @@ export function AppHeader({
                   <UserIcon /> Account
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem className="sm:hidden" render={<Link href="/projects" />}>
+                <ListIcon /> Projects
+              </DropdownMenuItem>
               <DropdownMenuItem className="sm:hidden" render={<Link href="/domains" />}>
                 <GlobeIcon /> Domains
               </DropdownMenuItem>

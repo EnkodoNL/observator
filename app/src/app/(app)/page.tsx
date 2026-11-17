@@ -49,7 +49,16 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
     { warnDays: settings.domainWarnDays, urgentDays: settings.domainUrgentDays },
     new Date(),
   ).filter((d) => (wanted.length ? d.projectIds.some((id) => shown.has(id)) : true));
-  const apps = appBoard(items, domains);
+  // The board shows apps; Coolify's databases and services are on /projects. Their issues still
+  // count in To do below, through triage over every project.
+  const appItems = items.filter((i) => !i.project.coolifyKind);
+  const resources = items.filter((i) => i.project.coolifyKind && !i.project.coolifyGoneAt);
+  const databases = resources.filter((i) => i.project.coolifyKind === "database").length;
+  const services = resources.length - databases;
+  const resourcesNeedWork = resources.filter((i) =>
+    ["vulnerable", "update"].includes(i.summary.status),
+  ).length;
+  const apps = appBoard(appItems, domains);
   const causes = triage(items, domains);
 
   const vulnerable = apps.filter((a) => a.advisories > 0).length;
@@ -144,10 +153,35 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
                 )}
               </nav>
             )}
-            {items.length === 0 ? (
-              <p className="text-muted-foreground">No project has all of {wanted.join(", ")}.</p>
+            {appItems.length === 0 ? (
+              <p className="text-muted-foreground">
+                {wanted.length ? `No app has all of ${wanted.join(", ")}.` : "No apps yet."}
+              </p>
             ) : (
               <AppBoard apps={apps} />
+            )}
+            {resources.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Plus {plural(databases, "Coolify database")} and {plural(services, "service")}
+                {resourcesNeedWork > 0
+                  ? `, ${resourcesNeedWork} of them with an update or advisory waiting`
+                  : ""}
+                : see{" "}
+                <Link
+                  href="/projects?kind=databases"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  databases
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/projects?kind=services"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  services
+                </Link>{" "}
+                under Projects.
+              </p>
             )}
           </div>
         </>

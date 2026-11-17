@@ -560,7 +560,10 @@ to a project or be watched on its own, such as a parked one.
   ties those names to the project and follows each report, like `OBSERVATOR_LABELS`; or from Coolify:
   a project linked to a Coolify application (see [Coolify](#coolify)), or whose deploy webhook points
   at Coolify, gets the resource's domains daily, when the token has the `read` permission. Names
-  added by hand stay until you remove them.
+  added by hand stay until you remove them. Names under a wildcard DNS service (`sslip.io`,
+  `nip.io`, `traefik.me`, `localtest.me`, `lvh.me`), such as Coolify's default `<uuid>.<ip>.sslip.io`,
+  are skipped: they only point at an IP, the registration is not yours and the certificate there is
+  rarely a real one.
 - **Reminder and note.** Per domain, a reminder of your own some days before expiry, with a note, for
   something to do in time: moving a .nl domain to another registrar before it renews, say, so you do
   not pay for the same year twice.

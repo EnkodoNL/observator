@@ -4,6 +4,14 @@ import { parseAddress } from "@/lib/client-ip";
 
 const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
+/**
+ * Wildcard DNS services: a name under them only points at an IP (Coolify's default names are
+ * <uuid>.<ip>.sslip.io). Nobody here owns their registration, and what answers on them is rarely
+ * a real certificate (Traefik's own, self-signed), so watching them only gives false alarms.
+ */
+export const WILDCARD_DNS = ["sslip.io", "nip.io", "traefik.me", "localtest.me", "lvh.me"];
+const isWildcardDns = (host: string) => WILDCARD_DNS.some((d) => host === d || host.endsWith(`.${d}`));
+
 export interface ParsedName {
   /** The name as checked: lowercase, IDN in its A-label (xn--) form. */
   host: string;
@@ -13,7 +21,8 @@ export interface ParsedName {
 
 /**
  * A hostname from what someone typed or a build sent: a bare name or a URL, any case, IDN or not.
- * Null for an IP address, a public suffix alone (co.uk) or anything that is not a hostname.
+ * Null for an IP address, a public suffix alone (co.uk), a name under a wildcard DNS service
+ * (sslip.io) or anything that is not a hostname.
  */
 export function parseName(input: string): ParsedName | null {
   const raw = input.trim().replace(/\.$/, "");
@@ -25,7 +34,7 @@ export function parseName(input: string): ParsedName | null {
   } catch {
     return null;
   }
-  if (parseAddress(host) || !HOSTNAME.test(host)) return null;
+  if (parseAddress(host) || !HOSTNAME.test(host) || isWildcardDns(host)) return null;
   // The private part of the suffix list stays off: a name under vercel.app is registered as
   // vercel.app, and that is what the registry knows.
   const domain = getDomain(host, { allowPrivateDomains: false, extractHostname: false });

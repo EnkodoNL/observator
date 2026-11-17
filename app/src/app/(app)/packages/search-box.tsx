@@ -7,7 +7,15 @@ import { MagnifyingGlassIcon } from "@phosphor-icons/react/ssr";
 import { Input } from "@/components/ui/input";
 
 /** Updates ?q= as you type (debounced), so results are shareable links. */
-export function SearchBox({ initial }: { initial: string }) {
+export function SearchBox({
+  initial,
+  placeholder = "Filter by name, e.g. lodash",
+  label = "Filter packages",
+}: {
+  initial: string;
+  placeholder?: string;
+  label?: string;
+}) {
   const [value, setValue] = useState(initial);
   // A q this box did not write came from elsewhere (a link, back/forward) and replaces what is
   // typed; otherwise the debounce below would write the old text back. Its own recent writes
@@ -42,9 +50,9 @@ export function SearchBox({ initial }: { initial: string }) {
       <Input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Filter by name, e.g. lodash"
+        placeholder={placeholder}
         className="h-9 pl-9"
-        aria-label="Filter packages"
+        aria-label={label}
         spellCheck={false}
       />
     </div>
