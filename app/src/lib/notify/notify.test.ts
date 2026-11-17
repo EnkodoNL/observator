@@ -119,6 +119,11 @@ describe("renderEvents", () => {
     );
     expect(silent).toMatchObject({ tone: "moderate", title: "api was deployed without a report" });
     expect(silent.summary).toContain("(commit abc1234)");
+    // The fully cached build comes first, with Watch Paths; the old reporter image after it.
+    const summary = silent.summary ?? "";
+    expect(summary).toContain("Most likely the build came fully from cache");
+    expect(summary.indexOf("Watch Paths")).toBeGreaterThan(-1);
+    expect(summary.indexOf("Watch Paths")).toBeLessThan(summary.indexOf("old reporter image"));
   });
 
   it("repeats a deploy without a report, not a quiet stretch", () => {

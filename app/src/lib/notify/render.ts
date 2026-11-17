@@ -199,10 +199,11 @@ export function renderEvents(type: IssueEvent["type"], events: IssueEvent[], ctx
             silentProjects.length === 1
               ? `${prefix}${name(ctx, silentProjects[0])} was deployed without a report`
               : `${prefix}${plural(silentProjects.length, "project")} deployed without a report`,
-          summary:
+          summary: `${
             silentProjects.length === 1
-              ? `Coolify ${deployed(silent[0])}, but no report arrived. Check the snippet, the key and the reporter: an old reporter image cached on the build server is a common cause (docker pull it there).`
-              : "Coolify deployed them, but no report arrived. Check the snippet, the key and the reporter: an old reporter image cached on the build server is a common cause (docker pull it there).",
+              ? `Coolify ${deployed(silent[0])}, but no report arrived. Most likely the build came fully from cache`
+              : "Coolify deployed them, but no report arrived. Most likely the builds came fully from cache"
+          }: a commit that only touched other files, such as another app in the same repo, reuses every layer, the reporter's too. Watch Paths in Coolify keep such commits from deploying the app. Otherwise check the snippet, the key and the reporter: an old reporter image cached on the build server is a common cause (docker pull it there).`,
           ...cap(
             silentProjects.length === 1
               ? []

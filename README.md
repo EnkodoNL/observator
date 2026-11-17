@@ -398,7 +398,10 @@ something was deployed and its report did not arrive (the snippet, the key or th
   warning, however long ago that was. A finished deploy since then without a report: "deployed without
   a report" within the hour, as a to-do. Restarts, failed deploys, a redeploy of the commit that
   already reported (Coolify reuses its image) and the cached services of a compose deploy where
-  another service did report do not count. Coolify services have no deployment history; for those the 14 days apply.
+  another service did report do not count. Coolify services have no deployment history; for those
+  the 14 days apply. A commit that only touches other files, such as another app in the same repo,
+  deploys a build that comes fully from cache, the reporter's layer included, so it shows as
+  deployed without a report. Set Watch Paths in Coolify so such commits do not deploy the app.
 
 ## Per project
 
