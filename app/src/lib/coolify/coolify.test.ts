@@ -130,6 +130,10 @@ describe("parseFindings", () => {
       expect.objectContaining({ id: "CVE-2026-0003", type: "javaarchive", fixedIn: "", ignored: true }),
     ]);
     expect(parsed).toMatchObject({ total: 3, off: null, scannedAt: "2026-11-17T10:00:00Z" });
+    expect(parseFindings({ off_reason: "server", findings: [] }).off).toBe(
+      "image scanning is off on this server in Coolify",
+    );
+    expect(parseFindings({ off_reason: "something new", findings: [] }).off).toBe("something new");
   });
 });
 

@@ -282,6 +282,13 @@ export interface CoolifyScan {
   scannedAt: string | null;
 }
 
+/** Coolify's reasons for no scan (ImageScanPolicyResolver::offState), in words. */
+const OFF_REASON: Record<string, string> = {
+  server: "image scanning is off on this server in Coolify",
+  application: "image scanning is off for this application in Coolify",
+};
+const offReason = (raw: string) => (raw ? (OFF_REASON[raw] ?? raw) : null);
+
 export function parseFindings(body: unknown): {
   findings: CoolifyFinding[];
   total: number;
@@ -327,7 +334,7 @@ export function parseFindings(body: unknown): {
   return {
     findings,
     total: typeof b.pagination?.total === "number" ? b.pagination.total : findings.length,
-    off: text(b.off_reason) || null,
+    off: offReason(text(b.off_reason)),
     scannedAt: scanned.at(-1) ?? null,
   };
 }

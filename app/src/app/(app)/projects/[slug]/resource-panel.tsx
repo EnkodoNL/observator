@@ -119,7 +119,7 @@ export function ResourcePanel({
             : inventory.scan.error
               ? `could not be read this time (${inventory.scan.error}); the last findings stay.`
               : inventory.scan.off
-                ? `none (${inventory.scan.off}). Turn it on per server in Coolify for advisories on what runs.`
+                ? `none: ${inventory.scan.off}. Turn it on there for advisories on the packages in what runs.`
                 : `${inventory.scan.fixable} ${inventory.scan.fixable === 1 ? "finding" : "findings"} with a fix, listed as advisories on the overview; ${inventory.scan.unfixable} without one yet, counted only.${inventory.scan.scannedAt ? ` Scanned ${timeAgo(new Date(inventory.scan.scannedAt))}.` : ""}`}
         </p>
       )}
