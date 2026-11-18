@@ -25,8 +25,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // /api/ingest must stay out: the proxy buffers request bodies and truncates them at 10 MB.
-  // /api/mcp authenticates with its own bearer tokens; MCP clients send no session cookie.
+  // /api/mcp and /api/status authenticate with MCP tokens as bearer; their clients send no session cookie.
   matcher: [
-    "/((?!api/ingest|api/mcp|api/health|badge/|_next/static|_next/image|favicon.ico|icon.svg|icon$).*)",
+    "/((?!api/ingest|api/mcp|api/status|api/health|badge/|_next/static|_next/image|favicon.ico|icon.svg|icon$).*)",
   ],
 };

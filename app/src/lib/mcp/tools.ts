@@ -4,7 +4,6 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { McpCaller } from "@/lib/data/mcp-tokens";
 import { getProjectBySlug, listProjects } from "@/lib/data/projects";
-import { env } from "@/lib/env";
 import { pbDate } from "@/lib/pb/admin";
 import type { ProjectRecord } from "@/lib/pb/types";
 import { SecretsKeyError } from "@/lib/secrets";
@@ -102,7 +101,7 @@ export async function resolveProject(ref: string): Promise<ProjectRecord> {
   );
 }
 
-export const projectUrl = (slug: string) => `${env().APP_URL}/projects/${slug}`;
+export { projectUrl } from "@/lib/project-list";
 
 /** A PocketBase date as ISO 8601, or null. */
 export const iso = (value: string | null | undefined) => pbDate(value ?? "")?.toISOString() ?? null;

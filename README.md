@@ -652,6 +652,30 @@ snippet does not use yet, such as its domains.
 Every change through MCP is logged by the web container as `[mcp] <email> (<token>) <tool> ...`.
 The endpoint speaks both MCP protocol generations (2026-07-28 and the 2025 ones).
 
+### Status API
+
+For a start page, a dashboard or a script that only needs the overview, `GET /api/status` answers
+with the same project fields as `list_projects`, plus the number of projects per status. It takes
+an MCP token as bearer; a token without *May make changes* is enough, and the same rate limits
+apply.
+
+```sh
+curl -H "Authorization: Bearer obsm_..." "https://observator.example.com/api/status?label=env:prod"
+```
+
+```json
+{
+  "generatedAt": "2026-11-18T15:50:00.000Z",
+  "counts": { "none": 0, "unchecked": 1, "ok": 12, "update": 1, "vulnerable": 2 },
+  "projects": [{ "slug": "api", "name": "api", "url": "https://observator.example.com/projects/api", "status": "vulnerable", "advisories": { "high": 1 }, "...": "..." }]
+}
+```
+
+Filters: `label` (repeat it or separate with commas; a project needs all of them), `status`
+(`none`, `unchecked`, `ok`, `update`, `vulnerable`) and `q` (part of the name or slug). The answer
+is never cached and sends no CORS headers: a web page on another origin cannot read it, a browser
+extension with host access to Observator can.
+
 ## Sign-in
 
 - **Passkey:** signs you in on its own. The device plus its PIN or biometrics already make two

@@ -7,7 +7,7 @@ import { listIngestKeys } from "@/lib/data/ingest-keys";
 import { runtimeOverview } from "@/lib/data/runtime-overview";
 import { listPackages, PACKAGE_SCOPES, packageDetail } from "@/lib/data/packages";
 import { isKeyless, listProjects } from "@/lib/data/projects";
-import { getOverview, getProjectView } from "@/lib/data/views";
+import { getProjectView } from "@/lib/data/views";
 import { analyzeDockerfile } from "@/lib/dockerfile";
 import { appId } from "@/lib/app-board";
 import { appBadge, appBadgeToken, projectBadge } from "@/lib/badges";
@@ -19,34 +19,24 @@ import { env } from "@/lib/env";
 import { displayEntry } from "@/lib/ingest/allowlist";
 import type { DesiredIssue } from "@/lib/issues/desired";
 import { matchingIgnore } from "@/lib/issues/reconcile";
-import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
-import { staleReason, vulnVersions } from "@/lib/issues/types";
+import type { VulnIssueData } from "@/lib/issues/types";
+import { vulnVersions } from "@/lib/issues/types";
 import { jobStates } from "@/lib/jobs/scheduler";
-import { effectiveLabels, hasLabels, parseLabels } from "@/lib/labels";
-import type { BuildChanges, BuildRecord, IssueRecord, ProjectRecord } from "@/lib/pb/types";
+import { effectiveLabels, parseLabels } from "@/lib/labels";
+import type { BuildChanges, ProjectRecord } from "@/lib/pb/types";
 import { adminPb } from "@/lib/pb/admin";
 import { loadEvaluators } from "@/lib/runtimes";
-import {
-  CHECKED_RUNTIMES,
-  imageAction,
-  lineDescription,
-  pinAdvice,
-  pinLine,
-  runtimeLabel,
-} from "@/lib/runtimes/labels";
-import type { Evaluator } from "@/lib/runtimes/types";
+import { lineDescription, pinLine } from "@/lib/runtimes/labels";
 import { getSettings } from "@/lib/settings";
 import { severityRank } from "@/lib/severity";
-import { isStale } from "@/lib/status";
 import { defineTool, iso, projectRef, projectUrl, resolveProject, ToolError, type Tool } from "./tools";
+import { describeRuntimes, listProjectSummaries, PROJECT_STATUSES } from "@/lib/project-list";
 import { deployStatus } from "@/lib/deploys/coolify";
 import { listApplications, listDatabases, listServices } from "@/lib/coolify/client";
 import { resourceInventory } from "@/lib/coolify/inventory";
 import { listServers, serverAccess } from "@/lib/coolify/servers";
 import { listDomains, type WatchedDomain } from "@/lib/domains/data";
 import { certPhase, registrationExpiry, registrationPhase } from "@/lib/domains/phase";
-
-const STATUSES = ["none", "unchecked", "ok", "update", "vulnerable"] as const;
 
 /** At most `n` entries of a list, saying how many were left out. */
 function capped<T>(list: T[], n: number): { items: T[]; omitted: number } {
@@ -63,50 +53,6 @@ function compactChanges(c: BuildChanges | null) {
     changed: capped(c.changed, 50),
     truncated: Boolean(c.truncated),
   };
-}
-
-/**
- * The runtimes of a build with what Observator knows about each: the release line, an open
- * security update with the image to pin, end of life. Unchecked runtimes are listed as such.
- */
-function describeRuntimes(
-  build: Pick<BuildRecord, "runtimes" | "os"> | null,
-  issues: { security: IssueRecord[]; eol: IssueRecord[] },
-  evaluators?: Map<string, Evaluator>,
-) {
-  return (build?.runtimes ?? []).map((r) => {
-    const security = issues.security
-      .map((i) => i.data as unknown as RuntimeSecurityData)
-      .find((d) => d.runtime === r.name);
-    const eol = issues.eol.map((i) => i.data as unknown as RuntimeEolData).find((d) => d.runtime === r.name);
-    // A Coolify database or service gets a new image in Coolify instead of a Dockerfile pin.
-    const image = security?.image;
-    const pin = image
-      ? image.embedded
-        ? null
-        : `${image.name}:${security!.target}`
-      : security
-        ? pinLine(r.name, security.target, security.os)
-        : null;
-    const advice = image ? imageAction(r.name, security!.target, image) : pin ? pinAdvice(r.name) : null;
-    return {
-      name: r.name,
-      label: runtimeLabel(r.name),
-      version: r.version,
-      checked: CHECKED_RUNTIMES.includes(r.name),
-      ...(evaluators ? { line: lineDescription(evaluators.get(r.name)?.(r.version) ?? null) } : {}),
-      securityUpdate: security
-        ? {
-            target: security.target,
-            // false: endoflife.date names no security release, only a newer patch.
-            security: security.securityReleases.length > 0,
-            ...(pin ? { pin } : {}),
-            ...(advice ? { advice } : {}),
-          }
-        : null,
-      endOfLife: eol ? { phase: eol.phase, end: eol.end } : null,
-    };
-  });
 }
 
 /** A watched domain as MCP shows it; `slugs` maps project ids to slugs. */
@@ -153,41 +99,11 @@ export const readTools: Record<string, Tool> = {
         .array(z.string())
         .optional()
         .describe('Only projects that have all of these labels, such as ["env:prod"]'),
-      status: z.enum(STATUSES).optional(),
+      status: z.enum(PROJECT_STATUSES).optional(),
       query: z.string().max(100).optional().describe("Part of the name or slug"),
     }),
     run: async ({ labels, status, query }) => {
-      const [items, keys] = await Promise.all([getOverview(), listIngestKeys()]);
-      const keyName = new Map(keys.map((k) => [k.id, k.name]));
-      const q = query?.trim().toLowerCase();
-      const projects = items
-        .filter((i) =>
-          hasLabels(
-            effectiveLabels(i.project),
-            (labels ?? []).map((l) => l.toLowerCase()),
-          ),
-        )
-        .filter((i) => !status || i.summary.status === status)
-        .filter((i) => !q || i.project.name.toLowerCase().includes(q) || i.project.slug.includes(q))
-        .map(({ project: p, latest, summary, lastBuildAt }) => ({
-          slug: p.slug,
-          name: p.name,
-          url: projectUrl(p.slug),
-          status: summary.status,
-          stale: isStale(summary),
-          staleReason: summary.staleIssue ? staleReason(summary.staleIssue.data) : null,
-          labels: effectiveLabels(p),
-          runtimes: describeRuntimes(latest, { security: summary.runtimeSecurity, eol: summary.runtimeEol }),
-          app: latest?.appVersion ? { name: latest.appName, version: latest.appVersion } : null,
-          advisories: summary.vulnBySeverity,
-          buildOnly: summary.buildOnly.length,
-          lastBuild: lastBuildAt?.toISOString() ?? null,
-          sharedKey: p.ingestKey ? (keyName.get(p.ingestKey) ?? "revoked") : null,
-          server: p.instance || null,
-          // A Coolify database or service, synced from Coolify rather than reported by a build.
-          source: p.coolifyKind ? `coolify-${p.coolifyKind}` : null,
-          ...(p.coolifyGoneAt ? { goneFromCoolify: p.coolifyGoneAt } : {}),
-        }));
+      const projects = await listProjectSummaries({ labels, status, query });
       return { count: projects.length, projects };
     },
   }),
