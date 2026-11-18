@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { authenticateBearer, type Refuse } from "@/lib/bearer-auth";
-import { countByStatus, listProjectSummaries, PROJECT_STATUSES } from "@/lib/project-list";
+import { PROJECT_STATUSES, statusReport } from "@/lib/project-list";
 import type { ProjectStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,9 @@ const refuse: Refuse = (status, message, headers = {}) =>
 const isStatus = (s: string): s is ProjectStatus => (PROJECT_STATUSES as readonly string[]).includes(s);
 
 /**
- * GET /api/status: every project with its status and the counts per status, for start pages and
- * dashboards. The same fields as list_projects over MCP. Bearer: an MCP token; a read-only one
+ * GET /api/status: every project with its status, the counts per status, and what to do across
+ * them (the To do list of the overview page), for start pages and dashboards. The projects have
+ * the same fields as list_projects over MCP. Bearer: an MCP token; a read-only one
  * is enough. Filters: `label` (repeatable or comma-separated; all must match), `status`, `q`.
  * Excluded from proxy.ts: callers authenticate with the token, not a session cookie.
  */
@@ -34,11 +35,8 @@ export async function GET(request: Request): Promise<Response> {
   const query = params.get("q")?.slice(0, 100) || undefined;
 
   try {
-    const projects = await listProjectSummaries({ labels, status, query });
-    return Response.json(
-      { generatedAt: new Date().toISOString(), counts: countByStatus(projects), projects },
-      { headers: NO_STORE },
-    );
+    const report = await statusReport({ labels, status, query });
+    return Response.json({ generatedAt: new Date().toISOString(), ...report }, { headers: NO_STORE });
   } catch (err) {
     console.error("[status] could not list projects", err);
     return refuse(503, "Observator could not read its data; try again later.");

@@ -655,9 +655,11 @@ The endpoint speaks both MCP protocol generations (2026-07-28 and the 2025 ones)
 ### Status API
 
 For a start page, a dashboard or a script that only needs the overview, `GET /api/status` answers
-with the same project fields as `list_projects`, plus the number of projects per status. It takes
-an MCP token as bearer; a token without *May make changes* is enough, and the same rate limits
-apply.
+with the same project fields as `list_projects`, the number of projects per status, and `todo`: the
+To do list of the overview page, one entry per cause (a package to update, a runtime to patch or
+replace, a domain or certificate, deploys without a report) with every project it applies to,
+heaviest first, and an absolute `href`. It takes an MCP token as bearer; a token without *May make
+changes* is enough, and the same rate limits apply.
 
 ```sh
 curl -H "Authorization: Bearer obsm_..." "https://observator.example.com/api/status?label=env:prod"
@@ -667,12 +669,15 @@ curl -H "Authorization: Bearer obsm_..." "https://observator.example.com/api/sta
 {
   "generatedAt": "2026-11-18T15:50:00.000Z",
   "counts": { "none": 0, "unchecked": 1, "ok": 12, "update": 1, "vulnerable": 2 },
-  "projects": [{ "slug": "api", "name": "api", "url": "https://observator.example.com/projects/api", "status": "vulnerable", "advisories": { "high": 1 }, "...": "..." }]
+  "projects": [{ "slug": "api", "name": "api", "url": "https://observator.example.com/projects/api", "status": "vulnerable", "advisories": { "high": 1 }, "...": "..." }],
+  "todo": [{ "kind": "package", "package": "next", "severity": "high", "advisories": 1, "fixedIn": "15.5.7", "projects": [{ "name": "api", "slug": "api" }], "href": "https://observator.example.com/packages/next" }]
 }
 ```
 
 Filters: `label` (repeat it or separate with commas; a project needs all of them), `status`
-(`none`, `unchecked`, `ok`, `update`, `vulnerable`) and `q` (part of the name or slug). The answer
+(`none`, `unchecked`, `ok`, `update`, `vulnerable`) and `q` (part of the name or slug). They apply
+to the projects, the counts and the to-do list alike; with a filter, only domains of the projects
+shown count. The answer
 is never cached and sends no CORS headers: a web page on another origin cannot read it, a browser
 extension with host access to Observator can.
 
