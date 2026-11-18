@@ -62,7 +62,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const causes = triage(items, domains);
 
   const vulnerable = apps.filter((a) => a.advisories > 0).length;
-  const runtimeFixes = causes.filter((c) => c.kind === "runtime_security").length;
+  const runtimeFixes = causes.filter((c) => c.kind === "runtime_security" && c.security).length;
+  const runtimePatches = causes.filter((c) => c.kind === "runtime_security" && !c.security).length;
   const buildOnly = apps.reduce((n, a) => n + a.buildOnly, 0);
   const stale = causes.find((c) => c.kind === "stale")?.projects.length ?? 0;
 
@@ -79,9 +80,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
                 {vulnerable === 0 ? "No app" : `${vulnerable} of ${plural(apps.length, "app")}`}
               </b>{" "}
               {vulnerable === 1 || vulnerable === 0 ? "runs" : "run"} a vulnerable package in production.{" "}
-              {runtimeFixes
-                ? `${plural(runtimeFixes, "runtime")} ${runtimeFixes === 1 ? "has" : "have"} a security release waiting. `
-                : "Runtimes are all patched. "}
+              {runtimeFixes > 0 &&
+                `${plural(runtimeFixes, "runtime")} ${runtimeFixes === 1 ? "has" : "have"} a security release waiting. `}
+              {runtimePatches > 0 &&
+                `${plural(runtimePatches, "runtime")} ${runtimePatches === 1 ? "has" : "have"} a newer patch. `}
+              {runtimeFixes + runtimePatches === 0 && "Runtimes are all patched. "}
               {stale > 0 &&
                 `${plural(stale, "project")} ${stale === 1 ? "was" : "were"} deployed without a report. `}
               {domains.length > 0 &&

@@ -18,7 +18,7 @@ function kind(c: Cause): string {
     case "package":
       return SEVERITY_LABEL[c.severity];
     case "runtime_security":
-      return "Security";
+      return c.security ? "Security" : "Update";
     case "runtime_eol":
       return c.phase === "eol" ? "End of life" : "EOL soon";
     case "domain":
@@ -79,7 +79,7 @@ function why(c: Cause): string | null {
     case "package":
       return plural(c.advisories, "advisory", "advisories");
     case "runtime_security":
-      return "a security release";
+      return c.security ? "a security release" : "a newer patch";
     case "stale":
       return "Coolify deployed it, no report arrived: most likely a fully cached build (set Watch Paths in Coolify), otherwise check the snippet, the key and the reporter";
     default:

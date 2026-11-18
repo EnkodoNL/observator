@@ -68,6 +68,7 @@ describe("triage", () => {
       runtime: "node",
       running: "22.11.0",
       target: "22.23.4",
+      securityReleases: ["22.23.4"],
     });
     const causes = triage([
       item("Web", [runtime, vuln("lodash", "4.17.20", "A", "high"), vuln("qs", "6.0.0", "B", "high")]),
@@ -81,11 +82,27 @@ describe("triage", () => {
     ]);
   });
 
+  it("ranks a newer patch by its severity, not as a security release", () => {
+    const patch = issue("runtime_security", "moderate", {
+      runtime: "mariadb",
+      running: "11.8.1",
+      target: "11.8.2",
+      securityReleases: [],
+    });
+    const causes = triage([item("Db", [patch]), item("Web", [vuln("qs", "6.0.0", "A", "high")])]);
+    expect(causes.map((c) => (c.kind === "package" ? c.package : c.kind))).toEqual([
+      "qs",
+      "runtime_security",
+    ]);
+    expect(causes[1]).toMatchObject({ kind: "runtime_security", security: false });
+  });
+
   it("puts the heaviest first: severity, then reach", () => {
     const runtime = issue("runtime_security", "high", {
       runtime: "node",
       running: "22.11.0",
       target: "22.23.4",
+      securityReleases: ["22.23.4"],
     });
     const causes = triage([
       item("Web", [runtime, vuln("qs", "6.0.0", "A", "moderate")]),

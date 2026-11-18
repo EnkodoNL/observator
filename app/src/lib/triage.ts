@@ -25,7 +25,14 @@ export type Cause = { key: string; severity: Severity; projects: ProjectRef[]; h
       fixedIn: string | null;
       advisories: number;
     }
-  | { kind: "runtime_security"; runtime: string; running: string; target: string }
+  | {
+      kind: "runtime_security";
+      runtime: string;
+      running: string;
+      target: string;
+      /** False for a newer patch only: endoflife.date names no security release. */
+      security: boolean;
+    }
   | {
       kind: "runtime_eol";
       runtime: string;
@@ -48,9 +55,10 @@ const KIND_ORDER: Record<Cause["kind"], number> = {
 
 /**
  * Critical first, whatever it is; then runtime security fixes, which are one image tag away
- * and close every advisory in the runtime itself; then the rest.
+ * and close every advisory in the runtime itself; then the rest, a newer patch among them.
  */
-const tier = (c: Cause) => (c.severity === "critical" ? 0 : c.kind === "runtime_security" ? 1 : 2);
+const tier = (c: Cause) =>
+  c.severity === "critical" ? 0 : c.kind === "runtime_security" && c.security ? 1 : 2;
 
 const ref = (i: ProjectSummary): ProjectRef => ({ name: i.project.name, slug: i.project.slug });
 const data = <T>(issue: IssueRecord) => issue.data as unknown as T;
@@ -94,7 +102,15 @@ export function triage(items: ProjectSummary[], domains: DomainAttention[] = [])
       const d = data<RuntimeSecurityData>(issue);
       add(
         `rs:${d.runtime}:${d.running}:${d.target}`,
-        () => ({ key: "", kind: "runtime_security", severity: issue.severity, projects: [], href: "", ...d }),
+        () => ({
+          key: "",
+          kind: "runtime_security",
+          severity: issue.severity,
+          projects: [],
+          href: "",
+          ...d,
+          security: (d.securityReleases ?? []).length > 0,
+        }),
         item,
         issue.severity,
       );
