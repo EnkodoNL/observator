@@ -471,8 +471,10 @@ Advisories come from two places:
   through the image (its source label, its GHCR path, or a short list of known images), takes the
   version from the tag (or, for a moving tag such as `1`, the newest release in that line, marked as
   assumed) and checks the repository's advisories against it. A range the repository wrote in words
-  that cannot be read is listed on the *Setup* tab to check by hand, never taken as safe. The newest
-  release is shown too.
+  that cannot be read is listed on the *Setup* tab to check by hand, never taken as safe. An
+  advisory that contradicts itself, with an affected range that also covers a version its own
+  patched versions name (say `<= 1.19.0` next to `>= 0.20.0`), is not reported for that version
+  but listed there too. The newest release is shown too.
 
 GitHub allows 60 requests an hour without a token; every answer is kept a day, which covers a few
 dozen apps. With more, set `GITHUB_TOKEN` (any token, no scopes: only public data is read).

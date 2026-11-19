@@ -3,6 +3,36 @@ import type { ResourceInventory } from "@/lib/coolify/inventory";
 import { runtimeLabel } from "@/lib/runtimes/labels";
 import { formatDate, timeAgo } from "@/lib/time";
 
+/** Advisories to check by hand, linked to the repository's own pages; nothing when there are none. */
+function CheckByHand({
+  source,
+  ids,
+  children,
+}: {
+  source: string;
+  ids: string[];
+  children: React.ReactNode;
+}) {
+  if (ids.length === 0) return null;
+  return (
+    <span className="block text-warn">
+      {children}{" "}
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && ", "}
+          <a
+            href={`https://github.com/${source}/security/advisories/${id}`}
+            className="font-mono underline-offset-4 hover:underline"
+            rel="noreferrer"
+          >
+            {id}
+          </a>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * Where a Coolify database or service comes from and what its images are: the tag, whether it is
  * pinned, the version behind a moving tag right now, the runtimes inside and the source repo.
@@ -88,24 +118,17 @@ export function ResourcePanel({
                   : "version unknown"}
                 {app.latest && app.latest !== app.version && `, newest release ${app.latest}`}
                 {app.error && <span className="text-warn"> GitHub: {app.error}</span>}
-                {app.unclear.length > 0 && (
-                  <span className="block text-warn">
-                    {app.unclear.length === 1 ? "An advisory names" : `${app.unclear.length} advisories name`}{" "}
-                    its versions in words Observator cannot read; check by hand:{" "}
-                    {app.unclear.map((id, i) => (
-                      <span key={id}>
-                        {i > 0 && ", "}
-                        <a
-                          href={`https://github.com/${app.source}/security/advisories/${id}`}
-                          className="font-mono underline-offset-4 hover:underline"
-                          rel="noreferrer"
-                        >
-                          {id}
-                        </a>
-                      </span>
-                    ))}
-                  </span>
-                )}
+                <CheckByHand source={app.source} ids={app.unclear}>
+                  {app.unclear.length === 1 ? "An advisory names" : `${app.unclear.length} advisories name`}{" "}
+                  its versions in words Observator cannot read; check by hand:
+                </CheckByHand>
+                <CheckByHand source={app.source} ids={app.contradicts ?? []}>
+                  {(app.contradicts ?? []).length === 1
+                    ? "An advisory contradicts itself"
+                    : `${(app.contradicts ?? []).length} advisories contradict themselves`}
+                  : the affected range includes this version, the patched versions too. Observator follows the
+                  patched versions; check by hand:
+                </CheckByHand>
               </li>
             ))}
           </ul>

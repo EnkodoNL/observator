@@ -10,7 +10,7 @@ import { mapLimit } from "@/lib/map-limit";
 import { OSV_NAMES } from "@/lib/lockfile/go";
 import { GITHUB_ECOSYSTEM, isCoolifyEcosystem } from "@/lib/ecosystems";
 import { repoAdvisories } from "@/lib/github/client";
-import { fixedFor, inRange } from "@/lib/github/ranges";
+import { affects, fixedFor } from "@/lib/github/ranges";
 
 const g = globalThis as typeof globalThis & { __osvDetails?: Map<string, OsvVuln> };
 const details = (g.__osvDetails ??= new Map());
@@ -57,7 +57,8 @@ export const GITHUB = GITHUB_ECOSYSTEM;
 
 /**
  * Apps against their repository's security advisories. A range the repository wrote as free text
- * that cannot be read matches nothing here; the project's Setup tab lists it to check by hand.
+ * that cannot be read matches nothing here, nor does an advisory whose patched versions include the
+ * running one; the project's Setup tab lists both to check by hand.
  * An unreadable repository leaves its rows as they were.
  */
 async function checkGitHub(pairs: OsvQuery[]): Promise<{ checked: number; vulnerable: number }> {
@@ -73,7 +74,7 @@ async function checkGitHub(pairs: OsvQuery[]): Promise<{ checked: number; vulner
     const version = pair.version.replace(/^v/, "");
     const hits = new Map<string, (typeof advisories)[number]>();
     for (const a of advisories)
-      if (inRange(version, a.vulnerable) === true && !hits.has(a.id)) hits.set(a.id, a);
+      if (affects(version, a.vulnerable, a.patched) === "affected" && !hits.has(a.id)) hits.set(a.id, a);
     const rows = existing.filter((r) => r.name === pair.name && r.version === pair.version);
     for (const a of hits.values()) {
       const data = {

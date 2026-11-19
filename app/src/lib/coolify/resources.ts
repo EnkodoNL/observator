@@ -17,7 +17,7 @@ import type { CoolifyServerRecord, ProjectRecord } from "@/lib/pb/types";
 import type { Runtime } from "@/lib/runtimes/types";
 import { slugify } from "@/lib/slug";
 import { repoAdvisories, repoReleases } from "@/lib/github/client";
-import { inRange } from "@/lib/github/ranges";
+import { affects, type Verdict } from "@/lib/github/ranges";
 import { newestIn } from "@/lib/github/repos";
 import type { Component } from "@/lib/lockfile/types";
 import { GITHUB } from "@/lib/osv/check";
@@ -108,17 +108,19 @@ async function appOf(
   const exact = image.pinned ? image.version : null;
   const version = exact ?? image.versionNow ?? newestIn(list, image.version)?.version ?? null;
   const advisories = version ? await repoAdvisories(source) : { error: "" };
-  const unclear =
+  const verdicts =
     version && !("error" in advisories)
-      ? [...new Set(advisories.filter((a) => inRange(version, a.vulnerable) === null).map((a) => a.id))]
+      ? advisories.map((a) => ({ id: a.id, verdict: affects(version, a.vulnerable, a.patched) }))
       : [];
+  const ids = (v: Verdict) => [...new Set(verdicts.filter((a) => a.verdict === v).map((a) => a.id))];
   const app: AppInventory = {
     part: image.part,
     source,
     version,
     assumed: !exact,
     latest: list[0]?.version ?? null,
-    unclear,
+    unclear: ids("unclear"),
+    contradicts: ids("contradicts"),
     error: "error" in releases ? releases.error : null,
   };
   const component = version

@@ -40,6 +40,8 @@ export interface AppInventory {
   latest: string | null;
   /** Advisories whose range could not be read: to check by hand. */
   unclear: string[];
+  /** Advisories that name this version both affected and patched: not reported, to check by hand. */
+  contradicts?: string[];
   error: string | null;
 }
 

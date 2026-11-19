@@ -50,6 +50,20 @@ export function inRange(version: string, range: string): boolean | null {
   });
 }
 
+/**
+ * What an advisory means for a version. A repository can contradict itself (an affected range up
+ * to 1.19.0 next to "patched >= 0.20.0", a typo for 0.19.0): when its patched versions name this
+ * version as patched too, it "contradicts" and is not reported, but listed to check by hand.
+ */
+export type Verdict = "affected" | "unaffected" | "unclear" | "contradicts";
+
+export function affects(version: string, vulnerable: string, patched: string): Verdict {
+  const hit = inRange(version, vulnerable);
+  if (hit === null) return "unclear";
+  if (!hit) return "unaffected";
+  return inRange(version, patched) === true ? "contradicts" : "affected";
+}
+
 /** The lowest patched version above the running one, from "2.5.9" or "1.23.17, 2.0.1"; "" when none. */
 export function fixedFor(version: string, patched: string): string {
   const candidates = patched

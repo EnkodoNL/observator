@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "vitest";
-import { fixedFor, inRange, parseRange } from "./ranges";
+import { affects, fixedFor, inRange, parseRange } from "./ranges";
 import { newestIn, parseAdvisories, parseReleases } from "./repos";
 
 describe("advisory ranges", () => {
@@ -27,6 +27,24 @@ describe("advisory ranges", () => {
     expect(inRange("1.23.16", "1.23.0 - 1.23.15")).toBe(false);
     expect(inRange("2.5.9", "2.0.0-beta.0, 2.0.0-beta.1")).toBe(false);
     expect(inRange("2.0.0", "2.0.0, 2.0.1")).toBe(true);
+  });
+
+  it("does not report a version the advisory also names as patched", () => {
+    // An upper bound of 1.19.0 next to "patched >= 0.20.0": a typo for 0.19.0.
+    const vulnerable = ">= 0.9.0, <= 1.19.0";
+    const patched = ">= 0.20.0";
+    expect(affects("0.21.1", vulnerable, patched)).toBe("contradicts");
+    expect(affects("0.19.0", vulnerable, patched)).toBe("affected");
+    expect(fixedFor("0.19.0", patched)).toBe("0.20.0");
+    expect(affects("0.8.0", vulnerable, patched)).toBe("unaffected");
+    expect(affects("2.5.9", ">= 2.0.0", "2.5.9")).toBe("contradicts");
+    expect(affects("2.5.8", ">= 2.0.0", "2.5.9")).toBe("affected");
+  });
+
+  it("never takes an empty or unreadable patched field as patched", () => {
+    expect(affects("2.5.8", "< 2.5.9", "")).toBe("affected");
+    expect(affects("2.5.8", "< 2.5.9", "the next release")).toBe("affected");
+    expect(affects("1.0.0", "all versions before the rewrite", ">= 0.1.0")).toBe("unclear");
   });
 
   it("takes the lowest patched version above the running one", () => {
