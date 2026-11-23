@@ -58,7 +58,8 @@ export const GITHUB = GITHUB_ECOSYSTEM;
 /**
  * Apps against their repository's security advisories. A range the repository wrote as free text
  * that cannot be read matches nothing here, nor does an advisory whose patched versions include the
- * running one; the project's Setup tab lists both to check by hand.
+ * running one; the project's Setup tab lists the first, and a bounded range that contradicts its
+ * own patched versions, to check by hand.
  * An unreadable repository leaves its rows as they were.
  */
 async function checkGitHub(pairs: OsvQuery[]): Promise<{ checked: number; vulnerable: number }> {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "vitest";
-import { affects, fixedFor, inRange, parseRange } from "./ranges";
+import { affects, fixedFor, inRange, isPatched, parseRange } from "./ranges";
 import { newestIn, parseAdvisories, parseReleases } from "./repos";
 
 describe("advisory ranges", () => {
@@ -37,14 +37,61 @@ describe("advisory ranges", () => {
     expect(affects("0.19.0", vulnerable, patched)).toBe("affected");
     expect(fixedFor("0.19.0", patched)).toBe("0.20.0");
     expect(affects("0.8.0", vulnerable, patched)).toBe("unaffected");
-    expect(affects("2.5.9", ">= 2.0.0", "2.5.9")).toBe("contradicts");
+  });
+
+  it("reads a bare patched version as the start of the fixed releases of an open range", () => {
+    // GitHub's usual shape: an affected range without an upper bound, and the first fix.
+    expect(affects("2.10.13", ">= 2.9.0b12", "2.10.6")).toBe("unaffected");
+    expect(affects("2.10.6", ">= 2.9.0b12", "2.10.6")).toBe("unaffected");
+    expect(affects("2.10.5", ">= 2.9.0b12", "2.10.6")).toBe("affected");
+    expect(fixedFor("2.10.5", "2.10.6")).toBe("2.10.6");
+    expect(affects("2.5.9", ">= 1.23.0", "2.2.1")).toBe("unaffected");
+    expect(affects("2.5.9", ">= 2.0.0", "2.5.9")).toBe("unaffected");
     expect(affects("2.5.8", ">= 2.0.0", "2.5.9")).toBe("affected");
+    expect(affects("3.1.0", "*", "3.0.0")).toBe("unaffected");
+    expect(affects("2.9.9", "*", "3.0.0")).toBe("affected");
+    expect(affects("2.5.9", "> 2.0.0", "2.5.9")).toBe("unaffected");
+  });
+
+  it("reads each version in a patched list as the start of the fixes in its own line", () => {
+    const patched = "1.23.17, 2.0.1";
+    expect(isPatched("1.23.16", patched)).toBe(false);
+    expect(isPatched("1.23.17", patched)).toBe(true);
+    expect(isPatched("1.23.18", patched)).toBe(true);
+    expect(isPatched("2.0.0", patched)).toBe(false);
+    expect(isPatched("2.0.1", patched)).toBe(true);
+    expect(isPatched("3.0.0", patched)).toBe(true);
+    expect(isPatched("2.0.0", "2.0.1, 1.23.17")).toBe(false);
+    expect(affects("2.0.0", ">= 1.0.0", patched)).toBe("affected");
+    expect(fixedFor("2.0.0", patched)).toBe("2.0.1");
+    expect(affects("1.23.18", ">= 1.0.0", patched)).toBe("unaffected");
+    expect(affects("3.0.0", ">= 1.0.0", patched)).toBe("unaffected");
+  });
+
+  it("lets a patched pre-release patch only itself, never a stable version", () => {
+    expect(isPatched("2.0.0", "2.0.0-beta.0, 2.0.0-beta.1")).toBe(false);
+    expect(isPatched("2.1.0", "2.0.0-beta.1")).toBe(false);
+    // It still ends the line before it: 1.23.17 does not reach into 2.x.
+    expect(isPatched("1.23.18", "1.23.17, 2.0.0-beta.1")).toBe(true);
+    expect(isPatched("1.24.0", "1.23.17, 2.0.0-beta.1")).toBe(false);
+    expect(isPatched("2.0.0", "1.23.17, 2.0.0-beta.1")).toBe(false);
+    expect(isPatched("2.0.1", "2.0.0-beta.1, 2.0.0")).toBe(true);
+  });
+
+  it("calls a bounded range that overlaps its own patched versions a contradiction", () => {
+    expect(affects("2.5.9", ">= 2.0.0, <= 2.5.9", "2.5.9")).toBe("contradicts");
+    expect(affects("1.5.0", "1.0.0 - 2.0.0", "1.4.0")).toBe("contradicts");
+    expect(affects("1.3.0", "1.0.0 - 2.0.0", "1.4.0")).toBe("affected");
+    expect(affects("2.0.0", "2.0.0, 2.0.1", "2.0.2")).toBe("affected");
   });
 
   it("never takes an empty or unreadable patched field as patched", () => {
     expect(affects("2.5.8", "< 2.5.9", "")).toBe("affected");
     expect(affects("2.5.8", "< 2.5.9", "the next release")).toBe("affected");
     expect(affects("1.0.0", "all versions before the rewrite", ">= 0.1.0")).toBe("unclear");
+    expect(affects("3.0.0", ">= 2.0.0", "the next release")).toBe("affected");
+    expect(isPatched("2.5.9", "")).toBe(false);
+    expect(isPatched("latest", "2.5.9")).toBe(false);
   });
 
   it("takes the lowest patched version above the running one", () => {
