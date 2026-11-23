@@ -4,6 +4,7 @@ import type { DomainAttention } from "@/lib/domains/phase";
 import type { RuntimeEolData, RuntimeSecurityData, VulnIssueData } from "@/lib/issues/types";
 import { staleReason, vulnVersions } from "@/lib/issues/types";
 import { packageHref } from "@/lib/package-href";
+import { runtimeAnchor } from "@/lib/runtimes/labels";
 import type { IssueRecord, Severity } from "@/lib/pb/types";
 import { severityRank } from "@/lib/severity";
 
@@ -32,6 +33,8 @@ export type Cause = { key: string; severity: Severity; projects: ProjectRef[]; h
       target: string;
       /** False for a newer patch only: endoflife.date names no security release. */
       security: boolean;
+      /** Inside an app's image that already runs the app's newest release: it waits on the next. */
+      waiting: boolean;
     }
   | {
       kind: "runtime_eol";
@@ -40,6 +43,7 @@ export type Cause = { key: string; severity: Severity; projects: ProjectRef[]; h
       line: string;
       end: string;
       phase: "soon" | "eol";
+      waiting: boolean;
     }
   | ({ kind: "domain" } & Omit<DomainAttention, "projectIds">)
   | { kind: "stale" }
@@ -64,6 +68,17 @@ const ref = (i: ProjectSummary): ProjectRef => ({ name: i.project.name, slug: i.
 const data = <T>(issue: IssueRecord) => issue.data as unknown as T;
 const projectHref = (projects: ProjectRef[]) =>
   projects.length === 1 ? `/projects/${projects[0].slug}` : "";
+/** Across projects, a runtime's version (or for an end of life, the runtime) on the Runtimes page. */
+const runtimeHref = (c: Cause) =>
+  c.kind === "runtime_security"
+    ? `/runtimes#${runtimeAnchor(c.runtime, c.running)}`
+    : c.kind === "runtime_eol"
+      ? `/runtimes#${runtimeAnchor(c.runtime)}`
+      : "";
+
+/** A runtime fix that comes with an app's next release: nothing to do until then. */
+export const waitsUpstream = (c: Cause) =>
+  (c.kind === "runtime_security" || c.kind === "runtime_eol") && c.waiting;
 
 const DOMAIN_SEVERITY: Record<DomainAttention["phase"], Severity> = {
   remind: "low",
@@ -100,8 +115,9 @@ export function triage(items: ProjectSummary[], domains: DomainAttention[] = [])
     if (!item.latest) continue;
     for (const issue of item.summary.runtimeSecurity) {
       const d = data<RuntimeSecurityData>(issue);
+      const waiting = Boolean(d.image?.upstream);
       add(
-        `rs:${d.runtime}:${d.running}:${d.target}`,
+        `rs:${d.runtime}:${d.running}:${d.target}${waiting ? ":upstream" : ""}`,
         () => ({
           key: "",
           kind: "runtime_security",
@@ -110,6 +126,7 @@ export function triage(items: ProjectSummary[], domains: DomainAttention[] = [])
           href: "",
           ...d,
           security: (d.securityReleases ?? []).length > 0,
+          waiting,
         }),
         item,
         issue.severity,
@@ -117,9 +134,18 @@ export function triage(items: ProjectSummary[], domains: DomainAttention[] = [])
     }
     for (const issue of item.summary.runtimeEol) {
       const d = data<RuntimeEolData>(issue);
+      const waiting = Boolean(d.image?.upstream);
       add(
-        `eol:${d.runtime}:${d.line}`,
-        () => ({ key: "", kind: "runtime_eol", severity: issue.severity, projects: [], href: "", ...d }),
+        `eol:${d.runtime}:${d.line}${waiting ? ":upstream" : ""}`,
+        () => ({
+          key: "",
+          kind: "runtime_eol",
+          severity: issue.severity,
+          projects: [],
+          href: "",
+          ...d,
+          waiting,
+        }),
         item,
         issue.severity,
       );
@@ -173,7 +199,7 @@ export function triage(items: ProjectSummary[], domains: DomainAttention[] = [])
         cause.versions.sort();
       }
       cause.projects.sort((a, b) => a.name.localeCompare(b.name));
-      return { ...cause, key, href: cause.href || projectHref(cause.projects) };
+      return { ...cause, key, href: cause.href || projectHref(cause.projects) || runtimeHref(cause) };
     })
     .sort(
       (a, b) =>

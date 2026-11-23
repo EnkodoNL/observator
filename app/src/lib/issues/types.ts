@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { ResourceInventory } from "@/lib/coolify/inventory";
 
 /** issues.data for kind "vuln". */
 export interface VulnIssueData {
@@ -24,6 +25,27 @@ export interface VulnIssueData {
 export interface ResourceImage {
   name: string;
   embedded: boolean;
+  /**
+   * For a runtime inside an app's image: the app's newest release, when the image already runs
+   * it. A newer runtime then comes with the app's next release; until then there is nothing to do.
+   */
+  upstream?: string;
+}
+
+/** Per runtime, the image of a database or service it comes from: its product, or what runs inside. */
+export function resourceImages(
+  inventory: Pick<ResourceInventory, "images" | "apps"> | null,
+): Record<string, ResourceImage> {
+  const images: Record<string, ResourceImage> = {};
+  for (const image of inventory?.images ?? []) {
+    if (image.product) images[image.product] = { name: image.name, embedded: false };
+    // An app already on its newest release: a newer runtime inside comes with its next one.
+    const app = inventory?.apps?.find((a) => a.part === image.part && a.source === image.source);
+    const upstream = app?.version && app.version === app.latest ? app.version : null;
+    for (const r of image.runtimes)
+      images[r.name] ??= { name: image.name, embedded: true, ...(upstream ? { upstream } : {}) };
+  }
+  return images;
 }
 
 /** issues.data for kind "runtime_security". */

@@ -18,7 +18,7 @@ import { getSettings } from "@/lib/settings";
 import { computeDesired } from "./desired";
 import type { IssueEvent } from "./events";
 import { reconcile, type IssueWrite } from "./reconcile";
-import type { ResourceImage } from "./types";
+import { resourceImages } from "./types";
 
 const g = globalThis as typeof globalThis & { __issueLocks?: Map<string, Promise<unknown>> };
 const locks = (g.__issueLocks ??= new Map());
@@ -80,12 +80,7 @@ async function evaluateOne(project: ProjectRecord, shared: Shared): Promise<Issu
   const ecosystemOf = (c: ComponentRecord) => c.ecosystem || "npm";
   const names = new Set(components.map((c) => `${ecosystemOf(c)}:${c.name}`));
 
-  // Per runtime, the image it comes from: the image's product (MariaDB) or what runs inside it.
-  const images: Record<string, ResourceImage> = {};
-  for (const image of inventory?.images ?? []) {
-    if (image.product) images[image.product] = { name: image.name, embedded: false };
-    for (const r of image.runtimes) images[r.name] ??= { name: image.name, embedded: true };
-  }
+  const images = resourceImages(inventory);
 
   const desired = computeDesired({
     build: build ? { runtimes, os: build.os, ...(project.coolifyKind ? { images } : {}) } : null,

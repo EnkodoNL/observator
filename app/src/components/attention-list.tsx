@@ -127,7 +127,7 @@ function Row({ cause }: { cause: Cause }) {
           href={cause.href}
           className="col-start-2 inline-flex items-center gap-1 justify-self-start text-sm font-bold text-primary underline-offset-4 hover:underline sm:col-start-3 sm:row-start-1 sm:justify-self-end"
         >
-          {cause.kind === "package" && cause.projects.length > 1 ? "Where and how" : "Open"}
+          {cause.kind !== "domain" && cause.projects.length > 1 ? "Where and how" : "Open"}
           <ArrowRightIcon className="size-3.5" />
         </Link>
       )}
@@ -146,6 +146,25 @@ function Row({ cause }: { cause: Cause }) {
         )}
       </span>
     </li>
+  );
+}
+
+/**
+ * Runtime fixes that come with an app's next release, as for Node.js inside an app's image that
+ * already runs its newest release: nothing to do yet, so apart from the list and quiet.
+ */
+export function WaitingList({ causes }: { causes: Cause[] }) {
+  if (causes.length === 0) return null;
+  return (
+    <ul className="space-y-1 text-sm text-muted-foreground">
+      {causes.map((c) => (
+        <li key={c.key}>
+          Waiting on upstream: {what(c)} in <Projects projects={c.projects} />.{" "}
+          {c.projects.length === 1 ? "It already runs its" : "They already run their"} newest release; the fix
+          comes with the next one.
+        </li>
+      ))}
+    </ul>
   );
 }
 

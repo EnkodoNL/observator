@@ -69,19 +69,25 @@ export function pinAction(runtime: string, version: string, os: string): string 
 export function imageAction(
   runtime: string,
   target: string,
-  image: { name: string; embedded: boolean },
+  image: { name: string; embedded: boolean; upstream?: string },
 ): string {
+  if (image.embedded && image.upstream)
+    return `wait for a release of ${image.name} built with ${runtimeLabel(runtime)} ${target} or newer (it runs the newest, ${image.upstream}), then update it in Coolify`;
   return image.embedded
     ? `update ${image.name} to a release built with ${runtimeLabel(runtime)} ${target} or newer, and restart it in Coolify`
     : `set the image to ${image.name}:${target} in Coolify and restart`;
 }
+
+/** The id of a runtime's section on the Runtimes page, or of one of its versions there. */
+export const runtimeAnchor = (runtime: string, version?: string) =>
+  version ? `${runtime}-${version}` : runtime;
 
 /** The whole action for an update, as a phrase: a new image in Coolify, or a pin and a redeploy. */
 export function updateAction(d: {
   runtime: string;
   target: string;
   os: string;
-  image?: { name: string; embedded: boolean };
+  image?: { name: string; embedded: boolean; upstream?: string };
 }): string {
   if (d.image) return imageAction(d.runtime, d.target, d.image);
   return `${pinAction(d.runtime, d.target, d.os) ?? `move to ${d.target}`} and redeploy`;

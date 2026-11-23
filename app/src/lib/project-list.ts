@@ -20,7 +20,7 @@ import {
 import type { Evaluator } from "@/lib/runtimes/types";
 import { getSettings } from "@/lib/settings";
 import { isStale, type ProjectStatus } from "@/lib/status";
-import { triage, type Cause } from "@/lib/triage";
+import { triage, waitsUpstream, type Cause } from "@/lib/triage";
 
 /**
  * The project list as list_projects (MCP) and GET /api/status show it: one source, so both
@@ -158,12 +158,18 @@ export async function statusReport(filter: ProjectFilter = {}) {
   ).filter((d) => !filtered || d.projectIds.some((id) => shown.has(id)));
   const projects = items.map((i) => toSummary(i, keyName));
   const base = env().APP_URL.replace(/\/+$/, "");
-  const todo = triage(items, domains).map((c) => ({
+  const causes = triage(items, domains).map((c) => ({
     ...c,
     href: `${base}${c.href || fallbackHref(c)}`,
     ...(c.kind === "runtime_security" || c.kind === "runtime_eol" ? { label: runtimeLabel(c.runtime) } : {}),
   }));
-  return { counts: countByStatus(projects), projects, todo };
+  // As on the overview page: a fix that comes with an app's next release is listed apart.
+  return {
+    counts: countByStatus(projects),
+    projects,
+    todo: causes.filter((c) => !waitsUpstream(c)),
+    waiting: causes.filter(waitsUpstream),
+  };
 }
 
 export type ProjectSummary = Awaited<ReturnType<typeof listProjectSummaries>>[number];

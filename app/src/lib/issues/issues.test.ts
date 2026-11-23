@@ -6,6 +6,7 @@ import schedule from "@/lib/runtimes/node/__fixtures__/schedule.json";
 import { compactIndex, type NodeData, nodeEvaluator } from "@/lib/runtimes/node/evaluate";
 import { computeDesired, type DesiredInput, type VulnInput } from "./desired";
 import { reconcile } from "./reconcile";
+import { resourceImages } from "./types";
 
 const now = new Date("2026-10-25T12:00:00Z");
 const nodeData: NodeData = { releases: compactIndex(index), schedule, fetchedAt: "" };
@@ -116,6 +117,62 @@ describe("computeDesired for a Coolify image", () => {
         data: expect.objectContaining({ image: { name: "mariadb", embedded: false }, securityReleases: [] }),
       }),
     ]);
+  });
+});
+
+describe("resourceImages", () => {
+  const image = (name: string, part: string, fields: object) => ({
+    ref: `${name}:1`,
+    name,
+    tag: "1",
+    product: null,
+    pinned: true,
+    version: "1",
+    versionNow: null,
+    runtimes: [],
+    source: null,
+    error: null,
+    part,
+    ...fields,
+  });
+  const app = (source: string, version: string, latest: string) => ({
+    part: "web",
+    source,
+    version,
+    assumed: false,
+    latest,
+    unclear: [],
+    error: null,
+  });
+
+  it("names the image per runtime: its product, or what runs inside", () => {
+    const images = resourceImages({
+      images: [
+        image("mariadb", "db", { product: "mariadb" }),
+        image("ghcr.io/acme/web-app", "web", { runtimes: [{ name: "node", version: "22.23.4" }] }),
+      ],
+    });
+    expect(images).toEqual({
+      mariadb: { name: "mariadb", embedded: false },
+      node: { name: "ghcr.io/acme/web-app", embedded: true },
+    });
+  });
+
+  it("marks a runtime inside an app on its newest release as waiting on the next one", () => {
+    const web = image("ghcr.io/acme/web-app", "web", {
+      runtimes: [{ name: "node", version: "22.23.4" }],
+      source: "acme/web-app",
+    });
+    expect(resourceImages({ images: [web], apps: [app("acme/web-app", "3.5.0", "3.5.0")] }).node).toEqual({
+      name: "ghcr.io/acme/web-app",
+      embedded: true,
+      upstream: "3.5.0",
+    });
+    // Behind its newest release: updating the app is the fix, nothing to wait for.
+    expect(resourceImages({ images: [web], apps: [app("acme/web-app", "3.4.0", "3.5.0")] }).node).toEqual({
+      name: "ghcr.io/acme/web-app",
+      embedded: true,
+    });
   });
 });
 

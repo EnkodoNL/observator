@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PlusIcon } from "@phosphor-icons/react/ssr";
 import { AppBoard } from "@/components/app-board";
-import { AttentionList } from "@/components/attention-list";
+import { AttentionList, WaitingList } from "@/components/attention-list";
 import { Button } from "@/components/ui/button";
 import { appBoard } from "@/lib/app-board";
 import { getOverview, type ProjectSummary } from "@/lib/data/views";
@@ -11,7 +11,7 @@ import { effectiveLabels, hasLabels } from "@/lib/labels";
 import { getSettings } from "@/lib/settings";
 import { listDomains } from "@/lib/domains/data";
 import { domainAttention } from "@/lib/domains/phase";
-import { triage } from "@/lib/triage";
+import { triage, waitsUpstream } from "@/lib/triage";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
 
@@ -59,12 +59,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
     ["vulnerable", "update"].includes(i.summary.status),
   ).length;
   const apps = appBoard(appItems, domains);
-  const causes = triage(items, domains);
+  const triaged = triage(items, domains);
+  const causes = triaged.filter((c) => !waitsUpstream(c));
+  const waiting = triaged.filter(waitsUpstream);
 
   const vulnerable = apps.filter((a) => a.advisories > 0).length;
   const runtimeFixes = causes.filter((c) => c.kind === "runtime_security" && c.security).length;
   const runtimePatches = causes.filter((c) => c.kind === "runtime_security" && !c.security).length;
-  const buildOnly = apps.reduce((n, a) => n + a.buildOnly, 0);
   const stale = causes.find((c) => c.kind === "stale")?.projects.length ?? 0;
 
   return (
@@ -84,17 +85,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
                 `${plural(runtimeFixes, "runtime")} ${runtimeFixes === 1 ? "has" : "have"} a security release waiting. `}
               {runtimePatches > 0 &&
                 `${plural(runtimePatches, "runtime")} ${runtimePatches === 1 ? "has" : "have"} a newer patch. `}
-              {runtimeFixes + runtimePatches === 0 && "Runtimes are all patched. "}
+              {waiting.length > 0 &&
+                `${plural(waiting.length, "runtime fix", "runtime fixes")} ${waiting.length === 1 ? "waits" : "wait"} on upstream. `}
+              {runtimeFixes + runtimePatches + waiting.length === 0 && "Runtimes are all patched. "}
               {stale > 0 &&
                 `${plural(stale, "project")} ${stale === 1 ? "was" : "were"} deployed without a report. `}
               {domains.length > 0 &&
                 `${plural(domains.length, "domain or certificate", "domains and certificates")} ${domains.length === 1 ? "needs" : "need"} renewing. `}
-              {buildOnly > 0 && (
-                <>
-                  <b className="text-foreground">{plural(buildOnly, "advisory", "advisories")}</b> sit in
-                  build-only dependencies and are counted separately.
-                </>
-              )}
             </p>
           )}
         </div>
@@ -121,6 +118,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
               To do
             </h2>
             <AttentionList causes={causes} />
+            <WaitingList causes={waiting} />
           </section>
 
           <div className="space-y-4">

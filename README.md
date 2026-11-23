@@ -664,8 +664,10 @@ For a start page, a dashboard or a script that only needs the overview, `GET /ap
 with the same project fields as `list_projects`, the number of projects per status, and `todo`: the
 To do list of the overview page, one entry per cause (a package to update, a runtime to patch or
 replace, a domain or certificate, deploys without a report) with every project it applies to,
-heaviest first, and an absolute `href`. It takes an MCP token as bearer; a token without *May make
-changes* is enough, and the same rate limits apply.
+heaviest first, and an absolute `href`. `waiting` lists, in the same shape, the runtime fixes
+that come with an app's next release (Node.js inside an app's image that already runs its newest
+release), which the overview shows apart. It takes an MCP token as bearer; a token without *May
+make changes* is enough, and the same rate limits apply.
 
 ```sh
 curl -H "Authorization: Bearer obsm_..." "https://observator.example.com/api/status?label=env:prod"
@@ -676,7 +678,8 @@ curl -H "Authorization: Bearer obsm_..." "https://observator.example.com/api/sta
   "generatedAt": "2026-11-18T15:50:00.000Z",
   "counts": { "none": 0, "unchecked": 1, "ok": 12, "update": 1, "vulnerable": 2 },
   "projects": [{ "slug": "api", "name": "api", "url": "https://observator.example.com/projects/api", "status": "vulnerable", "advisories": { "high": 1 }, "...": "..." }],
-  "todo": [{ "kind": "package", "package": "next", "severity": "high", "advisories": 1, "fixedIn": "15.5.7", "projects": [{ "name": "api", "slug": "api" }], "href": "https://observator.example.com/packages/next" }]
+  "todo": [{ "kind": "package", "package": "next", "severity": "high", "advisories": 1, "fixedIn": "15.5.7", "projects": [{ "name": "api", "slug": "api" }], "href": "https://observator.example.com/packages/next" }],
+  "waiting": []
 }
 ```
 

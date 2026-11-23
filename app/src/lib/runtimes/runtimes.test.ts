@@ -8,6 +8,7 @@ import { evaluateRuntimes, PROVIDERS } from "./index";
 import {
   CHECKED_RUNTIMES,
   formatRuntimes,
+  imageAction,
   lineDescription,
   pinAction,
   pinFor,
@@ -86,6 +87,20 @@ describe("labels", () => {
       "pin golang:1.27.5 in the build stage, or update a downloaded program such as PocketBase to a release built with Go 1.27.5",
     );
     expect(pinAction("python", "3.12.8", "debian")).toBeNull();
+  });
+
+  it("says what to do about a Coolify image: another tag, a newer release, or wait for one", () => {
+    expect(imageAction("mariadb", "11.8.10", { name: "mariadb", embedded: false })).toBe(
+      "set the image to mariadb:11.8.10 in Coolify and restart",
+    );
+    expect(imageAction("node", "22.23.5", { name: "ghcr.io/acme/web-app", embedded: true })).toBe(
+      "update ghcr.io/acme/web-app to a release built with Node.js 22.23.5 or newer, and restart it in Coolify",
+    );
+    expect(
+      imageAction("node", "22.23.5", { name: "ghcr.io/acme/web-app", embedded: true, upstream: "3.5.0" }),
+    ).toBe(
+      "wait for a release of ghcr.io/acme/web-app built with Node.js 22.23.5 or newer (it runs the newest, 3.5.0), then update it in Coolify",
+    );
   });
 
   it("leads with the first checked runtime", () => {

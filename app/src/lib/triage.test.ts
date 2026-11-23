@@ -4,7 +4,7 @@ import type { ProjectSummary } from "@/lib/data/views";
 import type { BuildRecord, IssueRecord, ProjectRecord, Severity } from "@/lib/pb/types";
 import { isChecked, summarize } from "./status";
 import { atLeast } from "./severity";
-import { triage } from "./triage";
+import { triage, waitsUpstream } from "./triage";
 
 const NOW = new Date();
 
@@ -79,6 +79,34 @@ describe("triage", () => {
       "runtime_security",
       "qs",
       "lodash",
+    ]);
+  });
+
+  it("links a runtime across projects to its version on the Runtimes page", () => {
+    const runtime = () =>
+      issue("runtime_security", "high", {
+        runtime: "node",
+        running: "22.11.0",
+        target: "22.23.4",
+        securityReleases: ["22.23.4"],
+      });
+    const [cause] = triage([item("Web", [runtime()]), item("Api", [runtime()])]);
+    expect(cause).toMatchObject({ kind: "runtime_security", href: "/runtimes#node-22.11.0", waiting: false });
+  });
+
+  it("keeps a fix that waits on an app's next release apart", () => {
+    const node = (upstream?: string) =>
+      issue("runtime_security", "high", {
+        runtime: "node",
+        running: "22.11.0",
+        target: "22.23.4",
+        securityReleases: ["22.23.4"],
+        image: { name: "ghcr.io/acme/web-app", embedded: true, ...(upstream ? { upstream } : {}) },
+      });
+    const causes = triage([item("Stats", [node("3.5.0")]), item("Web", [node()])]);
+    expect(causes.map((c) => [c.projects[0].name, waitsUpstream(c)])).toEqual([
+      ["Web", false],
+      ["Stats", true],
     ]);
   });
 

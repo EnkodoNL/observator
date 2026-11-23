@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRightIcon, ShieldCheckIcon, ShieldWarningIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { CodeBlock } from "@/components/code-block";
 import { runtimeOverview, type RuntimeSection, type VersionGroup } from "@/lib/data/runtime-overview";
-import { lineDescription, pinAdvice, pinLine } from "@/lib/runtimes/labels";
+import { lineDescription, pinAdvice, pinLine, runtimeAnchor } from "@/lib/runtimes/labels";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
@@ -23,8 +23,9 @@ function VersionCard({ section, group }: { section: RuntimeSection; group: Versi
     : [];
   return (
     <section
+      id={runtimeAnchor(section.runtime, group.version)}
       className={cn(
-        "rounded-xl border",
+        "scroll-mt-20 rounded-xl border",
         security && "border-warn/40",
         eol && !security && "border-danger/30",
       )}
@@ -114,7 +115,7 @@ export default async function RuntimesPage() {
       </div>
 
       {sections.map((section) => (
-        <section key={section.runtime} className="space-y-4">
+        <section key={section.runtime} id={runtimeAnchor(section.runtime)} className="scroll-mt-20 space-y-4">
           <div className="flex flex-wrap items-baseline gap-x-3">
             <h2 className="text-lg font-semibold tracking-tight">{section.label}</h2>
             <span className="text-sm text-muted-foreground">

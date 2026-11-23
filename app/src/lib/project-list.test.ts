@@ -52,7 +52,7 @@ describe("statusReport", () => {
     expect(report.todo[0]!.projects.map((p) => p.slug)).toEqual(["beszel-a", "beszel-b"]);
   });
 
-  it("names runtimes and links several projects to the runtimes overview", async () => {
+  it("names runtimes and links several projects to the version on the runtimes overview", async () => {
     const node = issue("runtime_security", "high", {
       runtime: "node",
       running: "22.11.0",
@@ -65,8 +65,23 @@ describe("statusReport", () => {
     expect(cause).toMatchObject({
       kind: "runtime_security",
       label: "Node.js",
-      href: "http://localhost:3000/runtimes",
+      href: "http://localhost:3000/runtimes#node-22.11.0",
     });
+  });
+
+  it("lists a fix that waits on an app's next release apart from the to-dos", async () => {
+    const node = issue("runtime_security", "high", {
+      runtime: "node",
+      running: "22.11.0",
+      target: "22.12.0",
+      os: "",
+      securityReleases: ["22.12.0"],
+      image: { name: "ghcr.io/acme/web-app", embedded: true, upstream: "3.5.0" },
+    });
+    overview.mockResolvedValue([item("stats", [node])]);
+    const report = await statusReport();
+    expect(report.todo).toEqual([]);
+    expect(report.waiting).toMatchObject([{ kind: "runtime_security", waiting: true }]);
   });
 
   it("applies the label filter to projects, counts and to-dos alike", async () => {
