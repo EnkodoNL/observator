@@ -172,11 +172,12 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
             <TableHeader>
               <TableRow>
                 <TableHead>Project</TableHead>
-                <TableHead>Kind</TableHead>
+                {/* On a phone Kind and Last step aside, so the table fits: the tabs say the kind. */}
+                <TableHead className="hidden sm:table-cell">Kind</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Runtime</TableHead>
                 <TableHead>Advisories</TableHead>
-                <TableHead className="text-right">Last</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Last</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -199,7 +200,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
                       )}
                       <LabelChips labels={effectiveLabels(project)} max={3} className="mt-1" />
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{kind}</TableCell>
+                    <TableCell className="hidden text-muted-foreground sm:table-cell">{kind}</TableCell>
                     <TableCell>
                       <StatusBadge status={summary.status} />
                     </TableCell>
@@ -214,7 +215,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
                     >
                       {advisories?.text ?? <span className="text-muted-foreground">none</span>}
                     </TableCell>
-                    <TableCell className="text-right text-sm whitespace-nowrap text-muted-foreground">
+                    <TableCell className="hidden text-right text-sm whitespace-nowrap text-muted-foreground sm:table-cell">
                       {lastBuildAt
                         ? `${kind === "app" ? "built" : "changed"} ${timeAgo(lastBuildAt)}`
                         : "never"}
