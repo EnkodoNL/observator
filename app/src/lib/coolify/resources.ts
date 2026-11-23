@@ -22,7 +22,7 @@ import { newestIn } from "@/lib/github/repos";
 import type { Component } from "@/lib/lockfile/types";
 import { GITHUB } from "@/lib/osv/check";
 import { listDatabases, listServices, resourceScan, serviceImages } from "./client";
-import { FindingStore, findingComponents, findingCounts, isCoolifyEcosystem } from "./findings";
+import { asComponent, FindingStore, findingComponents, findingCounts, isCoolifyEcosystem } from "./findings";
 import {
   inventoryKey,
   resourceInventory,
@@ -62,24 +62,50 @@ export function resourceRuntimes(images: readonly ImageInventory[]): Runtime[] {
   return out;
 }
 
+/**
+ * JSON with its keys sorted. PocketBase hands a JSON field back that way (Go writes a map so), so
+ * what was stored and what was just read only compare equal like this.
+ */
+const sortedJson = (value: unknown) =>
+  JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+
 /** The same images, whether or not the registry answered this time. */
-const sameImages = (a: ResourceInventory["images"], b: ResourceInventory["images"]) => {
-  const plain = (list: ResourceInventory["images"]) =>
-    JSON.stringify(list.map((i) => ({ ...i, error: null })));
-  return plain(a) === plain(b);
-};
+const sameImages = (a: ResourceInventory["images"], b: ResourceInventory["images"]) =>
+  sortedJson(a.map((i) => ({ ...i, error: null }))) === sortedJson(b.map((i) => ({ ...i, error: null })));
+
+/**
+ * The name to show. Coolify names a resource "<name>-<uuid>" until someone renames it; the uuid
+ * says nothing to a reader (the Setup tab shows it). Without it, unless another project already
+ * has that name.
+ */
+export function resourceName(
+  raw: string,
+  uuid: string,
+  current: string | null,
+  taken: ReadonlySet<string>,
+): string {
+  const suffix = `-${uuid}`;
+  const short = raw.endsWith(suffix) ? raw.slice(0, -suffix.length) : raw;
+  return (short && (short === current || !taken.has(short)) ? short : raw).slice(0, 100);
+}
 
 async function projectFor(
   server: CoolifyServerRecord,
   resource: Listed,
   existing: ProjectRecord[],
+  taken: Set<string>,
 ): Promise<ProjectRecord> {
   const pb = await adminPb();
   const known = existing.find(
     (p) =>
       p.coolifyServer === server.id && p.coolifyUuid === resource.uuid && p.coolifyKind === resource.kind,
   );
-  const name = resource.name.slice(0, 100);
+  const name = resourceName(resource.name, resource.uuid, known?.name ?? null, taken);
+  taken.add(name);
   if (known) {
     if (known.name === name && !known.coolifyGoneAt) return known;
     return pb.collection("projects").update<ProjectRecord>(known.id, { name, coolifyGoneAt: "" });
@@ -135,12 +161,13 @@ async function syncResource(
   access: { base: string; token: string },
   resource: Listed,
   existing: ProjectRecord[],
+  taken: Set<string>,
   store: FindingStore,
 ): Promise<{ events: IssueEvent[]; scanRead: boolean; scanOff: boolean }> {
   const wasGone = existing.some(
     (p) => p.coolifyServer === server.id && p.coolifyUuid === resource.uuid && Boolean(p.coolifyGoneAt),
   );
-  const project = await projectFor(server, resource, existing);
+  const project = await projectFor(server, resource, existing, taken);
   const inspected = await mapLimit(resource.parts, 4, async ({ part, image }) => {
     const found = await inspectImage(image);
     return found ? [{ ...found, part }] : [];
@@ -171,7 +198,10 @@ async function syncResource(
     rowsChanged = await store.write(scan.findings);
   } else {
     // Unreadable this time: keep what the last scan gave, rows included.
-    scanComponents = (previous?.components ?? []).filter((c) => isCoolifyEcosystem(c.ecosystem ?? ""));
+    // Back in the order the scan writes them, so the report hash stays the same.
+    scanComponents = (previous?.components ?? [])
+      .filter((c) => isCoolifyEcosystem(c.ecosystem ?? ""))
+      .map(asComponent);
     store.keep(scanComponents);
   }
   const components = [...apps.flatMap((a) => (a.component ? [a.component] : [])), ...scanComponents];
@@ -200,7 +230,7 @@ async function syncResource(
   const latest = await latestBuild(project.id);
   const unchanged =
     latest !== null &&
-    JSON.stringify(latest.runtimes ?? []) === JSON.stringify(runtimes) &&
+    sortedJson(latest.runtimes ?? []) === sortedJson(runtimes) &&
     previous !== null &&
     sameImages(previous.images, images) &&
     latest.lockfileHash === reportHash("", null, "", null, components);
@@ -276,6 +306,10 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
   const existing = await pb
     .collection("projects")
     .getFullList<ProjectRecord>({ filter: 'coolifyKind != ""' });
+  // Every project's name, apps included: a resource's short name must not look like another's.
+  const taken = new Set(
+    (await pb.collection("projects").getFullList<{ name: string }>({ fields: "name" })).map((p) => p.name),
+  );
   const events: IssueEvent[] = [];
   // The scan's advisories that no resource has any more go, but only after a sync read them all.
   const store = await FindingStore.open();
@@ -303,7 +337,7 @@ export async function syncCoolifyResources(): Promise<IssueEvent[]> {
     if (!listed.databases || !listed.services) complete = false;
     for (const resource of [...(listed.databases ?? []), ...(listed.services ?? [])]) {
       try {
-        const result = await syncResource(server, access, resource, existing, store);
+        const result = await syncResource(server, access, resource, existing, taken, store);
         events.push(...result.events);
         if (!result.scanRead) complete = false;
         else if (result.scanOff) status.scanOff = (status.scanOff ?? 0) + 1;

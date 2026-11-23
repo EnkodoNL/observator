@@ -42,9 +42,18 @@ vi.mock("@/lib/pb/admin", () => ({
     filter: (q: string) => q,
   }),
 }));
+// PocketBase hands a JSON field back with its keys sorted, as Go writes a map.
+const asStored = <T>(value: T): T =>
+  JSON.parse(
+    JSON.stringify(value, (_k, v: unknown) =>
+      v && typeof v === "object" && !Array.isArray(v)
+        ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+        : v,
+    ),
+  );
 vi.mock("@/lib/kv", () => ({
   kvGet: async (key: string) => kv.get(key) ?? null,
-  kvSet: async (key: string, value: unknown) => void kv.set(key, value),
+  kvSet: async (key: string, value: unknown) => void kv.set(key, asStored(value)),
 }));
 vi.mock("@/lib/data/projects", () => ({ uniqueSlug: async (base: string) => base }));
 vi.mock("./servers", () => ({
@@ -77,7 +86,10 @@ vi.mock("@/lib/images/inspect", () => ({
 }));
 type Files = { components?: { ecosystem?: string; name: string; version: string }[] };
 const recordBuild = vi.fn(async (project: { id: string }, files: Files, meta: { runtimes: never[] }) => {
-  builds.set(project.id, { runtimes: meta.runtimes, lockfileHash: JSON.stringify(files.components ?? []) });
+  builds.set(project.id, {
+    runtimes: asStored(meta.runtimes),
+    lockfileHash: JSON.stringify(files.components ?? []),
+  });
   return {};
 });
 vi.mock("@/lib/ingest/ingest", () => ({
@@ -93,7 +105,7 @@ const evaluateProject = vi.fn<(id: string) => Promise<never[]>>(async () => []);
 vi.mock("@/lib/issues/evaluate", () => ({ evaluateProject: (id: string) => evaluateProject(id) }));
 vi.mock("@/lib/notify/publish", () => ({ publish: async () => {} }));
 
-const { resourceRuntimes, syncCoolifyResources } = await import("./resources");
+const { resourceName, resourceRuntimes, syncCoolifyResources } = await import("./resources");
 
 const DB = "d1aaaaaaaaaaaaaaaaaaaaaa";
 const SVC = "s1aaaaaaaaaaaaaaaaaaaaaa";
@@ -219,9 +231,12 @@ describe("Coolify's scan and apps on GitHub", () => {
     resourceScan.mockResolvedValue({ findings: [finding({})], off: null, scannedAt: null });
     await syncCoolifyResources();
     expect(vulns).toHaveLength(1);
+    recordBuild.mockClear();
     resourceScan.mockResolvedValue({ error: "Coolify timed out" });
     await syncCoolifyResources();
     expect(vulns).toHaveLength(1);
+    // The last scan's packages, read back from the stored inventory, are the same report.
+    expect(recordBuild).not.toHaveBeenCalled();
     resourceScan.mockResolvedValue({ findings: [], off: null, scannedAt: null });
     await syncCoolifyResources();
     expect(vulns).toHaveLength(0);
@@ -262,6 +277,15 @@ describe("Coolify's scan and apps on GitHub", () => {
 });
 
 describe("resourceRuntimes", () => {
+  it("leaves Coolify's uuid out of a name, unless another project has the short one", () => {
+    const uuid = "u1aaaaaaaaaaaaaaaaaaaaaa";
+    expect(resourceName(`shop-db-${uuid}`, uuid, null, new Set())).toBe("shop-db");
+    expect(resourceName("shop-db", uuid, null, new Set(["shop-db"]))).toBe("shop-db");
+    expect(resourceName(`shop-db-${uuid}`, uuid, null, new Set(["shop-db"]))).toBe(`shop-db-${uuid}`);
+    expect(resourceName(`shop-db-${uuid}`, uuid, "shop-db", new Set(["shop-db"]))).toBe("shop-db");
+    expect(resourceName(uuid, uuid, null, new Set())).toBe(uuid);
+  });
+
   it("lists each product and runtime once", () => {
     const image = describeImage(parseImageRef("postgres:16.4")!, { env: { PG_VERSION: "16.4" }, labels: {} });
     expect(resourceRuntimes([image, image])).toEqual([{ name: "postgresql", version: "16.4" }]);

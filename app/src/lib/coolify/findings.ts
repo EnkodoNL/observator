@@ -27,18 +27,24 @@ const SEVERITY: Record<string, Severity> = {
 const usable = (f: CoolifyFinding) => Boolean(f.fixedIn) && !f.ignored;
 
 /** The packages of fixable findings, once each. */
+/** A component with its fields in one order, for a report hash that does not depend on where it came from. */
+export const asComponent = (c: Component): Component => ({
+  name: c.name,
+  version: c.version,
+  direct: c.direct,
+  dev: c.dev,
+  via: c.via,
+  ecosystem: c.ecosystem,
+});
+
 export function findingComponents(findings: readonly CoolifyFinding[]): Component[] {
   const out = new Map<string, Component>();
   for (const f of findings.filter(usable)) {
     const ecosystem = `${COOLIFY_ECOSYSTEM}${f.type}`;
-    out.set(`${ecosystem}:${f.package}@${f.version}`, {
-      name: f.package,
-      version: f.version,
-      direct: false,
-      dev: false,
-      via: [],
-      ecosystem,
-    });
+    out.set(
+      `${ecosystem}:${f.package}@${f.version}`,
+      asComponent({ name: f.package, version: f.version, direct: false, dev: false, via: [], ecosystem }),
+    );
   }
   return [...out.values()].sort((a, b) =>
     `${a.ecosystem}:${a.name}`.localeCompare(`${b.ecosystem}:${b.name}`),
